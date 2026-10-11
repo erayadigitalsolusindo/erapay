@@ -13,8 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 )
 
 type redisPinger struct{ c *redis.Client }
@@ -51,8 +53,12 @@ func run(log *slog.Logger) error {
 	defer rdb.Close()
 
 	srv := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewRouter(httpapi.Deps{Log: log, DB: pool, Redis: redisPinger{rdb}}),
+		Addr: cfg.HTTPAddr,
+		Handler: httpapi.NewRouter(httpapi.Deps{
+			Log: log, DB: pool, Redis: redisPinger{rdb},
+			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
+			SecureCookies: cfg.Env != "development",
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errc := make(chan error, 1)
