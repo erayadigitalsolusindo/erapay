@@ -24,9 +24,9 @@ type Deps struct {
 	Auth          *auth.Service // nil disables /v1 routes (health-only tests)
 	Merchants     *merchant.Repo
 	SecureCookies bool
-	Log   *slog.Logger
-	DB    Pinger
-	Redis Pinger
+	Log           *slog.Logger
+	DB            Pinger
+	Redis         Pinger
 }
 
 func NewRouter(d Deps) http.Handler {
