@@ -1,0 +1,7 @@
+# Keamanan & kepatuhan [sec] (PRD §7)
+
+Baca juga: `../PRD.md`, `payout.md`, `webhook-outbound.md`.
+
+- **Kontrol:** TLS semua trafik; **uang keluar (payout):** maker-checker, MFA saat approve, allowlist rekening + cooling period, limit harian + alert anomali, pemisahan tugas; secrets management & pisah kredensial sandbox/prod (per gateway); enkripsi transit+at-rest; RBAC least privilege; MFA admin; rate limit per API key/IP/endpoint; signature+replay protection webhook; audit log (login, API key, perubahan merchant/rekening/pricing, refund, akses data sensitif); redaksi secret/token/PII di log; dependency scan, static analysis, code review; backup terenkripsi + uji restore; runbook incident & rotasi kredensial; proteksi SSRF; CORS/CSRF/cookie session benar; jangan kirim data/secret produksi ke layanan AI eksternal tanpa kebijakan data.
+- **Compliance gate (sebelum produksi, review legal; diulang untuk tiap gateway baru):** peran & izin EraPay; tanggung jawab KYC/KYB, AML, fraud, complaint handling, privasi (UU PDP Indonesia), retention; kontrak merchant (fee, settlement, refund, dispute, downtime, batas tanggung jawab); izin/kewajiban PT sebagai penerima & penyalur dana pihak ketiga (PJP/agregator; di bawah izin DOKU atau izin sendiri) [LEGAL — dinyatakan aman oleh owner 11 Okt 2026, lampirkan bukti]; pemisahan dana merchant dari operasional; kewajiban pengungkapan fee ke merchant (kontrak merchant) [LEGAL]; AML/CFT, pelaporan, retensi; security assessment.
+- Dokumen ini bukan pendapat hukum.

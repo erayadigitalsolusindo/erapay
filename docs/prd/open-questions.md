@@ -1,0 +1,13 @@
+# Hal terbuka (PRD §13)
+
+Baca juga: `../PRD.md`. Jawaban yang sudah pasti: pindahkan ke file modul terkait dan hapus dari sini.
+
+**Model B / fee:** apakah DOKU settle (gross − MDR) ke PT dan bagaimana pembulatan MDR-nya? Biaya Jasa 1% dihitung dari gross (default PRD, bukan berantai setelah MDR)? ada PPN atas Biaya Jasa EraPay? jadwal payout (T+N), minimum payout, siapa menanggung biaya transfer? rekening penampung terpisah? ~~izin/legal PT~~ (owner: aman, 11 Okt 2026)? kebijakan saldo negatif/refund/chargeback? DOKU menyediakan disbursement/sub-account/split settlement?
+
+**Multi-gateway:** gateway kedua setelah DOKU = Midtrans (konfirmasi prioritas)? pemilihan gateway per merchant atau per metode bayar? failover otomatis diperlukan nanti? satu merchant boleh aktif di >1 gateway sekaligus? fee/pricing ditampilkan per gateway ke merchant?
+
+**Konfirmasi DOKU [KD]:** persetujuan mencakup Partner API/onboarding merchant? QRIS bisa diaktifkan untuk merchant via EraPay? Representasi merchant/sub-account? Settlement langsung per merchant untuk QRIS? Siapa menagih MDR & ke siapa? Platform fee/revenue share boleh & pencatatannya? KYC/KYB di DOKU/EraPay/keduanya? Refund/dispute/fraud/expired/reversal? SLA, rate limit, timeout, retry, batas transaksi? Retention/audit/pelaporan? Sandbox mendukung semua alur? Persyaratan legal/perizinan peran EraPay?
+
+**Keputusan product owner:** merchant daftar mandiri atau dibuat tim? satu merchant banyak outlet? fee dibayar terpisah/berkala/revenue share? merchant pilih paket atau tarif ikut kontrak? refund masuk MVP? live update SSE/WebSocket atau polling cukup? estimasi merchant & transaksi/hari tahun 1? approval multi-user untuk tarif/rekening/refund? laporan settlement DOKU via API atau unggah file? target RPO/RTO + jam dukungan?
+
+**Tambahan dari review (belum ada di PRD asli):** perilaku pembayaran yang masuk setelah QR expired (late payment)? aturan PPN/pajak atas Biaya Jasa? MDR QRIS per kategori usaha merchant (bisa beda dari 0,7%)?

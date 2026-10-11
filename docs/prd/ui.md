@@ -1,0 +1,8 @@
+# Dashboard & developer portal [ui] (PRD §4.11)
+
+Baca juga: `../PRD.md`, `auth.md`, `merchant.md`.
+
+- **Admin:** login+MFA, overview, merchants, onboarding review, transactions (filter gateway), payment detail/timeline (+correlation IDs), gateway status/config, pricing plans+histori, settlement & rekonsiliasi (exceptions), webhook events/deliveries, users/roles, audit logs, system health. Ekspor CSV dibatasi role + dicatat.
+- **Merchant:** login, overview (transaksi/gross/fee/settlement sesuai akses), transaksi + detail QRIS, settlement/laporan+ekspor, outlet, tim, API key (env, scope, rotasi, cabut), webhook settings+delivery log, fee schedule, profil/onboarding, support. Hanya data tenant sendiri.
+- **Dev portal:** API docs+changelog, sandbox credentials, contoh curl/Go/JS, katalog event webhook, panduan idempotency/signature/error/polling, status API, kebijakan versioning/deprecation.
+- **UX:** status selalu berlabel teks (bukan warna saja); bedakan "Pembayaran berhasil" vs "Settlement selesai"; pending/unknown beri instruksi jelas, tidak klaim gagal/lunas; konfirmasi untuk aksi sensitif; filter, pagination, empty/loading/error state, responsive; mask rekening & data sensitif; secret tampil sekali; bahasa Indonesia default + struktur i18n; tidak menampilkan secret/rekening penuh/PII tak perlu; opsi gateway di UI hanya yang aktif & terkonfirmasi; pelanggan membayar nominal transaksi tanpa biaya tambahan; merchant melihat rincian per transaksi (gross, MDR, Biaya Jasa EraPay, net) + saldo pending/available/on_hold + status payout.
