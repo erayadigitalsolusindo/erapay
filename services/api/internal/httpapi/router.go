@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 )
@@ -23,10 +24,11 @@ type Pinger interface {
 type Deps struct {
 	Auth          *auth.Service // nil disables /v1 routes (health-only tests)
 	Merchants     *merchant.Repo
+	APIKeys       *apikey.Service
 	SecureCookies bool
-	Log   *slog.Logger
-	DB    Pinger
-	Redis Pinger
+	Log           *slog.Logger
+	DB            Pinger
+	Redis         Pinger
 }
 
 func NewRouter(d Deps) http.Handler {

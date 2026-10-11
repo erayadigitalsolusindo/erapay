@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/testdb"
@@ -47,7 +48,7 @@ func setup(t *testing.T) *world {
 
 	w.srv = httptest.NewServer(NewRouter(Deps{
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DB: fakePinger{}, Redis: fakePinger{},
-		Auth: svc, Merchants: merchant.NewRepo(db),
+		Auth: svc, Merchants: merchant.NewRepo(db), APIKeys: apikey.NewService(db, "sandbox"),
 	}))
 	t.Cleanup(w.srv.Close)
 	return w

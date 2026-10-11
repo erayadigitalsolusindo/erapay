@@ -43,6 +43,7 @@ func DefaultConfig() Config {
 type Principal struct {
 	UserID      string
 	SessionID   string
+	KeyID       string // set when authenticated by API key (UserID/SessionID empty)
 	MerchantID  string
 	Permissions map[string]struct{}
 }

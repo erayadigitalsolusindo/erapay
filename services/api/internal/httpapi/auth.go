@@ -194,6 +194,9 @@ func (d Deps) mountV1(r chi.Router) {
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(requireJSON)
 		r.Post("/auth/login", d.login)
+		if d.APIKeys != nil {
+			r.With(d.requireAPIKey).Get("/api-keys/self", d.apiKeySelf)
+		}
 		r.Group(func(r chi.Router) {
 			r.Use(d.requireAuth)
 			r.Post("/auth/logout", d.logout)
@@ -202,6 +205,15 @@ func (d Deps) mountV1(r chi.Router) {
 				r.Use(requireTenant)
 				r.With(requirePerm("merchant:read")).Get("/merchant/profile", d.merchantProfile)
 				r.With(requirePerm("outlet:read")).Get("/merchant/outlets", d.merchantOutlets)
+				if d.APIKeys != nil {
+					r.Group(func(r chi.Router) {
+						r.Use(requirePerm("api_key:manage"))
+						r.Post("/api-keys", d.createAPIKey)
+						r.Get("/api-keys", d.listAPIKeys)
+						r.Post("/api-keys/{id}/revoke", d.revokeAPIKey)
+						r.Post("/api-keys/{id}/rotate", d.rotateAPIKey)
+					})
+				}
 			})
 		})
 	})
