@@ -58,13 +58,8 @@ func run(log *slog.Logger) error {
 		Handler: httpapi.NewRouter(httpapi.Deps{
 			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
-<<<<<<< HEAD
-			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)),
-			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
-=======
 			APIKeys:       apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)),
-			SecureCookies: cfg.Env != "development",
->>>>>>> feat/api-key-idempotency
+			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
