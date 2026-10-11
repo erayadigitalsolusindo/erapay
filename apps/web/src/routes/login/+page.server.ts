@@ -20,7 +20,7 @@ export const actions: Actions = {
 		const email = String(form.get('email') ?? '').trim();
 		const password = String(form.get('password') ?? '');
 		const merchantId = String(form.get('merchant_id') ?? '').trim();
-		if (!email || !password) return fail(400, { email, error: MESSAGES.invalid_input });
+		if (!email || !password) return fail(400, { email, needMerchant: false, error: MESSAGES.invalid_input });
 
 		const r = await login(fetch, getClientAddress(), email, password, merchantId);
 		if (!r.ok) {
@@ -28,6 +28,7 @@ export const actions: Actions = {
 				return fail(400, { email, needMerchant: true, error: 'Akun ini terdaftar di beberapa merchant. Masukkan ID merchant.' });
 			}
 			return fail(r.code === 'rate_limited' ? 429 : r.code === 'unavailable' ? 503 : 401, {
+				needMerchant: false,
 				email,
 				error: MESSAGES[r.code]
 			});
