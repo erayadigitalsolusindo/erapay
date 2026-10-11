@@ -5,6 +5,18 @@ on:
 jobs:
   api:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: erapay
+          POSTGRES_PASSWORD: erapay_ci_only
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U erapay" --health-interval 5s --health-retries 10
+    env:
+      ERAPAY_TEST_DATABASE_URL: postgres://erapay:erapay_ci_only@localhost:5432/postgres?sslmode=disable
     defaults:
       run:
         working-directory: services/api

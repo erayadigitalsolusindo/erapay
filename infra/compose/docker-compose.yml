@@ -5,7 +5,7 @@ services:
       POSTGRES_USER: erapay
       POSTGRES_PASSWORD: erapay_dev_only
       POSTGRES_DB: erapay
-    ports: ["5432:5432"]
+    ports: ["${ERAPAY_PG_PORT:-5432}:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U erapay"]

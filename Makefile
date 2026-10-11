@@ -27,3 +27,12 @@ test: ## Jalankan semua test (Go + frontend)
 check: ## Cek format/tipe (Go + frontend)
 	cd services/api && test -z "$$(gofmt -l .)" && go vet ./...
 	cd apps/web && npm run check
+
+migrate: ## Terapkan migrasi ke ERAPAY_DATABASE_URL (.env)
+	cd services/api && set -a && . ../../.env && set +a && go run ./cmd/migrate up
+
+migrate-down: ## Rollback satu migrasi
+	cd services/api && set -a && . ../../.env && set +a && go run ./cmd/migrate down
+
+migrate-status: ## Tampilkan status migrasi
+	cd services/api && set -a && . ../../.env && set +a && go run ./cmd/migrate status
