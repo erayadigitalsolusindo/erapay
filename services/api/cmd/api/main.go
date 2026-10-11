@@ -55,7 +55,7 @@ func run(log *slog.Logger) error {
 	defer rdb.Close()
 
 	srv := &http.Server{
-		Addr:              cfg.HTTPAddr,
+		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
 			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
