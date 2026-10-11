@@ -1,0 +1,183 @@
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	import { getContext, untrack } from 'svelte';
+	import Field from '../../../lib/components/auth/Field.svelte';
+	import Logo from '../../../lib/components/auth/Logo.svelte';
+
+	let { form } = $props();
+	const auth = getContext<{ goyang(): void; uang(): void; pindah(href: string): void }>('auth');
+
+	let jenis = $state('pribadi');
+	let nama = $state(untrack(() => form?.name ?? ''));
+	let email = $state(untrack(() => form?.email ?? ''));
+	let hp = $state('');
+	let sandi = $state('');
+	let sandi2 = $state('');
+	let setuju = $state(false);
+	let showPw = $state(false);
+	let busy = $state(false);
+	let err = $state<Record<string, string>>({});
+
+	const TEKS = ['Terlalu lemah', 'Lemah', 'Cukup', 'Kuat', 'Sangat kuat'];
+	const WARNA = ['#ef4444', '#ef4444', '#f59e0b', '#84cc16', '#16a34a'];
+	const skor = $derived.by(() => {
+		let s = 0;
+		if (sandi.length >= 8) s++;
+		if (/[a-z]/.test(sandi) && /[A-Z]/.test(sandi)) s++;
+		if (/\d/.test(sandi)) s++;
+		if (/[^A-Za-z0-9]/.test(sandi) || sandi.length >= 12) s++;
+		return s;
+	});
+
+	$effect(() => {
+		if (form?.error) auth.goyang();
+	});
+	$effect(() => {
+		if (form?.success) auth.uang();
+	});
+
+	function validate() {
+		const nomor = hp.replace(/\D/g, '').replace(/^(62|0)/, '');
+		err = {
+			nama: nama.trim().length >= 3 ? '' : 'Masukkan nama lengkap (minimal 3 huruf).',
+			email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? '' : 'Masukkan alamat email yang valid.',
+			hp: /^8\d{8,11}$/.test(nomor) ? '' : 'Nomor ponsel tidak valid (contoh: 812 3456 7890).',
+			sandi: sandi.length >= 8 && /[A-Za-z]/.test(sandi) && /\d/.test(sandi) ? '' : 'Minimal 8 karakter, kombinasi huruf dan angka.',
+			sandi2: sandi && sandi === sandi2 ? '' : 'Kata sandi tidak sama.',
+			setuju: setuju ? '' : 'Anda perlu menyetujui syarat & ketentuan.'
+		};
+		return Object.values(err).every((v) => !v);
+	}
+</script>
+
+<svelte:head><title>Daftar · EraPay</title></svelte:head>
+
+{#if form?.success}
+	<div class="py-6 text-center">
+		<div class="animate-naik mx-auto grid size-20 place-items-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/40">
+			<svg viewBox="0 0 24 24" class="size-10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+		</div>
+		<h2 class="animate-naik font-display mt-5 text-2xl font-extrabold text-merah-gelap [animation-delay:.1s]">Akun berhasil dibuat!</h2>
+		<p class="animate-naik mt-2 text-sm/6 text-neutral-600 [animation-delay:.2s]">Selamat datang, <b>{form.name}</b>.<br />Silakan masuk dengan <b>{form.email}</b>.</p>
+		<a
+			href="/login"
+			onclick={(e) => { e.preventDefault(); auth.pindah('/login'); }}
+			class="animate-naik mt-6 block w-full rounded-xl bg-gradient-to-b from-merah to-merah-tua px-5 py-3.5 font-bold text-white shadow-lg shadow-merah/40 transition hover:-translate-y-0.5 [animation-delay:.3s]"
+		>Lanjut masuk</a>
+	</div>
+{:else}
+	<div class="flex items-center gap-2 lg:hidden">
+		<span class="grid size-9 place-items-center rounded-xl bg-merah-gelap"><Logo /></span>
+		<span class="font-display text-xl font-extrabold tracking-[0.18em] text-merah-tua">ERAPAY</span>
+	</div>
+
+	<p class="mt-5 text-sm font-semibold tracking-widest text-merah uppercase lg:mt-0">Bergabung bersama kami</p>
+	<h2 class="font-display mt-1 text-3xl font-extrabold text-merah-gelap">Buat akun ERAPAY</h2>
+	<p class="mt-2 text-sm text-neutral-500">Gratis dan selesai kurang dari 2 menit.</p>
+
+	<form
+		method="POST"
+		novalidate
+		class="mt-6 space-y-4"
+		use:enhance={({ cancel }) => {
+			if (!validate()) {
+				auth.goyang();
+				cancel();
+				return;
+			}
+			busy = true;
+			return async ({ update }) => {
+				await update({ reset: false });
+				busy = false;
+			};
+		}}
+	>
+		{#if form?.error}
+			<div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{form.error}</div>
+		{/if}
+
+		<div class="grid grid-cols-2 gap-1 rounded-xl bg-neutral-200/70 p-1" role="radiogroup" aria-label="Jenis akun">
+			{#each [['pribadi', 'Pribadi'], ['usaha', 'Usaha / UMKM']] as [v, t]}
+				<label class="cursor-pointer">
+					<input type="radio" name="jenis" value={v} bind:group={jenis} class="peer sr-only" />
+					<span class="flex items-center justify-center rounded-lg py-2 text-sm font-semibold text-neutral-600 transition peer-checked:bg-white peer-checked:text-merah peer-checked:shadow peer-focus-visible:outline-3 peer-focus-visible:outline-emas">{t}</span>
+				</label>
+			{/each}
+		</div>
+
+		<Field compact id="r-nama" name="name" label="Nama lengkap" icon="user" autocomplete="name" placeholder="Sesuai KTP" bind:value={nama} error={err.nama} />
+		<Field compact id="r-email" name="email" label="Email" icon="mail" type="email" autocomplete="email" placeholder="nama@usaha.co.id" bind:value={email} error={err.email} />
+		<Field compact id="r-hp" name="phone" label="Nomor ponsel" icon="phone" prefix="+62" type="tel" autocomplete="tel-national" placeholder="812 3456 7890" bind:value={hp} error={err.hp} />
+
+		<Field
+			compact id="r-sandi" name="password" label="Kata sandi" icon="lock"
+			type={showPw ? 'text' : 'password'} autocomplete="new-password" placeholder="Minimal 8 karakter"
+			bind:value={sandi} error={err.sandi}
+		>
+			{#snippet trailing()}
+				<button
+					type="button"
+					onclick={() => (showPw = !showPw)}
+					aria-label={showPw ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+					aria-pressed={showPw}
+					class="absolute inset-y-0 right-3 grid place-items-center rounded-lg px-1.5 text-neutral-400 transition hover:text-merah"
+				>
+					<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+						{#if showPw}
+							<path d="M3 3l18 18M10.6 5.1A9.9 9.9 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.5 6.6C3.7 8.3 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.4 4.5-1M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+						{:else}
+							<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />
+						{/if}
+					</svg>
+				</button>
+			{/snippet}
+			{#snippet below()}
+				<div class="mt-2 flex items-center gap-3" aria-live="polite">
+					<div class="grid flex-1 grid-cols-4 gap-1.5">
+						{#each [0, 1, 2, 3] as i}
+							<span
+								class="h-1.5 rounded-full bg-neutral-200 transition-colors duration-300"
+								style:background={sandi && i < Math.max(1, skor) ? WARNA[skor] : ''}
+							></span>
+						{/each}
+					</div>
+					<span class="w-24 text-right text-xs font-semibold text-neutral-400" style:color={sandi ? WARNA[skor] : ''}>{sandi ? TEKS[skor] : '—'}</span>
+				</div>
+			{/snippet}
+		</Field>
+
+		<Field
+			compact id="r-sandi2" name="password_confirm" label="Ulangi kata sandi" icon="lock"
+			type={showPw ? 'text' : 'password'} autocomplete="new-password" placeholder="Ketik ulang kata sandi"
+			bind:value={sandi2} error={err.sandi2}
+		/>
+
+		<div>
+			<label class="flex cursor-pointer items-start gap-2.5 text-xs/5 text-neutral-600 select-none">
+				<input type="checkbox" name="agree" bind:checked={setuju} class="mt-0.5 size-4 shrink-0 rounded border-neutral-300 accent-merah" />
+				<span>Saya menyetujui <a href="/" class="font-semibold text-merah hover:underline">Syarat &amp; Ketentuan</a> dan <a href="/" class="font-semibold text-merah hover:underline">Kebijakan Privasi</a> ERAPAY.</span>
+			</label>
+			{#if err.setuju}<p class="mt-1 text-xs font-medium text-merah">{err.setuju}</p>{/if}
+		</div>
+
+		<button
+			type="submit"
+			disabled={busy}
+			class="tombol-kilau relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-b from-merah to-merah-tua px-5 py-3.5 font-bold text-white shadow-lg shadow-merah/40 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-merah/50 active:translate-y-0 disabled:opacity-90"
+		>
+			{#if busy}
+				<svg class="size-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".3" stroke-width="3" /><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" /></svg>
+			{/if}
+			<span class="relative">{busy ? 'Membuat akun…' : 'Buat akun sekarang'}</span>
+		</button>
+	</form>
+
+	<p class="mt-5 text-center text-sm text-neutral-600">
+		Sudah punya akun?
+		<a
+			href="/login"
+			onclick={(e) => { e.preventDefault(); auth.pindah('/login'); }}
+			class="font-bold text-merah hover:underline"
+		>Masuk</a>
+	</p>
+{/if}

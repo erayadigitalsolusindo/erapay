@@ -13,8 +13,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 )
 
 type redisPinger struct{ c *redis.Client }
@@ -48,11 +53,24 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	rdb := redis.NewClient(ropts)
+
+	reg, err := buildRegistry(cfg, log)
+	if err != nil {
+		return err
+	}
+	paySvc := payment.NewService(pool)
+	flow := payment.NewOrchestrator(paySvc, pool, idempotency.NewStore(pool), reg, apikey.EnvFromApp(cfg.Env), log)
+	go flow.RunPoller(ctx, 15*time.Second)
 	defer rdb.Close()
 
 	srv := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewRouter(httpapi.Deps{Log: log, DB: pool, Redis: redisPinger{rdb}}),
+		Addr: cfg.HTTPAddr,
+		Handler: httpapi.NewRouter(httpapi.Deps{
+			Log: log, DB: pool, Redis: redisPinger{rdb},
+			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
+			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
+			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errc := make(chan error, 1)

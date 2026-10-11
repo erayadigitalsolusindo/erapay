@@ -4,14 +4,17 @@ package config
 
 import (
 	"errors"
+	"net/netip"
 	"os"
+	"strings"
 )
 
 type Config struct {
-	Env         string // development | sandbox | production
-	HTTPAddr    string
-	DatabaseURL string
-	RedisURL    string
+	Env            string // development | sandbox | production
+	HTTPAddr       string
+	DatabaseURL    string
+	RedisURL       string
+	TrustedProxies []netip.Prefix // ERAPAY_TRUSTED_PROXIES: comma-separated CIDRs
 }
 
 func Load() (Config, error) {
@@ -26,6 +29,16 @@ func Load() (Config, error) {
 	}
 	if c.RedisURL == "" {
 		return c, errors.New("ERAPAY_REDIS_URL is required")
+	}
+	for _, s := range strings.Split(os.Getenv("ERAPAY_TRUSTED_PROXIES"), ",") {
+		if s = strings.TrimSpace(s); s == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			return c, errors.New("ERAPAY_TRUSTED_PROXIES: invalid CIDR " + s)
+		}
+		c.TrustedProxies = append(c.TrustedProxies, p)
 	}
 	return c, nil
 }

@@ -7,5 +7,5 @@
 
 <style>
 	:global(body) { margin: 0; font-family: system-ui, sans-serif; color: #111827; background: #f9fafb; }
-	:global(a) { color: #0f766e; }
+	:global(body:not(:has(.auth)) a) { color: #0f766e; }
 </style>

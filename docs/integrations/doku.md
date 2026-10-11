@@ -66,3 +66,12 @@ Halaman SNAP/QRIS: https://developers.doku.com/accept-payments/direct-api/snap/i
 3. **Pemotongan fee platform 1% (Model B)**: split settlement/sub-account untuk QRIS belum terbukti → asumsi PRD (dana masuk ke PT, fee dipotong di ledger EraPay) tetap, tanpa bergantung fitur split.
 4. **Payout**: tersedia Kirim DOKU (transfer bank); wajib dry-run default, `unknown` saat timeout/pending, inquiry sebelum retry.
 5. **Pertanyaan [KD] baru**: payload notifikasi QRIS + verifikasi; kode `latestTransactionStatus` QRIS; MDR QRIS & basis; jadwal/format laporan settlement QRIS; apakah QRIS bisa dengan sub-account/split; refund QRIS per issuer; dukungan satu `merchantId` untuk banyak merchant pihak ketiga.
+
+## 8. Status implementasi (adapter `internal/gateway/doku`, 11 Okt 2026)
+Diimplementasikan (semua [V] di atas): token B2B (cache + refresh 1 menit sebelum kedaluwarsa), signature simetris HMAC-SHA512, `qr-mpm-generate`, `qr-mpm-query` (`serviceCode=47`), `qr-expire`. Diuji dengan server DOKU **tiruan** yang memverifikasi signature secara independen; **belum diuji ke sandbox DOKU asli** (butuh kredensial).
+Asumsi yang harus diverifikasi di sandbox:
+- `X-TIMESTAMP` selalu UTC `YYYY-MM-DDTHH:mm:ssZ` (dokumen menulis `…ssZD`); `validityPeriod` dikirim sebagai ISO 8601 datetime `+07:00` (dokumen hanya menyebut "ISO 8601").
+- Sukses = HTTP 200 dan `responseCode` berawalan `200` (dari format HTTP(3)+service(2)+case(2)). `202…`, 5xx, 409, timeout/koneksi putus = **ambigu** (payment `unknown`, create tidak di-retry); 4xx lain = ditolak (payment `failed`).
+- Mapping `latestTransactionStatus` **mati secara default** (`DOKU_QRIS_STATUS_MAP_CONFIRMED=false`) karena kodenya belum terbukti untuk QRIS: semua status "unmapped" dan payment tidak berubah. Setelah dikonfirmasi di sandbox: `00`→succeeded, `01/02/03`→pending, `05`→cancelled, `06`→failed; `04` (refunded) dan `07` (not found) tetap tidak dipetakan.
+- `X-EXTERNAL-ID`: epoch mikrodetik×1000 + counter (numerik, unik per proses); belum ada jaminan unik lintas instance.
+Belum diimplementasikan (menunggu [?]/[KD]): webhook inbound QRIS + verifikasi, refund, parser settlement.

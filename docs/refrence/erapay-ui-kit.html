@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="id" class="scroll-smooth">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ERAPAY · UI Kit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<!-- Tailwind v4 (browser build). Produksi: npm i tailwindcss @tailwindcss/cli -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style type="text/tailwindcss">
+  @theme {
+    --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-display: "Fraunces", Georgia, serif;
+    --color-merah: #c8102e;
+    --color-merah-tua: #8a0a1f;
+    --color-merah-gelap: #4a0510;
+    --color-gading: #fff8f0;
+    --color-emas: #e8b84a;
+    --animate-naik: naik .8s cubic-bezier(.2,.7,.2,1) both;
+    --animate-putar: putar 6s linear infinite;
+    --animate-denyut: denyut 2s ease-in-out infinite;
+    @keyframes naik { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+    @keyframes putar { to { transform: rotate(360deg); } }
+    @keyframes denyut { 0%,100% { transform: scale(1); opacity: .6; } 50% { transform: scale(2.2); opacity: 0; } }
+  }
+  @layer components {
+    .card { @apply rounded-2xl border border-merah-gelap/10 bg-white p-5 shadow-sm; }
+    .lbl { @apply mb-1.5 block text-sm font-semibold; }
+    .inp { @apply w-full rounded-xl border border-merah-gelap/20 bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-merah-gelap/40 focus:border-merah focus:ring-4 focus:ring-merah/15; }
+    .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none transition active:scale-95 focus-visible:ring-4 focus-visible:ring-emas/60 disabled:opacity-60; }
+    .bdg { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
+    .sec { @apply mb-4 font-display text-2xl font-extrabold; }
+    .hint { @apply mt-1.5 text-xs text-merah-gelap/60; }
+    .inp-err { @apply border-red-500 focus:border-red-500 focus:ring-red-500/15; }
+    .nav { @apply flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-gading/75 transition hover:bg-white/10 hover:text-white; }
+    .nav[aria-current=page] { @apply bg-white/15 text-white ring-1 ring-emas/60; }
+  }
+  .pola { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='white' stroke-opacity='.16' stroke-width='1.5'%3E%3Cellipse cx='40' cy='20' rx='10' ry='18'/%3E%3Cellipse cx='40' cy='60' rx='10' ry='18'/%3E%3Cellipse cx='20' cy='40' rx='18' ry='10'/%3E%3Cellipse cx='60' cy='40' rx='18' ry='10'/%3E%3C/g%3E%3C/svg%3E"); background-size: 80px; }
+  .tilt { transition: transform .25s ease-out, box-shadow .25s; will-change: transform; }
+  .kilau { background: linear-gradient(110deg, transparent 35%, rgb(255 255 255 / .28) 50%, transparent 65%); background-size: 250% 100%; animation: kil 4s ease-in-out infinite; }
+  @keyframes kil { 0% { background-position: 150% 0; } 60%,100% { background-position: -100% 0; } }
+
+  /* MODAL */
+  .modal { visibility: hidden; opacity: 0; transition: opacity .25s, visibility .25s; }
+  .modal.buka { visibility: visible; opacity: 1; }
+  .modal .panel { transform: translateY(32px) scale(.92); transition: transform .45s cubic-bezier(.2,1.25,.35,1); }
+  .modal.buka .panel { transform: none; }
+  .modal.buka .panel.getar { animation: getar .5s .1s; }
+  @keyframes getar { 0%,100% { transform: none; } 20%,60% { transform: translateX(-9px); } 40%,80% { transform: translateX(9px); } }
+  .cek-l, .cek-c { stroke-dasharray: 1; stroke-dashoffset: 1; }
+  .modal.buka .cek-l { animation: gbr .6s .25s forwards; }
+  .modal.buka .cek-c { animation: gbr .45s .75s forwards; }
+  @keyframes gbr { to { stroke-dashoffset: 0; } }
+  .toast { animation: toast 3.2s both; }
+  @keyframes toast { 0% { opacity: 0; transform: translate(-50%, 20px); } 10%,85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 10px); } }
+
+  /* ANIMASI SAAT TERLIHAT */
+  .garis { stroke-dasharray: 1; stroke-dashoffset: 1; }
+  .tampil .garis { animation: gbr 1.6s .2s forwards; }
+  .cincin { stroke-dasharray: 188.5; stroke-dashoffset: 188.5; transition: stroke-dashoffset 1.6s cubic-bezier(.2,.7,.2,1); }
+  .tampil .cincin { stroke-dashoffset: var(--s); }
+  .isi { width: 0; transition: width 1.6s cubic-bezier(.2,.7,.2,1); }
+  .tampil .isi { width: var(--w); }
+  .rinci { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .5s cubic-bezier(.2,.7,.2,1); }
+  .rinci.buka { grid-template-rows: 1fr; }
+  .keluar { animation: keluar .4s forwards; }
+  @keyframes keluar { to { opacity: 0; transform: translateX(48px); } }
+  .ganti { animation: naik .45s cubic-bezier(.2,.7,.2,1) both; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
+  @media (max-width: 1023px) { .nav { width: auto; flex-shrink: 0; white-space: nowrap; } }
+</style>
+</head>
+<body class="min-h-screen bg-gading font-sans text-merah-gelap antialiased lg:grid lg:grid-cols-[16rem_1fr]">
+
+<aside class="bg-merah-gelap p-4 text-gading lg:sticky lg:top-0 lg:h-screen">
+  <div class="flex min-w-0 flex-col gap-3 lg:block">
+    <div class="flex items-center gap-3 px-2 py-1">
+      <svg viewBox="0 0 32 32" class="size-9"><circle cx="16" cy="16" r="14" fill="#e8b84a" stroke="#fff3c4" stroke-width="1.5"/><text x="16" y="21.6" text-anchor="middle" font-family="Fraunces, serif" font-weight="800" font-size="16" fill="#8a0a1f">E</text></svg>
+      <span class="font-display text-xl font-extrabold tracking-[0.16em]">ERAPAY</span>
+    </div>
+    <nav class="flex gap-1 overflow-x-auto lg:mt-8 lg:flex-col lg:overflow-visible" aria-label="Menu utama">
+      <button class="nav" data-v="dash" aria-current="page"><svg class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M4 13h6V4H4zM14 20h6V4h-6zM4 20h6v-3H4z"/></svg>Dasbor</button>
+      <button class="nav" data-v="form"><svg class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16"/></svg>Elemen form</button>
+      <button class="nav" data-v="kartu"><svg class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18"/></svg>Card</button>
+      <button class="nav" data-v="modal"><svg class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 9h16"/></svg>Modal</button>
+      <button class="nav" data-v="profil"><svg class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Profil member</button>
+    </nav>
+  </div>
+  <div class="mt-8 hidden rounded-xl bg-white/10 p-3 text-xs text-gading/80 lg:block">
+    Lingkungan <strong class="text-emas">Sandbox</strong><br />Transaksi di sini tidak memakai uang asli.
+  </div>
+</aside>
+
+<main class="min-w-0 p-5 lg:p-8">
+
+<!-- ================= DASBOR ================= -->
+<section id="dash" class="space-y-6">
+  <header class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="font-display text-3xl font-extrabold">Ringkasan hari ini</h1>
+      <p class="mt-1 text-sm text-merah-gelap/70">Semua transaksi dari DOKU, Midtrans, dan provider lain dalam satu tempat.</p>
+    </div>
+    <div class="flex gap-2">
+      <select class="inp !w-auto" aria-label="Periode"><option>7 hari terakhir</option><option>30 hari terakhir</option><option>Bulan ini</option></select>
+      <button class="btn bg-merah text-white hover:bg-merah-tua">Buat tautan bayar</button>
+    </div>
+  </header>
+
+  <div id="stat" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
+
+  <div class="grid gap-4 xl:grid-cols-3">
+    <div class="card xl:col-span-2">
+      <div class="mb-4 flex items-center justify-between"><h2 class="font-semibold">Volume transaksi per hari</h2><span class="text-xs text-merah-gelap/60">dalam jutaan rupiah</span></div>
+      <div id="bar" class="flex h-48 items-end gap-3"></div>
+    </div>
+    <div class="card">
+      <h2 class="mb-4 font-semibold">Porsi per provider</h2>
+      <div id="prov" class="space-y-4"></div>
+    </div>
+  </div>
+
+  <div class="grid gap-4 xl:grid-cols-3">
+    <div class="card xl:col-span-2 !p-0">
+      <div class="flex items-center justify-between p-5 pb-3"><h2 class="font-semibold">Transaksi terbaru</h2><a href="#" class="text-sm font-semibold text-merah hover:underline">Lihat semua</a></div>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[40rem] text-left text-sm">
+          <thead class="border-y border-merah-gelap/10 bg-gading text-xs text-merah-gelap/70">
+            <tr><th class="px-5 py-2.5 font-semibold">ID</th><th class="px-3 py-2.5 font-semibold">Merchant</th><th class="px-3 py-2.5 font-semibold">Provider</th><th class="px-3 py-2.5 text-right font-semibold">Jumlah</th><th class="px-3 py-2.5 font-semibold">Status</th><th class="px-5 py-2.5 font-semibold">Waktu</th></tr>
+          </thead>
+          <tbody id="trx" class="divide-y divide-merah-gelap/10"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2 class="font-semibold">Potongan per transaksi</h2>
+      <p class="hint !mt-1 !mb-4">Contoh QRIS Rp1.000.000</p>
+      <dl class="space-y-2.5 text-sm">
+        <div class="flex justify-between"><dt>Nilai transaksi</dt><dd class="font-semibold">Rp1.000.000</dd></div>
+        <div class="flex justify-between text-merah-gelap/70"><dt>MDR QRIS 0,7%</dt><dd>− Rp7.000</dd></div>
+        <div class="flex justify-between text-merah-gelap/70"><dt>Jasa EraPay 1%</dt><dd>− Rp10.000</dd></div>
+        <div class="flex justify-between border-t border-merah-gelap/10 pt-3 text-base font-bold"><dt>Diterima merchant</dt><dd class="text-merah">Rp983.000</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ELEMEN FORM ================= -->
+<section id="form" class="hidden space-y-6">
+  <header>
+    <h1 class="font-display text-3xl font-extrabold">Elemen form</h1>
+    <p class="mt-1 text-sm text-merah-gelap/70">Salin blok yang dibutuhkan. Semua memakai kelas komponen <code class="rounded bg-merah/10 px-1">.inp .lbl .btn .bdg .card</code>.</p>
+  </header>
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <form class="card space-y-4" onsubmit="return false">
+      <h2 class="sec !mb-0">Tambah merchant</h2>
+      <div><label class="lbl" for="f1">Nama usaha</label><input id="f1" class="inp" placeholder="Warung Bu Sari" /></div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div><label class="lbl" for="f2">Email</label><input id="f2" type="email" class="inp" placeholder="nama@usaha.id" /></div>
+        <div><label class="lbl" for="f3">Nomor ponsel</label>
+          <div class="flex"><span class="grid place-items-center rounded-l-xl border border-r-0 border-merah-gelap/20 bg-gading px-3 text-sm">+62</span><input id="f3" class="inp !rounded-l-none" placeholder="812 3456 7890" /></div></div>
+      </div>
+      <div><label class="lbl" for="f4">Batas transaksi</label>
+        <div class="flex"><span class="grid place-items-center rounded-l-xl border border-r-0 border-merah-gelap/20 bg-gading px-3 text-sm">Rp</span><input id="f4" inputmode="numeric" class="inp !rounded-l-none" value="10.000.000" /></div>
+        <p class="hint">Maksimal nilai satu transaksi.</p></div>
+      <div><label class="lbl" for="f5">Provider utama</label>
+        <select id="f5" class="inp"><option>DOKU</option><option>Midtrans</option><option>Xendit</option></select></div>
+      <div><label class="lbl" for="f6">Catatan</label><textarea id="f6" rows="3" class="inp" placeholder="Opsional"></textarea></div>
+      <div class="flex gap-2"><button class="btn bg-merah text-white hover:bg-merah-tua">Simpan merchant</button><button type="button" class="btn border border-merah-gelap/20 hover:bg-merah/5">Batal</button></div>
+    </form>
+
+    <div class="space-y-4">
+      <div class="card space-y-4">
+        <h2 class="sec !mb-0">Status input</h2>
+        <div><label class="lbl" for="s1">Kata sandi</label><input id="s1" type="password" class="inp inp-err" value="abc" aria-invalid="true" />
+          <p class="mt-1.5 text-xs font-medium text-red-600">Minimal 8 karakter, kombinasi huruf dan angka.</p></div>
+        <div><label class="lbl" for="s2">API key DOKU</label><input id="s2" class="inp border-green-600" value="BRN-0211-1760000000000" />
+          <p class="mt-1.5 text-xs font-medium text-green-700">Kunci terverifikasi.</p></div>
+        <div><label class="lbl" for="s3">Domain callback</label><input id="s3" class="inp bg-gading" value="api.erapay.id" disabled /></div>
+      </div>
+
+      <div class="card space-y-4">
+        <h2 class="sec !mb-0">Pilihan</h2>
+        <fieldset><legend class="lbl">Metode pembayaran</legend>
+          <div class="space-y-2 text-sm">
+            <label class="flex items-center gap-2"><input type="checkbox" class="size-4 accent-merah" checked /> QRIS</label>
+            <label class="flex items-center gap-2"><input type="checkbox" class="size-4 accent-merah" /> Virtual account</label>
+            <label class="flex items-center gap-2"><input type="checkbox" class="size-4 accent-merah" /> Dompet digital</label>
+          </div></fieldset>
+        <fieldset><legend class="lbl">Jadwal pencairan</legend>
+          <div class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+            <label class="flex items-center gap-2"><input type="radio" name="cair" class="size-4 accent-merah" checked /> Harian</label>
+            <label class="flex items-center gap-2"><input type="radio" name="cair" class="size-4 accent-merah" /> Mingguan</label>
+            <label class="flex items-center gap-2"><input type="radio" name="cair" class="size-4 accent-merah" /> Manual</label>
+          </div></fieldset>
+        <label class="flex cursor-pointer items-center justify-between gap-4 text-sm">
+          <span><span class="block font-semibold">Kirim notifikasi webhook</span><span class="text-xs text-merah-gelap/60">Beri tahu server merchant tiap pembayaran berhasil.</span></span>
+          <span class="relative shrink-0"><input type="checkbox" class="peer sr-only" checked /><span class="block h-6 w-11 rounded-full bg-merah-gelap/20 transition peer-checked:bg-merah peer-focus-visible:ring-4 peer-focus-visible:ring-emas/60 after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-white after:transition peer-checked:after:translate-x-5"></span></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <div class="card space-y-4">
+      <h2 class="sec !mb-0">Tombol</h2>
+      <div class="flex flex-wrap gap-2">
+        <button class="btn bg-merah text-white hover:bg-merah-tua">Utama</button>
+        <button class="btn bg-emas text-merah-gelap hover:brightness-95">Emas</button>
+        <button class="btn border border-merah-gelap/20 hover:bg-merah/5">Garis</button>
+        <button class="btn text-merah hover:bg-merah/10">Teks</button>
+        <button class="btn bg-red-600 text-white hover:bg-red-700">Hapus</button>
+        <button class="btn bg-merah text-white" disabled>Nonaktif</button>
+        <button class="btn bg-merah text-white"><svg class="size-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".3" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>Memproses…</button>
+      </div>
+      <div class="flex flex-wrap gap-2 pt-2">
+        <span class="bdg bg-green-100 text-green-800">Berhasil</span>
+        <span class="bdg bg-amber-100 text-amber-800">Menunggu</span>
+        <span class="bdg bg-red-100 text-red-800">Gagal</span>
+        <span class="bdg bg-merah-gelap/10 text-merah-gelap">Kedaluwarsa</span>
+        <span class="bdg bg-emas/30 text-merah-tua">Sandbox</span>
+      </div>
+    </div>
+    <div class="card space-y-3">
+      <h2 class="sec !mb-0">Pemberitahuan</h2>
+      <div class="rounded-xl border border-green-600/30 bg-green-50 p-3 text-sm text-green-900"><strong>Pencairan terkirim.</strong> Rp96.200.000 menuju rekening BCA ••4417.</div>
+      <div class="rounded-xl border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900"><strong>Verifikasi belum selesai.</strong> Unggah akta usaha agar batas transaksi naik.</div>
+      <div class="rounded-xl border border-red-500/40 bg-red-50 p-3 text-sm text-red-900"><strong>Webhook gagal.</strong> Server merchant tidak membalas 200 dalam 10 detik.</div>
+    </div>
+  </div>
+</section>
+
+<section id="kartu" class="hidden animate-naik">
+  <h1 class="mb-5 font-display text-3xl font-extrabold">Card</h1>
+  <div data-io class="grid gap-4 lg:grid-cols-3">
+
+    <!-- Kartu saldo: miring mengikuti kursor -->
+    <div data-tilt class="tilt pola relative overflow-hidden rounded-3xl bg-gradient-to-br from-merah-gelap via-merah-tua to-merah p-6 text-gading shadow-xl shadow-merah/25">
+      <span class="kilau pointer-events-none absolute inset-0"></span>
+      <div class="relative">
+        <div class="flex items-start justify-between">
+          <svg viewBox="0 0 48 36" class="w-11"><rect width="48" height="36" rx="7" fill="#e8b84a"/><path d="M0 12h48M0 24h48M16 0v36M32 0v36" stroke="#8a0a1f" stroke-opacity=".35" fill="none"/></svg>
+          <span class="font-display text-sm font-extrabold tracking-[0.18em] text-emas">ERAPAY</span>
+        </div>
+        <p class="mt-7 text-sm text-gading/70">Saldo siap cair</p>
+        <p class="font-display text-4xl font-extrabold" data-n="96200000" data-pre="Rp">Rp96.200.000</p>
+        <div class="mt-6 flex items-end justify-between gap-3">
+          <p class="text-xs leading-5 text-gading/70">PT. ERAYA DIGITAL<br />SOLUSINDO</p>
+          <button class="btn bg-emas text-merah-gelap hover:brightness-110" data-buka="m-cair">Cairkan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kartu statistik + sparkline yang tergambar -->
+    <div class="card flex flex-col">
+      <div class="flex items-center justify-between"><p class="text-sm text-merah-gelap/70">Volume minggu ini</p><span class="bdg bg-green-100 text-green-800">+12,4%</span></div>
+      <p class="mt-2 font-display text-4xl font-extrabold" data-n="128.4" data-dec="1" data-pre="Rp" data-suf=" jt">Rp128,4 jt</p>
+      <svg viewBox="0 0 200 60" class="mt-auto w-full pt-4" fill="none" stroke="#c8102e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <path class="garis" pathLength="1" d="M4 46 L34 38 L64 42 L94 24 L124 30 L154 12 L196 18"/>
+      </svg>
+    </div>
+
+    <!-- Kartu provider -->
+    <div class="card">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="grid size-11 place-items-center rounded-xl bg-merah/10 font-display text-lg font-extrabold text-merah">D</div>
+          <div><p class="font-semibold">DOKU</p><p class="flex items-center gap-2 text-xs text-merah-gelap/60"><span class="relative flex size-2"><span class="absolute inset-0 animate-denyut rounded-full bg-green-500"></span><span class="relative size-2 rounded-full bg-green-500"></span></span>Terhubung</p></div>
+        </div>
+        <label class="relative cursor-pointer"><input type="checkbox" class="peer sr-only" checked aria-label="Aktifkan DOKU" /><span class="block h-6 w-11 rounded-full bg-merah-gelap/20 transition peer-checked:bg-merah peer-focus-visible:ring-4 peer-focus-visible:ring-emas/60 after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:duration-300 peer-checked:after:translate-x-5"></span></label>
+      </div>
+      <dl class="mt-5 space-y-2 text-sm">
+        <div class="flex justify-between"><dt class="text-merah-gelap/70">Metode</dt><dd class="font-semibold">QRIS</dd></div>
+        <div class="flex justify-between"><dt class="text-merah-gelap/70">Porsi transaksi</dt><dd class="font-semibold">78%</dd></div>
+        <div class="flex justify-between"><dt class="text-merah-gelap/70">Respons rata-rata</dt><dd class="font-semibold">420 ms</dd></div>
+      </dl>
+    </div>
+
+    <!-- Kartu yang bisa dibuka -->
+    <div class="card lg:col-span-2">
+      <button id="bt-rinci" class="flex w-full items-center justify-between text-left" aria-expanded="false" aria-controls="rinci">
+        <span><span class="block font-semibold">Detail potongan transaksi</span><span class="text-sm text-merah-gelap/60">Contoh QRIS Rp1.000.000</span></span>
+        <svg class="size-5 shrink-0 transition-transform duration-500" id="pnh" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div id="rinci" class="rinci"><div class="overflow-hidden">
+        <dl class="space-y-2.5 pt-4 text-sm">
+          <div class="flex justify-between"><dt>MDR QRIS 0,7%</dt><dd>− Rp7.000</dd></div>
+          <div class="flex justify-between"><dt>Jasa EraPay 1%</dt><dd>− Rp10.000</dd></div>
+          <div class="flex justify-between border-t border-merah-gelap/10 pt-3 font-bold"><dt>Diterima merchant</dt><dd class="text-merah">Rp983.000</dd></div>
+        </dl>
+      </div></div>
+    </div>
+
+    <!-- Kartu yang bisa ditutup -->
+    <div id="info" class="card border-emas/60 bg-emas/15">
+      <div class="flex items-start justify-between gap-3">
+        <div><p class="font-semibold">Aktifkan pencairan harian</p><p class="mt-1 text-sm text-merah-gelap/70">Dana masuk ke rekening tiap pukul 17.00 WIB.</p></div>
+        <button class="rounded-lg p-1 hover:bg-merah-gelap/10" data-tutup-kartu aria-label="Tutup"><svg class="size-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+    </div>
+  </div>
+</section>
+<section id="modal" class="hidden animate-naik">
+  <h1 class="mb-5 font-display text-3xl font-extrabold">Modal</h1>
+  <div class="card flex flex-wrap gap-3">
+    <button class="btn bg-merah text-white hover:bg-merah-tua" data-buka="m-cair">Konfirmasi pencairan</button>
+    <button class="btn bg-emas text-merah-gelap hover:brightness-95" data-buka="m-profil">Form edit profil</button>
+    <button class="btn border border-merah-gelap/20 hover:bg-merah/5" data-buka="m-sukses">Modal berhasil</button>
+    <button class="btn bg-red-600 text-white hover:bg-red-700" data-buka="m-hapus">Modal bahaya</button>
+  </div>
+</section>
+<section id="profil" class="hidden animate-naik">
+  <h1 class="mb-5 font-display text-3xl font-extrabold">Profil member</h1>
+  <div data-io class="overflow-hidden rounded-3xl border border-merah-gelap/10 bg-white shadow-sm">
+    <div class="pola h-36 bg-gradient-to-r from-merah-gelap via-merah-tua to-merah"></div>
+    <div class="px-5 pb-6 sm:px-8">
+      <div class="-mt-14 flex flex-wrap items-end justify-between gap-4">
+        <div class="relative">
+          <div class="animate-putar rounded-full bg-[conic-gradient(#e8b84a,#fff3c4,#c8102e,#e8b84a)] p-1"><div class="size-24 rounded-full bg-white"></div></div>
+          <div class="absolute inset-1 grid place-items-center rounded-full border-4 border-white bg-merah-gelap font-display text-3xl font-extrabold text-emas">SR</div>
+          <span class="absolute right-1 bottom-1 flex size-4"><span class="absolute inset-0 animate-denyut rounded-full bg-green-500"></span><span class="relative size-4 rounded-full border-2 border-white bg-green-500"></span></span>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn border border-merah-gelap/20 hover:bg-merah/5">Bagikan</button>
+          <button class="btn bg-merah text-white hover:bg-merah-tua" data-buka="m-profil">Edit profil</button>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center gap-2">
+        <h3 class="font-display text-2xl font-extrabold">Sari Rahayu</h3>
+        <span class="bdg bg-emas/40 text-merah-tua">Member Emas</span>
+      </div>
+      <p class="text-sm text-merah-gelap/70">Pemilik Warung Bu Sari · ID MBR-004217</p>
+
+      <div class="mt-6 grid gap-4 sm:grid-cols-3">
+        <div class="rounded-2xl bg-gading p-4"><p class="text-sm text-merah-gelap/70">Transaksi</p><p class="font-display text-3xl font-extrabold" data-n="2431">2.431</p></div>
+        <div class="rounded-2xl bg-gading p-4"><p class="text-sm text-merah-gelap/70">Total volume</p><p class="font-display text-3xl font-extrabold" data-n="128.4" data-dec="1" data-pre="Rp" data-suf=" jt">Rp128,4 jt</p></div>
+        <div class="flex items-center gap-4 rounded-2xl bg-gading p-4">
+          <svg viewBox="0 0 72 72" class="size-16 -rotate-90 shrink-0" fill="none" stroke-width="7" stroke-linecap="round"><circle cx="36" cy="36" r="30" stroke="#4a0510" stroke-opacity=".1"/><circle class="cincin" style="--s:37.7" cx="36" cy="36" r="30" stroke="#c8102e"/></svg>
+          <div><p class="font-display text-2xl font-extrabold">80%</p><p class="text-sm text-merah-gelap/70">Verifikasi usaha</p></div>
+        </div>
+      </div>
+
+      <div class="mt-6">
+        <div class="mb-1.5 flex justify-between text-sm"><span class="font-semibold">Menuju Member Platinum</span><span class="text-merah-gelap/70">Rp128,4 jt / Rp200 jt</span></div>
+        <div class="h-2.5 rounded-full bg-merah-gelap/10"><div class="isi h-full rounded-full bg-gradient-to-r from-emas to-merah" style="--w:64%"></div></div>
+      </div>
+
+      <div id="tabs" class="relative mt-8 flex gap-1 border-b border-merah-gelap/10" role="tablist">
+        <button class="px-4 py-2.5 text-sm font-semibold" role="tab" data-tab="0" aria-selected="true">Ringkasan</button>
+        <button class="px-4 py-2.5 text-sm font-semibold text-merah-gelap/60" role="tab" data-tab="1" aria-selected="false">Merchant</button>
+        <button class="px-4 py-2.5 text-sm font-semibold text-merah-gelap/60" role="tab" data-tab="2" aria-selected="false">Aktivitas</button>
+        <span id="ind" class="absolute bottom-0 h-0.5 rounded-full bg-merah transition-all duration-300"></span>
+      </div>
+
+      <div class="pt-5 text-sm">
+        <div data-pn="0" class="ganti grid gap-3 sm:grid-cols-2">
+          <div><p class="text-merah-gelap/60">Email</p><p class="font-semibold">sari@warungbusari.id</p></div>
+          <div><p class="text-merah-gelap/60">Ponsel</p><p class="font-semibold">+62 812 3456 7890</p></div>
+          <div><p class="text-merah-gelap/60">Bergabung</p><p class="font-semibold">11 Oktober 2026</p></div>
+          <div><p class="text-merah-gelap/60">Rekening pencairan</p><p class="font-semibold">BCA ••4417</p></div>
+        </div>
+        <ul data-pn="1" class="hidden space-y-2">
+          <li class="flex items-center justify-between rounded-xl bg-gading p-3"><span class="font-semibold">Warung Bu Sari</span><span class="bdg bg-green-100 text-green-800">Aktif</span></li>
+          <li class="flex items-center justify-between rounded-xl bg-gading p-3"><span class="font-semibold">Kopi Nusantara</span><span class="bdg bg-amber-100 text-amber-800">Verifikasi</span></li>
+        </ul>
+        <ol data-pn="2" class="hidden space-y-4 border-l-2 border-emas/60 pl-5">
+          <li class="relative"><span class="absolute -left-[1.6rem] top-1 size-2.5 rounded-full bg-merah"></span><p class="font-semibold">Pencairan Rp96.200.000 terkirim</p><p class="text-merah-gelap/60">Hari ini, 17.00</p></li>
+          <li class="relative"><span class="absolute -left-[1.6rem] top-1 size-2.5 rounded-full bg-emas"></span><p class="font-semibold">Merchant Kopi Nusantara ditambahkan</p><p class="text-merah-gelap/60">Kemarin, 14.20</p></li>
+          <li class="relative"><span class="absolute -left-[1.6rem] top-1 size-2.5 rounded-full bg-emas"></span><p class="font-semibold">Naik ke Member Emas</p><p class="text-merah-gelap/60">3 hari lalu</p></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============ MODAL-MODAL ============ -->
+<div id="m-cair" class="modal fixed inset-0 z-50 grid place-items-center bg-merah-gelap/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="t-cair">
+  <div class="panel w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl outline-none" tabindex="-1">
+    <h3 id="t-cair" class="font-display text-2xl font-extrabold">Cairkan saldo?</h3>
+    <p class="mt-2 text-sm text-merah-gelap/70">Dana dikirim ke rekening terdaftar. Biasanya tiba dalam beberapa menit.</p>
+    <dl class="mt-5 space-y-2 rounded-2xl bg-gading p-4 text-sm">
+      <div class="flex justify-between"><dt>Jumlah</dt><dd class="font-bold">Rp96.200.000</dd></div>
+      <div class="flex justify-between"><dt>Tujuan</dt><dd class="font-semibold">BCA ••4417</dd></div>
+    </dl>
+    <div class="mt-6 flex justify-end gap-2">
+      <button class="btn border border-merah-gelap/20 hover:bg-merah/5" data-tutup>Batal</button>
+      <button id="ok-cair" class="btn bg-merah text-white hover:bg-merah-tua"><svg id="spin" class="hidden size-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".3" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><span id="lb">Ya, cairkan</span></button>
+    </div>
+  </div>
+</div>
+
+<div id="m-profil" class="modal fixed inset-0 z-50 grid place-items-center bg-merah-gelap/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="t-profil">
+  <form class="panel w-full max-w-md space-y-4 rounded-3xl bg-white p-6 shadow-2xl outline-none" tabindex="-1" id="f-profil">
+    <h3 id="t-profil" class="font-display text-2xl font-extrabold">Edit profil</h3>
+    <div><label class="lbl" for="p1">Nama lengkap</label><input id="p1" class="inp" value="Sari Rahayu" /></div>
+    <div><label class="lbl" for="p2">Email</label><input id="p2" type="email" class="inp" value="sari@warungbusari.id" /></div>
+    <div><label class="lbl" for="p3">Tentang usaha</label><textarea id="p3" rows="3" class="inp" placeholder="Ceritakan usaha Anda"></textarea></div>
+    <div class="flex justify-end gap-2"><button type="button" class="btn border border-merah-gelap/20 hover:bg-merah/5" data-tutup>Batal</button><button class="btn bg-merah text-white hover:bg-merah-tua">Simpan perubahan</button></div>
+  </form>
+</div>
+
+<div id="m-sukses" class="modal fixed inset-0 z-50 grid place-items-center bg-merah-gelap/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="t-sukses">
+  <div class="panel w-full max-w-sm rounded-3xl bg-white p-8 text-center shadow-2xl outline-none" tabindex="-1">
+    <svg viewBox="0 0 80 80" class="mx-auto size-20" fill="none" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><circle class="cek-l" pathLength="1" cx="40" cy="40" r="35" stroke="#16a34a"/><path class="cek-c" pathLength="1" d="M24 41l11 11 21-23" stroke="#16a34a"/></svg>
+    <h3 id="t-sukses" class="mt-4 font-display text-2xl font-extrabold">Pencairan terkirim</h3>
+    <p class="mt-2 text-sm text-merah-gelap/70">Rp96.200.000 sedang menuju rekening BCA ••4417.</p>
+    <button class="btn mt-6 w-full bg-merah text-white hover:bg-merah-tua" data-tutup>Selesai</button>
+  </div>
+</div>
+
+<div id="m-hapus" class="modal fixed inset-0 z-50 grid place-items-center bg-merah-gelap/60 p-4 backdrop-blur-sm" role="alertdialog" aria-modal="true" aria-labelledby="t-hapus">
+  <div class="panel getar w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl outline-none" tabindex="-1">
+    <div class="grid size-12 place-items-center rounded-full bg-red-100 text-red-600"><svg class="size-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+    <h3 id="t-hapus" class="mt-4 font-display text-2xl font-extrabold">Hapus merchant?</h3>
+    <p class="mt-2 text-sm text-merah-gelap/70">Kopi Nusantara tidak bisa menerima pembayaran lagi. Riwayat transaksi tetap tersimpan.</p>
+    <div class="mt-6 flex justify-end gap-2"><button class="btn border border-merah-gelap/20 hover:bg-merah/5" data-tutup>Batal</button><button id="ok-hapus" class="btn bg-red-600 text-white hover:bg-red-700">Ya, hapus</button></div>
+  </div>
+</div>
+
+<script>
+  const rp = n => 'Rp' + n.toLocaleString('id-ID');
+  const warna = { Berhasil: 'bg-green-100 text-green-800', Menunggu: 'bg-amber-100 text-amber-800', Gagal: 'bg-red-100 text-red-800' };
+
+  // Kartu statistik — ganti dengan data dari API Go Anda
+  document.getElementById('stat').innerHTML = [
+    ['Volume transaksi', 'Rp128,4 jt', '+12,4% dari minggu lalu', 'text-green-700'],
+    ['Pendapatan EraPay', 'Rp1,28 jt', 'Jasa 1% dari volume', 'text-merah-gelap/60'],
+    ['Transaksi berhasil', '2.431', '97,8% tingkat berhasil', 'text-merah-gelap/60'],
+    ['Saldo siap cair', 'Rp96,2 jt', 'Cair otomatis 17.00 WIB', 'text-merah-gelap/60']
+  ].map(([a, b, c, k]) => `<div class="card"><p class="text-sm text-merah-gelap/70">${a}</p><p class="mt-1 font-display text-3xl font-extrabold">${b}</p><p class="mt-1 text-xs font-medium ${k}">${c}</p></div>`).join('');
+
+  // Grafik batang
+  const hari = [['Sen', 14.2], ['Sel', 17.8], ['Rab', 15.1], ['Kam', 21.4], ['Jum', 24.9], ['Sab', 19.6], ['Min', 15.4]];
+  const maks = Math.max(...hari.map(h => h[1]));
+  document.getElementById('bar').innerHTML = hari.map(([d, v]) =>
+    `<div class="flex h-full flex-1 flex-col items-center justify-end gap-1.5"><span class="text-xs font-semibold">${v}</span><div class="w-full rounded-t-lg ${v === maks ? 'bg-merah' : 'bg-merah/25'}" style="height:${v / maks * 80}%"></div><span class="text-xs text-merah-gelap/60">${d}</span></div>`).join('');
+
+  // Porsi provider
+  document.getElementById('prov').innerHTML = [['DOKU', 78, 'Aktif'], ['Midtrans', 22, 'Aktif'], ['Xendit', 0, 'Segera']].map(([n, p, s]) =>
+    `<div><div class="mb-1.5 flex items-center justify-between text-sm"><span class="font-semibold">${n} <span class="bdg ml-1 ${s === 'Aktif' ? 'bg-green-100 text-green-800' : 'bg-merah-gelap/10'}">${s}</span></span><span>${p}%</span></div><div class="h-2 rounded-full bg-merah-gelap/10"><div class="h-2 rounded-full bg-emas" style="width:${p}%"></div></div></div>`).join('');
+
+  // Tabel transaksi
+  document.getElementById('trx').innerHTML = [
+    ['TRX-90412', 'Warung Bu Sari', 'DOKU', 85000, 'Berhasil', '10.42'],
+    ['TRX-90411', 'Kopi Nusantara', 'DOKU', 142500, 'Berhasil', '10.37'],
+    ['TRX-90410', 'Toko Maju Jaya', 'Midtrans', 1250000, 'Menunggu', '10.21'],
+    ['TRX-90409', 'Bengkel Sentosa', 'DOKU', 560000, 'Berhasil', '09.58'],
+    ['TRX-90408', 'Kopi Nusantara', 'Midtrans', 38000, 'Gagal', '09.40'],
+    ['TRX-90407', 'Warung Bu Sari', 'DOKU', 27500, 'Berhasil', '09.12']
+  ].map(([id, m, p, j, s, w]) =>
+    `<tr class="hover:bg-gading"><td class="px-5 py-3 font-mono text-xs">${id}</td><td class="px-3 py-3 font-medium">${m}</td><td class="px-3 py-3">${p}</td><td class="px-3 py-3 text-right font-semibold">${rp(j)}</td><td class="px-3 py-3"><span class="bdg ${warna[s]}">${s}</span></td><td class="px-5 py-3 text-merah-gelap/60">${w}</td></tr>`).join('');
+
+  // Pindah tampilan
+  document.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-v]').forEach(x => x === b ? x.setAttribute('aria-current', 'page') : x.removeAttribute('aria-current'));
+    ['dash', 'form', 'kartu', 'modal', 'profil'].forEach(id => document.getElementById(id).classList.toggle('hidden', id !== b.dataset.v));
+    scrollTo(0, 0);
+    if (b.dataset.v === 'profil') awal();
+  }));
+</script>
+</body>
+</html>
