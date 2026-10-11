@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -34,15 +35,6 @@ type apiError struct {
 
 func writeError(w http.ResponseWriter, r *http.Request, status int, code, msg string, retryable bool) {
 	writeJSON(w, status, map[string]apiError{"error": {code, msg, middleware.GetReqID(r.Context()), retryable}})
-}
-
-func clientIP(r *http.Request) string {
-	// RemoteAddr only: X-Forwarded-For is client-controlled unless a trusted proxy is configured.
-	h, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return h
 }
 
 func tokenFrom(r *http.Request) string {
@@ -106,7 +98,7 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 	}
 	token, p, err := d.Auth.Login(r.Context(), auth.LoginInput{
 		Email: body.Email, Password: body.Password, MerchantID: body.MerchantID,
-		IP: clientIP(r), UserAgent: r.UserAgent(), RequestID: middleware.GetReqID(r.Context()),
+		IP: d.clientIP(r), UserAgent: r.UserAgent(), RequestID: middleware.GetReqID(r.Context()),
 	})
 	switch {
 	case errors.Is(err, auth.ErrRateLimited):
@@ -147,7 +139,7 @@ func meResponse(p *auth.Principal) map[string]any {
 	for c := range p.Permissions {
 		perms = append(perms, c)
 	}
-	return map[string]any{"user_id": p.UserID, "merchant_id": p.MerchantID, "permissions": perms}
+	return map[string]any{"user_id": p.UserID, "email": p.Email, "merchant_id": p.MerchantID, "permissions": perms}
 }
 
 func (d Deps) me(w http.ResponseWriter, r *http.Request) {
@@ -217,4 +209,30 @@ func (d Deps) mountV1(r chi.Router) {
 			})
 		})
 	})
+}
+
+// clientIP returns the peer address. X-Forwarded-For is honoured ONLY when the
+// peer is a configured trusted proxy (e.g. the SvelteKit server); its last entry
+// is the one the trusted proxy appended.
+func (d Deps) clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	peer, perr := netip.ParseAddr(host)
+	if perr != nil {
+		return host
+	}
+	for _, p := range d.TrustedProxies {
+		if p.Contains(peer.Unmap()) {
+			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+				parts := strings.Split(xff, ",")
+				if a, err := netip.ParseAddr(strings.TrimSpace(parts[len(parts)-1])); err == nil {
+					return a.Unmap().String()
+				}
+			}
+			break
+		}
+	}
+	return peer.String()
 }

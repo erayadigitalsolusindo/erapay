@@ -42,6 +42,7 @@ func DefaultConfig() Config {
 // tenant identity for requests (PRD §0 #7); it is empty for platform sessions.
 type Principal struct {
 	UserID      string
+	Email       string
 	SessionID   string
 	KeyID       string // set when authenticated by API key (UserID/SessionID empty)
 	MerchantID  string
@@ -244,14 +245,14 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		return nil, ErrUnauthenticated
 	}
 	now := s.now()
-	var sid, uid, mid string
+	var sid, uid, mid, email string
 	var lastSeen time.Time
 	err := s.db.QueryRow(ctx, `
-		SELECT s.id::text, s.user_id::text, COALESCE(s.merchant_id::text,''), s.last_seen_at
+		SELECT s.id::text, s.user_id::text, COALESCE(s.merchant_id::text,''), s.last_seen_at, u.email
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > $2
 		  AND s.last_seen_at > $3 AND u.status = 'active'`,
-		hashToken(token), now, now.Add(-s.cfg.IdleTTL)).Scan(&sid, &uid, &mid, &lastSeen)
+		hashToken(token), now, now.Add(-s.cfg.IdleTTL)).Scan(&sid, &uid, &mid, &lastSeen, &email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrUnauthenticated
 	}
@@ -280,7 +281,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 	if len(perms) == 0 {
 		return nil, ErrUnauthenticated // role/membership removed since login
 	}
-	p := &Principal{UserID: uid, SessionID: sid, MerchantID: mid, Permissions: map[string]struct{}{}}
+	p := &Principal{UserID: uid, Email: email, SessionID: sid, MerchantID: mid, Permissions: map[string]struct{}{}}
 	for _, c := range perms {
 		p.Permissions[c] = struct{}{}
 	}

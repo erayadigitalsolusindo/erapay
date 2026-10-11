@@ -59,7 +59,7 @@ func run(log *slog.Logger) error {
 			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)),
-			SecureCookies: cfg.Env != "development",
+			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

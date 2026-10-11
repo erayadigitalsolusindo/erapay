@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -22,13 +23,14 @@ type Pinger interface {
 }
 
 type Deps struct {
-	Auth          *auth.Service // nil disables /v1 routes (health-only tests)
-	Merchants     *merchant.Repo
-	APIKeys       *apikey.Service
-	SecureCookies bool
-	Log           *slog.Logger
-	DB            Pinger
-	Redis         Pinger
+	Auth           *auth.Service // nil disables /v1 routes (health-only tests)
+	Merchants      *merchant.Repo
+	APIKeys        *apikey.Service
+	SecureCookies  bool
+	TrustedProxies []netip.Prefix // peers allowed to set X-Forwarded-For
+	Log            *slog.Logger
+	DB             Pinger
+	Redis          Pinger
 }
 
 func NewRouter(d Deps) http.Handler {
