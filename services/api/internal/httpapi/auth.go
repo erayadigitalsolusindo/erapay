@@ -189,6 +189,9 @@ func (d Deps) mountV1(r chi.Router) {
 		if d.APIKeys != nil {
 			r.With(d.requireAPIKey).Get("/api-keys/self", d.apiKeySelf)
 		}
+		if d.APIKeys != nil && d.Payments != nil {
+			r.With(d.requireAnyAuth, requireTenant, requirePerm("payment:read")).Get("/payments/{id}", d.getPayment)
+		}
 		r.Group(func(r chi.Router) {
 			r.Use(d.requireAuth)
 			r.Post("/auth/logout", d.logout)

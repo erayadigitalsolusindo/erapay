@@ -15,6 +15,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 )
 
 // Pinger is satisfied by pgx pools and redis clients' wrappers.
@@ -26,6 +27,7 @@ type Deps struct {
 	Auth           *auth.Service // nil disables /v1 routes (health-only tests)
 	Merchants      *merchant.Repo
 	APIKeys        *apikey.Service
+	Payments       *payment.Service
 	SecureCookies  bool
 	TrustedProxies []netip.Prefix // peers allowed to set X-Forwarded-For
 	Log            *slog.Logger

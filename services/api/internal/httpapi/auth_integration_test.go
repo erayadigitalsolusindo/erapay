@@ -10,9 +10,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/testdb"
 )
 
@@ -23,13 +26,14 @@ type world struct {
 	midA, midB       string
 	outletA, outletB string
 	svc              *auth.Service
+	db               *pgxpool.Pool
 }
 
 func setup(t *testing.T) *world {
 	t.Helper()
 	db := testdb.New(t)
 	svc := auth.NewService(db, auth.DefaultConfig())
-	w := &world{svc: svc}
+	w := &world{svc: svc, db: db}
 	w.midA, w.outletA = testdb.SeedMerchant(t, db, "Merchant A")
 	w.midB, w.outletB = testdb.SeedMerchant(t, db, "Merchant B")
 	mk := func(email, role, mid string) {
@@ -48,7 +52,7 @@ func setup(t *testing.T) *world {
 
 	w.srv = httptest.NewServer(NewRouter(Deps{
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DB: fakePinger{}, Redis: fakePinger{},
-		Auth: svc, Merchants: merchant.NewRepo(db), APIKeys: apikey.NewService(db, "sandbox"),
+		Auth: svc, Merchants: merchant.NewRepo(db), APIKeys: apikey.NewService(db, "sandbox"), Payments: payment.NewService(db),
 	}))
 	t.Cleanup(w.srv.Close)
 	return w

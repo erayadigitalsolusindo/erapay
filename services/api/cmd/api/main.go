@@ -18,6 +18,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 )
 
 type redisPinger struct{ c *redis.Client }
@@ -58,7 +59,7 @@ func run(log *slog.Logger) error {
 		Handler: httpapi.NewRouter(httpapi.Deps{
 			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
-			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)),
+			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: payment.NewService(pool),
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
