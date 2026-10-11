@@ -10,6 +10,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 )
 
 // Pinger is satisfied by pgx pools and redis clients' wrappers.
@@ -18,6 +21,9 @@ type Pinger interface {
 }
 
 type Deps struct {
+	Auth          *auth.Service // nil disables /v1 routes (health-only tests)
+	Merchants     *merchant.Repo
+	SecureCookies bool
 	Log   *slog.Logger
 	DB    Pinger
 	Redis Pinger
@@ -45,6 +51,9 @@ func NewRouter(d Deps) http.Handler {
 		}
 		writeJSON(w, code, checks)
 	})
+	if d.Auth != nil {
+		d.mountV1(r)
+	}
 	return r
 }
 
