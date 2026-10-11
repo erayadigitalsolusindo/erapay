@@ -10,6 +10,18 @@ make web                 # terminal 2: SvelteKit → http://localhost:5173
 make test                # semua test
 ```
 
+### Windows PowerShell (tanpa WSL / tanpa make)
+Pasang: Go 1.24+, Node 22+, Docker Desktop (jalankan dulu), Git. Lalu:
+```powershell
+Copy-Item .env.example .env        # isi nilai lokal; jangan commit
+.\scripts\dev.ps1 install
+.\scripts\dev.ps1 up
+.\scripts\dev.ps1 api            # terminal 1 → http://localhost:8080/readyz
+.\scripts\dev.ps1 web            # terminal 2 → http://localhost:5173
+.\scripts\dev.ps1 test
+```
+Jika muncul "running scripts is disabled": `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
 ## Peta folder
 ```
 apps/web/                 SvelteKit (UI saja, tanpa logika keuangan)
