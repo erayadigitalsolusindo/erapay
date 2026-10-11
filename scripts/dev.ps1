@@ -5,7 +5,7 @@
   .\scripts\dev.ps1 help
   .\scripts\dev.ps1 up
 #>
-param([Parameter(Position = 0)][string]$Task = 'help')
+param([Parameter(Position = 0)][string]$Task = 'help', [Parameter(Position = 1)][string]$MigrateArg = 'up')
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -51,6 +51,7 @@ switch ($Task) {
         } finally { Pop-Location }
         Push-Location (Join-Path $Root 'apps/web'); try { Invoke-Checked { npm run check } } finally { Pop-Location }
     }
+    'migrate' { Import-DotEnv; Push-Location (Join-Path $Root 'services/api'); try { Invoke-Checked { go run ./cmd/migrate $MigrateArg } } finally { Pop-Location } }
     default {
         @'
 Perintah: .\scripts\dev.ps1 <nama>
@@ -61,6 +62,7 @@ Perintah: .\scripts\dev.ps1 <nama>
   web      Jalankan SvelteKit dev server di :5173
   test     Jalankan semua test (Go + frontend)
   check    Cek format/tipe (Go + frontend)
+  migrate  Migrasi DB (up, down, status; default up)
 '@ | Write-Host
     }
 }
