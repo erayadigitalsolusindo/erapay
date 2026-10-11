@@ -1,4 +1,4 @@
-import type { Handle } from '@sveltejs/kit';
+import type { Handle } from '@sveltejs/kit/hooks';
 import { SESSION_COOKIE, fetchMe } from './lib/server/auth';
 
 /** Berjalan di setiap request: validasi sesi ke Go API (sesi bisa dicabut kapan saja). */
