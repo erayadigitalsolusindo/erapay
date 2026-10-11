@@ -5,6 +5,7 @@
 cp .env.example .env     # isi nilai lokal; jangan commit
 make install             # dependensi frontend
 make up                  # PostgreSQL + Redis + MinIO via Docker
+make migrate             # buat tabel di database
 make api                 # terminal 1: Go API  → http://localhost:8080/readyz
 make web                 # terminal 2: SvelteKit → http://localhost:5173
 make test                # semua test
@@ -15,7 +16,8 @@ Pasang: Go 1.24+, Node 22+, Docker Desktop (jalankan dulu), Git. Lalu:
 ```powershell
 Copy-Item .env.example .env        # isi nilai lokal; jangan commit
 .\scripts\dev.ps1 install
-.\scripts\dev.ps1 up
+.\scripts\dev.ps1 up              # lewati jika memakai Postgres/Redis Docker yang sudah ada
+.\scripts\dev.ps1 migrate         # buat tabel di database erapay
 .\scripts\dev.ps1 api            # terminal 1 → http://localhost:8080/readyz
 .\scripts\dev.ps1 web            # terminal 2 → http://localhost:5173
 .\scripts\dev.ps1 test
@@ -50,3 +52,12 @@ docs/PRD.md, docs/prd/    spesifikasi produk
 
 ## Aturan penting (ringkas dari PRD)
 Uang = integer; secret hanya di `.env`; status bayar hanya dari webhook/inquiry tervalidasi; frontend tidak menghitung fee.
+
+## Test database (opsional)
+Test skema (`internal/store`) butuh database KOSONG khusus uji; schema `public`-nya dihapus tiap run,
+jadi nama database wajib mengandung `test`:
+```powershell
+$env:ERAPAY_TEST_DATABASE_URL = "postgres://USER:PASS@localhost:PORT/erapay_test?sslmode=disable"
+cd services/api; go test ./...
+```
+Tanpa variabel ini test tersebut dilewati.

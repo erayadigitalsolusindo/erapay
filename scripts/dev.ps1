@@ -37,6 +37,11 @@ switch ($Task) {
         Push-Location (Join-Path $Root 'services/api')
         try { Invoke-Checked { go run ./cmd/api } } finally { Pop-Location }
     }
+    'migrate' {
+        Import-DotEnv
+        Push-Location (Join-Path $Root 'services/api')
+        try { Invoke-Checked { go run ./cmd/migrate up } } finally { Pop-Location }
+    }
     'web'     { Push-Location (Join-Path $Root 'apps/web'); try { Invoke-Checked { npm run dev } } finally { Pop-Location } }
     'test'    {
         Push-Location (Join-Path $Root 'services/api'); try { Invoke-Checked { go test ./... } } finally { Pop-Location }
@@ -57,6 +62,7 @@ Perintah: .\scripts\dev.ps1 <nama>
   up       Nyalakan PostgreSQL, Redis, MinIO (Docker Desktop harus berjalan)
   down     Matikan layanan Docker
   install  Pasang dependensi frontend
+  migrate  Terapkan migration database (ke ERAPAY_DATABASE_URL di .env)
   api      Jalankan Go API di :8080 (butuh up dan file .env)
   web      Jalankan SvelteKit dev server di :5173
   test     Jalankan semua test (Go + frontend)

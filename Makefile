@@ -11,6 +11,9 @@ up: ## Nyalakan PostgreSQL, Redis, MinIO (Docker)
 down: ## Matikan layanan Docker
 	$(COMPOSE) down
 
+migrate: ## Terapkan migration database (butuh .env)
+	cd services/api && set -a && . ../../.env && set +a && go run ./cmd/migrate up
+
 api: ## Jalankan Go API di :8080 (butuh `make up` dan file .env)
 	cd services/api && set -a && . ../../.env && set +a && go run ./cmd/api
 
