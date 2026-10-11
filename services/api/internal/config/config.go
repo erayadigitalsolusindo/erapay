@@ -10,10 +10,10 @@ import (
 )
 
 type Config struct {
-	Env         string // development | sandbox | production
-	HTTPAddr    string
-	DatabaseURL string
-	RedisURL    string
+	Env            string // development | sandbox | production
+	HTTPAddr       string
+	DatabaseURL    string
+	RedisURL       string
 	TrustedProxies []netip.Prefix // ERAPAY_TRUSTED_PROXIES: comma-separated CIDRs
 }
 
