@@ -1,6 +1,6 @@
 # Dashboard & developer portal [ui] (PRD §4.11)
 
-Baca juga: `../PRD.md`, `auth.md`, `merchant.md`.
+Baca juga: `../PRD.md`, `auth.md`, `merchant.md`, **`ui-theme.md`** (tema visual wajib; referensi HTML di `docs/refrence/`).
 
 - **Admin:** login+MFA, overview, merchants, onboarding review, transactions (filter gateway), payment detail/timeline (+correlation IDs), gateway status/config, pricing plans+histori, settlement & rekonsiliasi (exceptions), webhook events/deliveries, users/roles, audit logs, system health. Ekspor CSV dibatasi role + dicatat.
 - **Merchant:** login, overview (transaksi/gross/fee/settlement sesuai akses), transaksi + detail QRIS, settlement/laporan+ekspor, outlet, tim, API key (env, scope, rotasi, cabut), webhook settings+delivery log, fee schedule, profil/onboarding, support. Hanya data tenant sendiri.

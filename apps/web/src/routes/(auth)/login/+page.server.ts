@@ -1,6 +1,6 @@
 import { dev } from '$app/env';
 import { fail, redirect } from '@sveltejs/kit';
-import { login, setSession } from '../../lib/server/auth';
+import { login, setSession } from '../../../lib/server/auth';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {

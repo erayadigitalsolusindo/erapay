@@ -23,6 +23,7 @@ Sumber: PRD v1.0 (11 Okt 2026), dipadatkan tanpa menghilangkan requirement, lalu
 | `prd/reconciliation.md` | Settlement & rekonsiliasi (§4.9) | [recon] |
 | `prd/refund.md` | Refund, cancel, dispute (§4.10) | [refund] |
 | `prd/ui.md` | Dashboard admin/merchant, dev portal, UX (§4.11) | [ui] |
+| `prd/ui-theme.md` | Tema visual & referensi HTML Tailwind (`docs/refrence/`) | [ui-theme] |
 | `prd/gateway-new.md` | Gate menambah gateway baru (§4.12) | [gw-new] |
 | `prd/payout.md` | Payout & saldo merchant (§4.13) | [payout] |
 | `prd/api.md` | API publik, error, idempotency (§5) | [api] |
