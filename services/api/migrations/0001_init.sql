@@ -1,5 +1,5 @@
 -- +goose Up
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- gen_random_uuid() is built in since PostgreSQL 13; no extension needed.
 
 -- Append-only audit trail (PRD §0 #6): no UPDATE/DELETE allowed.
 CREATE TABLE audit_logs (

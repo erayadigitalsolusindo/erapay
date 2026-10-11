@@ -143,6 +143,7 @@ func (o *Orchestrator) Create(ctx context.Context, r CreateRequest) (Outcome, er
 		var ge *gateway.Error
 		errors.As(gerr, &ge)
 		o.attempt(work, p.ID, ad.Code(), "create", "rejected", ge.HTTPStatus, ge.Code, "", lat)
+		o.log.Warn("gateway rejected create", "payment_id", p.ID, "http", ge.HTTPStatus, "code", ge.Code, "message", ge.Message)
 		o.mustTransition(work, TransitionInput{PaymentID: p.ID, To: Failed, Source: SourceGatewayResponse, Reason: "gateway rejected: " + ge.Code})
 	default:
 		// Timeout, 5xx, 409, pending... the gateway may hold a QR we never saw: UNKNOWN, not failed.
