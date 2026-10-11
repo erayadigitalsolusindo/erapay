@@ -13,18 +13,6 @@ func TestGetPaymentHTTP(t *testing.T) {
 	ctx := context.Background()
 	db := w.db
 
-	var plan string
-	if err := db.QueryRow(ctx, `
-		INSERT INTO pricing_plans (code, version, gateway, payment_method, mdr_bps, mdr_rounding, platform_bps, platform_rounding)
-		VALUES ('std', 1, 'gw1', 'QRIS', 70, 'half_up', 100, 'half_up') RETURNING id::text`).Scan(&plan); err != nil {
-		t.Fatal(err)
-	}
-	for _, mid := range []string{w.midA, w.midB} {
-		if _, err := db.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from)
-			VALUES ($1,$2, now() - interval '1 day')`, mid, plan); err != nil {
-			t.Fatal(err)
-		}
-	}
 	svc := payment.NewService(db)
 	tx, _ := db.Begin(ctx)
 	p, err := svc.CreateTx(ctx, tx, payment.CreateInput{MerchantID: w.midA, MerchantReference: "ORD-1",

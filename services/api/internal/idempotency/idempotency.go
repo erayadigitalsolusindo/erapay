@@ -226,3 +226,13 @@ func (s *Store) Complete(ctx context.Context, sc Scope, r Response) error {
 	}
 	return tx.Commit(ctx)
 }
+
+// Release deletes a still-in_progress claim. Only call it when NO side effect has
+// happened yet (e.g. a DB error before any gateway call); otherwise the record must
+// stay so recovery can resolve it instead of repeating the operation.
+func (s *Store) Release(ctx context.Context, sc Scope) error {
+	_, err := s.db.Exec(ctx,
+		`DELETE FROM idempotency_records WHERE merchant_id=$1 AND operation=$2 AND key=$3 AND status='in_progress'`,
+		sc.MerchantID, sc.Operation, sc.Key)
+	return err
+}

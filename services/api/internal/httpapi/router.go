@@ -28,6 +28,7 @@ type Deps struct {
 	Merchants      *merchant.Repo
 	APIKeys        *apikey.Service
 	Payments       *payment.Service
+	PaymentFlow    *payment.Orchestrator
 	SecureCookies  bool
 	TrustedProxies []netip.Prefix // peers allowed to set X-Forwarded-For
 	Log            *slog.Logger

@@ -35,6 +35,8 @@ type Payment struct {
 	Status            Status     `json:"status"`
 	Gateway           string     `json:"gateway"`
 	GatewayReference  string     `json:"-"`
+	QRPayload         string     `json:"-"`
+	QRCode            *QRCode    `json:"qr_code,omitempty"`
 	Fee               Fee        `json:"fee"`
 	ExpiresAt         *time.Time `json:"expires_at"`
 	FinalAt           *time.Time `json:"final_at"`
@@ -90,16 +92,19 @@ func NewService(db *pgxpool.Pool) *Service { return &Service{db: db, now: time.N
 
 const cols = `id::text, merchant_id::text, COALESCE(outlet_id::text,''), merchant_reference, COALESCE(description,''),
 	amount, currency, payment_method, status, gateway, COALESCE(gateway_reference,''),
-	mdr_fee, platform_fee, merchant_net, expires_at, final_at, created_at`
+	mdr_fee, platform_fee, merchant_net, expires_at, final_at, created_at, COALESCE(qr_payload,'')`
 
 func scan(row pgx.Row) (Payment, error) {
 	var p Payment
 	var st string
 	err := row.Scan(&p.ID, &p.MerchantID, &p.OutletID, &p.MerchantReference, &p.Description,
 		&p.Amount, &p.Currency, &p.PaymentMethod, &st, &p.Gateway, &p.GatewayReference,
-		&p.Fee.MDRFee, &p.Fee.PlatformFee, &p.Fee.MerchantNet, &p.ExpiresAt, &p.FinalAt, &p.CreatedAt)
+		&p.Fee.MDRFee, &p.Fee.PlatformFee, &p.Fee.MerchantNet, &p.ExpiresAt, &p.FinalAt, &p.CreatedAt, &p.QRPayload)
 	p.Status = Status(st)
 	p.Fee.Bearer = "merchant"
+	if p.Status == Pending && p.QRPayload != "" { // a dynamic QR is only exposed while it can still be paid
+		p.QRCode = &QRCode{Type: "provider_defined", Value: p.QRPayload}
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -179,6 +184,7 @@ type TransitionInput struct {
 	RawGatewayStatus string // gateway's own status string, stored apart from the normalized one
 	GatewayReference string // set once; later values are ignored
 	DedupKey         string // e.g. webhook event id: the same report is applied once
+	QRPayload        string // provider_defined; stored when first provided
 }
 
 type Result struct {
@@ -261,10 +267,12 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 		UPDATE payments SET status = $2,
 		    gateway_raw_status = COALESCE(NULLIF($3,''), gateway_raw_status),
 		    gateway_reference = COALESCE(gateway_reference, NULLIF($4,'')),
+		    qr_payload = COALESCE(qr_payload, NULLIF($6,'')),
+		    next_inquiry_at = CASE WHEN $2 IN ('pending','unknown') THEN now() + interval '60 seconds' ELSE NULL END,
 		    final_at = CASE WHEN $5 THEN now() ELSE final_at END,
 		    updated_at = now(), version = version + 1
 		WHERE id = $1`,
-		in.PaymentID, string(in.To), in.RawGatewayStatus, in.GatewayReference, in.To.IsFinal()); err != nil {
+		in.PaymentID, string(in.To), in.RawGatewayStatus, in.GatewayReference, in.To.IsFinal(), in.QRPayload); err != nil {
 		return Result{}, err
 	}
 	if err := event(true); err != nil {
@@ -282,4 +290,10 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 	}
 	res.Status, res.Applied = in.To, true
 	return res, tx.Commit(ctx)
+}
+
+// QRCode is the gateway-defined payload; the format is opaque to EraPay.
+type QRCode struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
 }

@@ -14,6 +14,8 @@ import (
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/testdb"
@@ -27,6 +29,7 @@ type world struct {
 	outletA, outletB string
 	svc              *auth.Service
 	db               *pgxpool.Pool
+	gw               *testGW
 }
 
 func setup(t *testing.T) *world {
@@ -50,9 +53,16 @@ func setup(t *testing.T) *world {
 	root, _ := svc.CreateUser(t.Context(), "root@erapay.test", itPW)
 	testdb.AddPlatformRole(t, db, root, "super_admin")
 
+	seedPayments(t, db, w.midA, w.midB)
+	w.gw = newTestGW()
+	reg := gateway.NewRegistry()
+	reg.Register(w.gw)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	paySvc := payment.NewService(db)
 	w.srv = httptest.NewServer(NewRouter(Deps{
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DB: fakePinger{}, Redis: fakePinger{},
-		Auth: svc, Merchants: merchant.NewRepo(db), APIKeys: apikey.NewService(db, "sandbox"), Payments: payment.NewService(db),
+		Auth: svc, Merchants: merchant.NewRepo(db), APIKeys: apikey.NewService(db, "sandbox"), Payments: paySvc,
+		PaymentFlow: payment.NewOrchestrator(paySvc, db, idempotency.NewStore(db), reg, "sandbox", log),
 	}))
 	t.Cleanup(w.srv.Close)
 	return w
