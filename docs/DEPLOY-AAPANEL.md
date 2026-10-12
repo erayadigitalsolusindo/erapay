@@ -76,6 +76,15 @@ set -a; . ./erapay.env; set +a
 ERAPAY_BOOTSTRAP_EMAIL=... ERAPAY_BOOTSTRAP_PASSWORD='...' ./bin/erapay-bootstrap platform-admin
 ```
 
+Merchant pertama (mis. aplikasi kasir ARUS) beserta user owner-nya. Aman dijalankan di production (berbeda dengan `dev-merchant`). Nama dari env; tarif QRIS (basis poin, 100 = 1%) adalah keputusan bisnis sehingga tidak ada nilai bawaan. Tanpa kedua tarif, merchant dibuat tetapi pembayarannya ditolak (`PAYMENT_METHOD_UNAVAILABLE`) sampai plan harga di-assign:
+```bash
+ERAPAY_BOOTSTRAP_EMAIL=owner@arus.example ERAPAY_BOOTSTRAP_PASSWORD='...' \
+ERAPAY_BOOTSTRAP_MERCHANT_LEGAL_NAME='PT ...' ERAPAY_BOOTSTRAP_MERCHANT_NAME='ARUS' \
+ERAPAY_BOOTSTRAP_MDR_BPS=... ERAPAY_BOOTSTRAP_PLATFORM_BPS=... \
+./bin/erapay-bootstrap merchant     # mencetak merchant_id
+```
+Lalu login di dashboard web, buka menu **API Keys**, buat key (`payment:create` + `payment:read`) dan salin secret-nya (tampil sekali). Key berbentuk `epk_prd_...` hanya bila `ERAPAY_ENV=production`. Pasang di aplikasi klien (ARUS: `ERAPAY_BASE_URL` + `ERAPAY_API_KEY`).
+
 ## 7. Uji webhook
 ```bash
 curl -i -X POST https://erapay-api.erayadigital.co.id/webhooks/doku -d '{"ping":1}'

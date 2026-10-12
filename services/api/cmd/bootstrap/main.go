@@ -2,6 +2,8 @@
 //
 //	bootstrap platform-admin   create a super_admin
 //	bootstrap dev-merchant     create a demo merchant + owner (refused outside development)
+//	bootstrap merchant         create a real merchant + owner (production-safe; names from env)
+//	                           (optional ERAPAY_BOOTSTRAP_MDR_BPS + ERAPAY_BOOTSTRAP_PLATFORM_BPS assign a QRIS pricing plan)
 //	bootstrap reset-password   set a new password for the existing user ERAPAY_BOOTSTRAP_EMAIL
 //
 // Credentials come only from ERAPAY_BOOTSTRAP_EMAIL / ERAPAY_BOOTSTRAP_PASSWORD;
@@ -12,6 +14,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -28,7 +32,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: bootstrap platform-admin|dev-merchant|reset-password")
+		return fmt.Errorf("usage: bootstrap platform-admin|merchant|dev-merchant|reset-password")
 	}
 	url, email, pw := os.Getenv("ERAPAY_DATABASE_URL"), os.Getenv("ERAPAY_BOOTSTRAP_EMAIL"), os.Getenv("ERAPAY_BOOTSTRAP_PASSWORD")
 	if url == "" || email == "" || pw == "" {
@@ -73,6 +77,58 @@ func run(args []string) error {
 			return err
 		}
 		_ = audit.Record(ctx, db, audit.Entry{ActorID: uid, Action: "bootstrap.dev_merchant", EntityType: "merchant", EntityID: mid})
+		case "merchant":
+			// Real merchant for production onboarding (operator-run, e.g. an internal app such as ARUS).
+			// Name comes from env; the owner user is ERAPAY_BOOTSTRAP_EMAIL. Created as 'approved' because
+			// the operator running this command is the approver.
+			legal := strings.TrimSpace(os.Getenv("ERAPAY_BOOTSTRAP_MERCHANT_LEGAL_NAME"))
+			display := strings.TrimSpace(os.Getenv("ERAPAY_BOOTSTRAP_MERCHANT_NAME"))
+			if legal == "" || display == "" {
+				return fmt.Errorf("ERAPAY_BOOTSTRAP_MERCHANT_LEGAL_NAME and ERAPAY_BOOTSTRAP_MERCHANT_NAME are required")
+			}
+			outlet := strings.TrimSpace(os.Getenv("ERAPAY_BOOTSTRAP_OUTLET_NAME"))
+			if outlet == "" {
+				outlet = "Outlet Utama"
+			}
+			uid, err := svc.CreateUser(ctx, email, pw)
+			if err != nil {
+				return err
+			}
+			var mid string
+			if err := db.QueryRow(ctx, `INSERT INTO merchants (legal_name, display_name, onboarding_status)
+				VALUES ($1,$2,'approved') RETURNING id::text`, legal, display).Scan(&mid); err != nil {
+				return err
+			}
+			if _, err := db.Exec(ctx, `INSERT INTO merchant_outlets (merchant_id, name) VALUES ($1,$2)`, mid, outlet); err != nil {
+				return err
+			}
+			if _, err := db.Exec(ctx, `INSERT INTO merchant_users (merchant_id, user_id, role_id)
+				SELECT $1, $2, id FROM roles WHERE code = 'merchant_owner'`, mid, uid); err != nil {
+				return err
+			}
+			// Optional pricing plan (QRIS via DOKU). Rates are a business decision, so there are no defaults:
+			// both ERAPAY_BOOTSTRAP_MDR_BPS and ERAPAY_BOOTSTRAP_PLATFORM_BPS (basis points, 100 = 1%) must be set,
+			// otherwise payments are refused until a plan is assigned.
+			mdr, plat := os.Getenv("ERAPAY_BOOTSTRAP_MDR_BPS"), os.Getenv("ERAPAY_BOOTSTRAP_PLATFORM_BPS")
+			if mdr != "" && plat != "" {
+				mdrBPS, e1 := strconv.Atoi(mdr)
+				platBPS, e2 := strconv.Atoi(plat)
+				if e1 != nil || e2 != nil || mdrBPS < 0 || mdrBPS > 10000 || platBPS < 0 || platBPS > 10000 {
+					return fmt.Errorf("ERAPAY_BOOTSTRAP_MDR_BPS / ERAPAY_BOOTSTRAP_PLATFORM_BPS must be integers 0..10000")
+				}
+				var planID string
+				if err := db.QueryRow(ctx, `INSERT INTO pricing_plans (code, version, gateway, payment_method, mdr_bps, mdr_rounding, platform_bps, platform_rounding, created_by)
+					VALUES ('qris-'||$1, 1, 'doku', 'QRIS', $2, 'half_up', $3, 'half_up', $4) RETURNING id::text`, mid, mdrBPS, platBPS, uid).Scan(&planID); err != nil {
+					return err
+				}
+				if _, err := db.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from, created_by) VALUES ($1,$2,now(),$3)`, mid, planID, uid); err != nil {
+					return err
+				}
+			} else {
+				fmt.Fprintln(os.Stderr, "warning: no pricing plan assigned; payments will be refused until one is (set ERAPAY_BOOTSTRAP_MDR_BPS and ERAPAY_BOOTSTRAP_PLATFORM_BPS)")
+			}
+			_ = audit.Record(ctx, db, audit.Entry{ActorID: uid, Action: "bootstrap.merchant", EntityType: "merchant", EntityID: mid})
+			fmt.Println("merchant_id:", mid) // not a secret; needed if the user belongs to several merchants at login
 	case "reset-password":
 		hash, err := auth.HashPassword(pw)
 		if err != nil {

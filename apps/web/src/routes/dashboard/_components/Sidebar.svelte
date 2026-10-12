@@ -1,11 +1,12 @@
 <script lang="ts">
-	let { user }: { user: { email: string; merchantId: string } } = $props();
+	let { user }: { user: { email: string; merchantId: string; permissions?: string[] } } = $props();
 </script>
 
 <nav>
 	<strong>EraPay</strong>
 	<a href="/dashboard">Ringkasan</a>
 	<a href="/dashboard/transactions">Transaksi</a>
+	{#if user.merchantId && user.permissions?.includes('api_key:manage')}<a href="/dashboard/api-keys">API Keys</a>{/if}
 	<div class="me">
 		<small>{user.email}</small>
 		<small>{user.merchantId ? 'Merchant' : 'Platform'}</small>
