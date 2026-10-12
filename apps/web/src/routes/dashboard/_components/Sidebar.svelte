@@ -1,23 +1,35 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { getI18n } from '../../../lib/i18n/i18n.svelte';
+	import { aktif, nav } from './nav';
+
 	let { user }: { user: { email: string; merchantId: string; permissions?: string[] } } = $props();
+	const { t } = getI18n();
+	const items = $derived(nav.filter((n) => !n.permission || (user.merchantId && user.permissions?.includes(n.permission))));
+	const current = $derived(aktif(page.url.pathname));
 </script>
 
-<nav>
-	<strong>EraPay</strong>
-	<a href="/dashboard">Ringkasan</a>
-	<a href="/dashboard/transactions">Transaksi</a>
-	{#if user.merchantId && user.permissions?.includes('api_key:manage')}<a href="/dashboard/api-keys">API Keys</a>{/if}
-	<div class="me">
-		<small>{user.email}</small>
-		<small>{user.merchantId ? 'Merchant' : 'Platform'}</small>
-		<form method="POST" action="/logout"><button type="submit">Keluar</button></form>
-	</div>
-</nav>
+<aside class="flex flex-col bg-merah-gelap p-4 text-gading lg:sticky lg:top-0 lg:h-screen">
+	<a href="/dashboard" class="mb-4 flex items-center gap-3 px-2 py-3 lg:mb-7">
+		<div class="grid size-10 place-items-center rounded-full border-2 border-[#fff3c4] bg-emas font-display text-xl font-extrabold text-merah-tua">E</div>
+		<div>
+			<div class="font-display text-lg font-extrabold tracking-[.18em]">ERAPAY</div>
+			<div class="text-[10px] tracking-widest text-white/50">PAYMENT OPERATIONS</div>
+		</div>
+	</a>
 
-<style>
-	nav { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; background: #fff; border-right: 1px solid #e5e7eb; }
-	.me { margin-top: auto; display: flex; flex-direction: column; gap: 0.25rem; }
-	small { color: #6b7280; overflow-wrap: anywhere; }
-	button { margin-top: 0.5rem; padding: 0.4rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.5rem; background: #fff; cursor: pointer; }
-	button:hover { border-color: #c8102e; color: #c8102e; }
-</style>
+	<div class="mb-2 hidden px-3 text-[10px] font-bold tracking-[.16em] text-white/40 uppercase lg:block">{t('nav.workspace')}</div>
+	<nav class="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0" aria-label={t('nav.main')}>
+		{#each items as n (n.href)}
+			<a
+				href={n.href}
+				aria-current={current.href === n.href ? 'page' : undefined}
+				class="flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-gading/70 transition hover:bg-white/10 hover:text-white aria-[current=page]:bg-white/10 aria-[current=page]:text-white aria-[current=page]:shadow-[inset_3px_0_#e8b84a]"
+			>
+				<svg class="size-[18px] shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">{@html n.icon}</svg>
+				{t(n.label)}
+			</a>
+		{/each}
+	</nav>
+
+</aside>

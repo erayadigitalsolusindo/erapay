@@ -4,6 +4,7 @@
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
 
+
 @theme {
 	--font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
 	--font-display: 'Fraunces', Georgia, serif;
@@ -13,6 +14,9 @@
 	--color-merah-gelap: #4a0510;
 	--color-gading: #fff8f0;
 	--color-emas: #e8b84a;
+	--color-ink: var(--ink);
+	--color-surface: var(--surface);
+	--color-page: var(--page);
 
 	--animate-denyut: denyut 3s ease-in-out infinite;
 	--animate-naik: naik 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
@@ -33,21 +37,22 @@
 
 /* Reset ala preflight, dibatasi ke area auth. Di @layer base supaya utilitas tetap menang. */
 @layer base {
-	.auth, .auth *, .auth ::before, .auth ::after {
+	.auth, .auth *, .auth ::before, .auth ::after,
+	.adm, .adm *, .adm ::before, .adm ::after {
 		box-sizing: border-box;
 		margin: 0;
 		padding: 0;
 		border: 0 solid;
 	}
-	.auth { line-height: 1.5; -webkit-text-size-adjust: 100%; }
-	.auth h1, .auth h2, .auth h3 { font-size: inherit; font-weight: inherit; }
-	.auth a { color: inherit; text-decoration: inherit; }
-	.auth button, .auth input { font: inherit; color: inherit; background: transparent; letter-spacing: inherit; }
-	.auth button { cursor: pointer; }
-	.auth button:disabled { cursor: default; }
-	.auth svg { display: block; vertical-align: middle; }
-	.auth input::placeholder { color: inherit; opacity: 1; }
-	.auth :focus-visible { outline: 3px solid var(--color-emas); outline-offset: 2px; }
+	.auth, .adm { line-height: 1.5; -webkit-text-size-adjust: 100%; }
+	.auth h1, .auth h2, .auth h3, .adm h1, .adm h2, .adm h3 { font-size: inherit; font-weight: inherit; }
+	.auth a, .adm a { color: inherit; text-decoration: inherit; }
+	.auth button, .auth input, .adm button, .adm input, .adm select, .adm textarea { font: inherit; color: inherit; background: transparent; letter-spacing: inherit; }
+	.auth button, .adm button { cursor: pointer; }
+	.auth button:disabled, .adm button:disabled { cursor: default; }
+	.auth svg, .adm svg { display: block; vertical-align: middle; }
+	.auth input::placeholder, .adm input::placeholder { color: inherit; opacity: 1; }
+	.auth :focus-visible, .adm :focus-visible { outline: 3px solid var(--color-emas); outline-offset: 2px; }
 }
 
 .garis-emas {
@@ -74,8 +79,35 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.auth *, .auth ::before, .auth ::after {
+	.auth *, .auth ::before, .auth ::after, .adm *, .adm ::before, .adm ::after {
 		animation-duration: 0.001ms !important;
 		animation-iteration-count: 1 !important;
 	}
+}
+
+/* Komponen panel admin (docs/prd/ui-theme.md); nama kelas mengikuti kit. */
+@layer components {
+	.adm .card { @apply rounded-2xl border border-ink/10 bg-surface shadow-sm; }
+	.adm .lbl { @apply block text-xs font-bold; }
+	.adm .inp { @apply w-full rounded-xl border border-ink/15 bg-surface px-3 py-2.5 text-sm outline-none focus:border-merah focus:ring-4 focus:ring-merah/15; }
+	.adm .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition focus-visible:ring-4 focus-visible:ring-emas/60; }
+	.adm .btn-red { @apply bg-merah text-white hover:bg-merah-tua; }
+	.adm .btn-light { @apply border border-ink/10 bg-surface hover:bg-ink/5; }
+	.adm .btn-danger { @apply border border-red-700 bg-surface text-red-700 hover:bg-red-500/10; }
+	.adm .pill { @apply inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold; }
+	.adm .muted { color: var(--muted); }
+	.adm table { @apply w-full border-collapse text-xs; }
+	.adm th { @apply bg-page px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-ink/60; }
+	.adm td { @apply whitespace-nowrap border-t border-ink/5 px-4 py-3.5; }
+}
+
+/* Tema terang/gelap panel admin. Nilai default = terang; "system" mengikuti OS, light/dark eksplisit dari cookie. */
+.adm { --color-ink: var(--ink); --color-surface: var(--surface); --color-page: var(--page); --ink: #4a0510; --surface: #fff; --page: #fff8f0; --muted: #806b6b; color-scheme: light; }
+.adm[data-theme='dark'] { --ink: #f6e7e7; --surface: #271216; --page: #1a0c0f; --muted: #b99ea0; color-scheme: dark; }
+@media (prefers-color-scheme: dark) {
+	.adm[data-theme='system'] { --ink: #f6e7e7; --surface: #271216; --page: #1a0c0f; --muted: #b99ea0; color-scheme: dark; }
+}
+.adm[data-theme='dark'] .text-merah, .adm[data-theme='dark'] .text-red-700 { color: #ff7a8c; }
+@media (prefers-color-scheme: dark) {
+	.adm[data-theme='system'] .text-merah, .adm[data-theme='system'] .text-red-700 { color: #ff7a8c; }
 }

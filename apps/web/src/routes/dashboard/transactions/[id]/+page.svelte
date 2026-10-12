@@ -1,12 +1,16 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
 	import StatusBadge from '../../../../lib/components/StatusBadge.svelte';
 	import { formatIDR } from '../../../../lib/utils/money';
 
 	let { data } = $props();
 	const p = $derived(data.payment);
-	const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('id-ID') : '-');
+	const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString(i18n.locale) : '-');
+
+	const i18n = getI18n();
+	const { t } = i18n;
 
 	// Status hanya dibaca dari server; halaman tidak pernah menandai lunas sendiri.
 	onMount(() => {
@@ -17,44 +21,35 @@
 	});
 </script>
 
-<h1>Pembayaran {p.merchant_reference}</h1>
-<p><StatusBadge status={p.status} /></p>
+<div class="mb-5 flex flex-wrap items-center gap-3"><h2 class="font-bold">{t('trx.payment', { ref: p.merchant_reference })}</h2><StatusBadge status={p.status} /></div>
 
-<div class="grid">
+<div class="flex flex-wrap items-start gap-4">
 	{#if data.qr}
-		<section class="card qr">
+		<section class="card p-6 text-center">
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -- SVG dibuat server dari library QR, bukan input pengguna -->
-			<div class="svg" aria-label="Kode QRIS">{@html data.qr}</div>
-			<p>Pindai dengan aplikasi pembayaran QRIS.</p>
-			<p><small>Berlaku sampai {fmt(p.expires_at)}</small></p>
+			<div class="qr mx-auto w-64 max-w-full" aria-label={t('trx.qrLabel')}>{@html data.qr}</div>
+			<p class="mt-3 text-xs">{t('trx.scan')}</p>
+			<p class="muted mt-1 text-[11px]">{t('trx.validUntil', { date: fmt(p.expires_at) })}</p>
 		</section>
 	{:else if p.status === 'pending'}
-		<section class="card"><p>Kode QR tidak tersedia.</p></section>
+		<section class="card p-6 text-xs">{t('trx.qrMissing')}</section>
 	{/if}
 
-	<section class="card">
-		<dl>
-			<dt>Nominal</dt><dd>{formatIDR(p.amount)}</dd>
-			<dt>Metode</dt><dd>{p.payment_method} · {p.gateway}</dd>
-			<dt>Dibuat</dt><dd>{fmt(p.created_at)}</dd>
-			<dt>Selesai</dt><dd>{fmt(p.final_at)}</dd>
-			<dt>MDR</dt><dd>{formatIDR(p.fee.mdr_fee)}</dd>
-			<dt>Biaya jasa EraPay</dt><dd>{formatIDR(p.fee.platform_fee)}</dd>
-			<dt>Diterima merchant</dt><dd>{formatIDR(p.fee.merchant_net)}</dd>
+	<section class="card min-w-72 p-6">
+		<dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-xs">
+			<dt class="muted">{t('trx.f.amount')}</dt><dd class="font-bold">{formatIDR(p.amount)}</dd>
+			<dt class="muted">{t('trx.f.method')}</dt><dd class="font-bold">{p.payment_method} · {p.gateway}</dd>
+			<dt class="muted">{t('trx.f.created')}</dt><dd class="font-bold">{fmt(p.created_at)}</dd>
+			<dt class="muted">{t('trx.f.final')}</dt><dd class="font-bold">{fmt(p.final_at)}</dd>
+			<dt class="muted">{t('trx.f.mdr')}</dt><dd class="font-bold">{formatIDR(p.fee.mdr_fee)}</dd>
+			<dt class="muted">{t('trx.f.platformFee')}</dt><dd class="font-bold">{formatIDR(p.fee.platform_fee)}</dd>
+			<dt class="muted">{t('trx.f.net')}</dt><dd class="font-bold">{formatIDR(p.fee.merchant_net)}</dd>
 		</dl>
-		{#if p.description}<p><small>{p.description}</small></p>{/if}
+		{#if p.description}<p class="muted mt-4 text-[11px]">{p.description}</p>{/if}
 	</section>
 </div>
-<p><a href="/dashboard/transactions/new">Buat QRIS lain</a></p>
+<p class="mt-5"><a href="/dashboard/transactions/new" class="text-xs font-bold text-merah hover:underline">{t('trx.another')}</a></p>
 
 <style>
-	.grid { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
-	.card { padding: 1.25rem; background: #fff; border: 1px solid #e5e7eb; border-radius: 1rem; }
-	.qr { text-align: center; }
-	.svg { width: 16rem; max-width: 100%; margin: 0 auto; }
-	.svg :global(svg) { width: 100%; height: auto; display: block; }
-	dl { display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1rem; margin: 0; }
-	dt { color: #6b7280; }
-	dd { margin: 0; font-weight: 600; }
-	a { color: #c8102e; }
+	.qr :global(svg) { width: 100%; height: auto; display: block; }
 </style>
