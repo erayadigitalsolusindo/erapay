@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { getI18n } from '../../../lib/i18n/i18n.svelte';
+	const i18n = getI18n();
+	const { t } = i18n;
 	let { data, form } = $props();
 	let copied = $state(false);
 
-	const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+	const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 	const status = (k: { revoked_at: string | null; expires_at: string | null }) =>
-		k.revoked_at ? 'Dicabut' : k.expires_at && new Date(k.expires_at) < new Date() ? 'Kedaluwarsa' : 'Aktif';
+		k.revoked_at ? 'revoked' : k.expires_at && new Date(k.expires_at) < new Date() ? 'expired' : 'active';
 
 	async function copy(text: string) {
 		try {
@@ -17,99 +20,81 @@
 	}
 </script>
 
-<h1>API Keys</h1>
-<p class="note">Key dipakai aplikasi Anda (mis. kasir) untuk membuat pembayaran lewat API EraPay. Secret hanya tampil <strong>sekali</strong> saat dibuat; simpan di tempat aman dan jangan dibagikan.</p>
+<p class="muted mb-5 max-w-2xl text-xs">{t('keys.note')}</p>
 
 {#if form?.created}
-	<section class="card secret" role="status">
-		<h2>Salin key sekarang</h2>
-		<p>Setelah halaman ini ditutup, secret tidak bisa dilihat lagi.</p>
-		<code>{form.created.secret}</code>
-		<button type="button" onclick={() => copy(form.created.secret)}>{copied ? 'Tersalin' : 'Salin'}</button>
-		<small>Lingkungan: {form.created.environment} · Izin: {form.created.scopes.join(', ')}</small>
+	<section class="card mb-5 max-w-2xl space-y-3 border-emas bg-surface p-6" role="status">
+		<h2 class="text-sm font-bold">{t('keys.copyNow')}</h2>
+		<p class="muted text-xs">Setelah halaman ini ditutup, secret tidak bisa dilihat lagi.</p>
+		<code class="block rounded-xl border border-ink/10 bg-page p-3 text-xs break-all select-all">{form.created.secret}</code>
+		<button type="button" class="btn btn-light" onclick={() => copy(form.created.secret)}>{copied ? t('keys.copied') : t('keys.copy')}</button>
+		<p class="muted text-[11px]">{t('keys.meta', { env: form.created.environment, scopes: form.created.scopes.join(', ') })}</p>
 	</section>
 {/if}
-{#if form?.message}<p class="err" role="alert">{form.message}</p>{/if}
+{#if form?.message}<p class="mb-4 text-xs font-semibold text-red-700" role="alert">{form.message}</p>{/if}
 
-<form method="POST" action="?/create" class="card" use:enhance>
-	<h2>Buat key baru</h2>
-	<label>Nama
-		<input name="name" maxlength="80" required placeholder="mis. Kasir ARUS" value={form?.name ?? ''} />
-	</label>
-	<fieldset>
-		<legend>Izin</legend>
+<form method="POST" action="?/create" class="card mb-6 max-w-md space-y-4 p-6" use:enhance>
+	<h2 class="text-sm font-bold">{t('keys.create')}</h2>
+	<div>
+		<label class="lbl mb-1.5" for="name">{t('keys.name')}</label>
+		<input id="name" class="inp" name="name" maxlength="80" required placeholder={t('keys.namePh')} value={form?.name ?? ''} />
+	</div>
+	<fieldset class="rounded-xl border border-ink/10 px-3 py-2">
+		<legend class="px-1 text-xs font-bold">{t('keys.scopes')}</legend>
 		{#each data.scopes as s (s.id)}
-			<label class="chk"><input type="checkbox" name="scopes" value={s.id} checked={s.id !== 'report:read'} /> {s.label} <small>({s.id})</small></label>
+			<label class="flex items-center gap-2 py-1 text-xs"><input type="checkbox" class="accent-merah" name="scopes" value={s.id} checked={s.id !== 'report:read'} /> {s.label} <span class="muted text-[11px]">({s.id})</span></label>
 		{/each}
 	</fieldset>
-	<button type="submit">Buat key</button>
+	<button type="submit" class="btn btn-red">{t('keys.createBtn')}</button>
 </form>
 
-<h2>Daftar key</h2>
-{#if data.keys === null}
-	<p class="err" role="alert">Daftar key tidak dapat dimuat.</p>
-{:else if data.keys.length === 0}
-	<p class="note">Belum ada key.</p>
-{:else}
-	<div class="scroll">
-		<table>
-			<thead><tr><th>Nama</th><th>Key</th><th>Izin</th><th>Status</th><th>Terakhir dipakai</th><th></th></tr></thead>
-			<tbody>
-				{#each data.keys as k (k.id)}
-					<tr>
-						<td>{k.name}</td>
-						<td><code>epk_{k.environment === 'production' ? 'prd' : 'sbx'}_{k.prefix}_…</code></td>
-						<td>{k.scopes.join(', ')}</td>
-						<td>{status(k)}</td>
-						<td>{fmt(k.last_used_at)}</td>
-						<td class="act">
-							{#if status(k) === 'Aktif'}
-								<form method="POST" action="?/rotate" use:enhance class="inline">
-									<input type="hidden" name="id" value={k.id} />
-									<label class="grace">Tenggang
-										<select name="grace"><option value="0">0</option><option value="3600" selected>1 jam</option><option value="86400">24 jam</option></select>
-									</label>
-									<button type="submit">Rotasi</button>
-								</form>
-								<form
-									method="POST"
-									action="?/revoke"
-									class="inline"
-									use:enhance={({ cancel }) => {
-										if (!confirm(`Cabut key "${k.name}"? Aplikasi yang memakainya langsung berhenti bekerja.`)) cancel();
-									}}
-								>
-									<input type="hidden" name="id" value={k.id} />
-									<button type="submit" class="danger">Cabut</button>
-								</form>
-							{/if}
-						</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
-{/if}
-
-<style>
-	.note { color: #6b7280; max-width: 40rem; }
-	.card { display: flex; flex-direction: column; gap: 0.75rem; max-width: 28rem; padding: 1.25rem; margin: 1rem 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 1rem; }
-	.secret { border-color: #e8b84a; background: #fff8f0; max-width: 40rem; }
-	.secret code { overflow-wrap: anywhere; padding: 0.6rem; background: #fff; border: 1px solid #e5e7eb; border-radius: 0.5rem; user-select: all; }
-	label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
-	.chk { flex-direction: row; align-items: center; gap: 0.5rem; }
-	fieldset { border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 0.5rem 0.75rem; }
-	input:not([type]) { padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.75rem; }
-	input:focus, select:focus, button:focus-visible { outline: 2px solid #e8b84a; }
-	button { padding: 0.5rem 1rem; border: 0; border-radius: 0.75rem; background: #c8102e; color: #fff; font-weight: 700; cursor: pointer; }
-	button:hover { background: #8a0a1f; }
-	button.danger { background: #fff; color: #b91c1c; border: 1px solid #b91c1c; }
-	.err { color: #b91c1c; }
-	.scroll { overflow-x: auto; }
-	table { border-collapse: collapse; width: 100%; font-size: 0.9rem; background: #fff; }
-	th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
-	th { background: #fff8f0; font-size: 0.8rem; }
-	.act { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-	.inline { display: flex; gap: 0.4rem; align-items: center; }
-	.grace { flex-direction: row; align-items: center; font-size: 0.8rem; }
-</style>
+<div class="card overflow-hidden">
+	<div class="p-5"><h2 class="text-sm font-bold">{t('keys.list')}</h2></div>
+	{#if data.keys === null}
+		<p class="px-5 pb-5 text-xs font-semibold text-red-700" role="alert">{t('keys.loadFail')}</p>
+	{:else if data.keys.length === 0}
+		<p class="muted px-5 pb-5 text-xs">{t('keys.none')}</p>
+	{:else}
+		<div class="overflow-x-auto">
+			<table>
+				<thead><tr><th>{t('keys.col.name')}</th><th>{t('keys.col.key')}</th><th>{t('keys.col.scopes')}</th><th>{t('keys.col.status')}</th><th>{t('keys.col.lastUsed')}</th><th></th></tr></thead>
+				<tbody>
+					{#each data.keys as k (k.id)}
+						<tr>
+							<td class="font-bold">{k.name}</td>
+							<td><code>epk_{k.environment === 'production' ? 'prd' : 'sbx'}_{k.prefix}_…</code></td>
+							<td>{k.scopes.join(', ')}</td>
+							<td>
+								<span class="pill {status(k) === 'active' ? 'bg-emerald-100 text-emerald-800' : status(k) === 'revoked' ? 'bg-rose-100 text-rose-800' : 'bg-ink/10 text-ink'}">{t(`keys.st.${status(k)}` as const)}</span>
+							</td>
+							<td class="muted">{fmt(k.last_used_at)}</td>
+							<td>
+								{#if status(k) === 'active'}
+									<div class="flex flex-wrap items-center gap-2">
+										<form method="POST" action="?/rotate" use:enhance class="flex items-center gap-2">
+											<input type="hidden" name="id" value={k.id} />
+											<label class="muted flex items-center gap-1 text-[11px]">{t('keys.grace')}
+												<select name="grace" class="rounded-lg border border-ink/15 bg-surface px-2 py-1.5 text-xs"><option value="0">0</option><option value="3600" selected>{t('keys.grace.1h')}</option><option value="86400">{t('keys.grace.24h')}</option></select>
+											</label>
+											<button type="submit" class="btn btn-light">{t('keys.rotate')}</button>
+										</form>
+										<form
+											method="POST"
+											action="?/revoke"
+											use:enhance={({ cancel }) => {
+												if (!confirm(t('keys.revokeConfirm', { name: k.name }))) cancel();
+											}}
+										>
+											<input type="hidden" name="id" value={k.id} />
+											<button type="submit" class="btn btn-danger">{t('keys.revoke')}</button>
+										</form>
+									</div>
+								{/if}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+	{/if}
+</div>
