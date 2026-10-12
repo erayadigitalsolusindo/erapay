@@ -69,6 +69,26 @@
 	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='white' stroke-opacity='.16' stroke-width='1.5'%3E%3Cellipse cx='40' cy='20' rx='10' ry='18'/%3E%3Cellipse cx='40' cy='60' rx='10' ry='18'/%3E%3Cellipse cx='20' cy='40' rx='18' ry='10'/%3E%3Cellipse cx='60' cy='40' rx='18' ry='10'/%3E%3C/g%3E%3Ccircle cx='40' cy='40' r='3' fill='white' fill-opacity='.22'/%3E%3C/svg%3E");
 	background-size: 80px 80px;
 }
+/* Sidebar: gradien merah (sama untuk terang & gelap) + batik kawung yang bergeser pelan. */
+.sidebar-batik {
+	background: linear-gradient(180deg, #a30f29 0%, #c8102e 55%, #d9293f 100%);
+	isolation: isolate;
+}
+.sidebar-batik::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='white' stroke-opacity='.2' stroke-width='1.5'%3E%3Cellipse cx='40' cy='20' rx='10' ry='18'/%3E%3Cellipse cx='40' cy='60' rx='10' ry='18'/%3E%3Cellipse cx='20' cy='40' rx='18' ry='10'/%3E%3Cellipse cx='60' cy='40' rx='18' ry='10'/%3E%3C/g%3E%3Ccircle cx='40' cy='40' r='3' fill='%23e8b84a' fill-opacity='.45'/%3E%3C/svg%3E");
+	background-size: 80px 80px;
+	animation: batik-geser 40s linear infinite;
+	-webkit-mask-image: linear-gradient(180deg, #000 0%, rgb(0 0 0 / 0.55) 100%);
+	mask-image: linear-gradient(180deg, #000 0%, rgb(0 0 0 / 0.55) 100%);
+}
+@keyframes batik-geser {
+	to { background-position: 80px 80px; }
+}
 .tombol-kilau::after {
 	content: '';
 	position: absolute;
