@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { getContext, untrack } from 'svelte';
+	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import Field from '../../../lib/components/auth/Field.svelte';
 	import Logo from '../../../lib/components/auth/Logo.svelte';
 
 	let { form } = $props();
 	const auth = getContext<{ goyang(): void; uang(): void; pindah(href: string): void }>('auth');
+	const { t } = getI18n();
 
 	let jenis = $state('pribadi');
 	let nama = $state(untrack(() => form?.name ?? ''));
@@ -19,7 +21,7 @@
 	let busy = $state(false);
 	let err = $state<Record<string, string>>({});
 
-	const TEKS = ['Terlalu lemah', 'Lemah', 'Cukup', 'Kuat', 'Sangat kuat'];
+	const TEKS = $derived([t('reg.s0'), t('reg.s1'), t('reg.s2'), t('reg.s3'), t('reg.s4')]);
 	const WARNA = ['#ef4444', '#ef4444', '#f59e0b', '#84cc16', '#16a34a'];
 	const skor = $derived.by(() => {
 		let s = 0;
@@ -40,42 +42,41 @@
 	function validate() {
 		const nomor = hp.replace(/\D/g, '').replace(/^(62|0)/, '');
 		err = {
-			nama: nama.trim().length >= 3 ? '' : 'Masukkan nama lengkap (minimal 3 huruf).',
-			email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? '' : 'Masukkan alamat email yang valid.',
-			hp: /^8\d{8,11}$/.test(nomor) ? '' : 'Nomor ponsel tidak valid (contoh: 812 3456 7890).',
-			usaha: jenis !== 'usaha' || usaha.trim().length >= 3 ? '' : 'Masukkan nama usaha (minimal 3 huruf).',
-			sandi: sandi.length >= 12 && sandi.length <= 128 ? '' : 'Kata sandi 12 sampai 128 karakter.',
-			sandi2: sandi && sandi === sandi2 ? '' : 'Kata sandi tidak sama.',
-			setuju: setuju ? '' : 'Anda perlu menyetujui syarat & ketentuan.'
+			nama: nama.trim().length >= 3 ? '' : t('reg.err.name'),
+			email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? '' : t('auth.err.email'),
+			hp: /^8\d{8,11}$/.test(nomor) ? '' : t('reg.err.phone'),
+			usaha: jenis !== 'usaha' || usaha.trim().length >= 3 ? '' : t('reg.err.business'),
+			sandi: sandi.length >= 12 && sandi.length <= 128 ? '' : t('reg.err.pw'),
+			sandi2: sandi && sandi === sandi2 ? '' : t('reg.err.pw2'),
+			setuju: setuju ? '' : t('reg.err.agree')
 		};
 		return Object.values(err).every((v) => !v);
 	}
 </script>
 
-<svelte:head><title>Daftar · EraPay</title></svelte:head>
+<svelte:head><title>{t('reg.title')}</title></svelte:head>
 
 {#if form?.success}
 	<div class="py-6 text-center">
 		<div class="animate-naik mx-auto grid size-20 place-items-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/40">
 			<svg viewBox="0 0 24 24" class="size-10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
 		</div>
-		<h2 class="animate-naik font-display mt-5 text-2xl font-extrabold text-merah-gelap [animation-delay:.1s]">Pendaftaran diterima!</h2>
-		<p class="animate-naik mt-2 text-sm/6 text-neutral-600 [animation-delay:.2s]">Terima kasih, <b>{form.name}</b>.<br />Kami mengirim tautan konfirmasi ke <b>{form.email}</b>. Buka tautan itu untuk memverifikasi email; setelahnya tim EraPay meninjau akun Anda dan pembayaran bisa dipakai setelah disetujui. Tidak menerima email? Cek folder spam, lalu masuk dan kirim ulang dari menu Status akun.</p>
+		<h2 class="animate-naik font-display mt-5 text-2xl font-extrabold text-merah-gelap [animation-delay:.1s]">{t('reg.okTitle')}</h2>
+		<p class="animate-naik mt-2 text-sm/6 text-neutral-600 [animation-delay:.2s]">{t('reg.okThanks')} <b>{form.name}</b>.<br />{t('reg.okSent')} <b>{form.email}</b>. {t('reg.okRest')}</p>
 		<a
 			href="/login"
 			onclick={(e) => { e.preventDefault(); auth.pindah('/login'); }}
 			class="animate-naik mt-6 block w-full rounded-xl bg-gradient-to-b from-merah to-merah-tua px-5 py-3.5 font-bold text-white shadow-lg shadow-merah/40 transition hover:-translate-y-0.5 [animation-delay:.3s]"
-		>Lanjut masuk</a>
+		>{t('reg.okGo')}</a>
 	</div>
 {:else}
-	<div class="flex items-center gap-2 lg:hidden">
-		<span class="grid size-9 place-items-center rounded-xl bg-merah-gelap"><Logo /></span>
-		<span class="font-display text-xl font-extrabold tracking-[0.18em] text-merah-tua">ERAPAY</span>
+	<div class="flex justify-center lg:hidden">
+		<Logo class="h-16" />
 	</div>
 
-	<p class="mt-5 text-sm font-semibold tracking-widest text-merah uppercase lg:mt-0">Bergabung bersama kami</p>
-	<h2 class="font-display mt-1 text-3xl font-extrabold text-merah-gelap">Buat akun ERAPAY</h2>
-	<p class="mt-2 text-sm text-neutral-500">Gratis dan selesai kurang dari 2 menit. Akun ditinjau tim EraPay sebelum aktif.</p>
+	<p class="mt-5 text-sm font-semibold tracking-widest text-merah uppercase lg:mt-0">{t('reg.eyebrow')}</p>
+	<h2 class="font-display mt-1 text-3xl font-extrabold text-merah-gelap">{t('reg.heading')}</h2>
+	<p class="mt-2 text-sm text-neutral-500">{t('reg.sub')}</p>
 
 	<form
 		method="POST"
@@ -98,32 +99,32 @@
 			<div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{form.error}</div>
 		{/if}
 
-		<div class="grid grid-cols-2 gap-1 rounded-xl bg-neutral-200/70 p-1" role="radiogroup" aria-label="Jenis akun">
-			{#each [['pribadi', 'Pribadi'], ['usaha', 'Usaha / UMKM']] as [v, t]}
+		<div class="grid grid-cols-2 gap-1 rounded-xl bg-neutral-200/70 p-1" role="radiogroup" aria-label={t('reg.type')}>
+			{#each [['pribadi', t('reg.personal')], ['usaha', t('reg.business')]] as [v, jenisLabel]}
 				<label class="cursor-pointer">
 					<input type="radio" name="jenis" value={v} bind:group={jenis} class="peer sr-only" />
-					<span class="flex items-center justify-center rounded-lg py-2 text-sm font-semibold text-neutral-600 transition peer-checked:bg-white peer-checked:text-merah peer-checked:shadow peer-focus-visible:outline-3 peer-focus-visible:outline-emas">{t}</span>
+					<span class="flex items-center justify-center rounded-lg py-2 text-sm font-semibold text-neutral-600 transition peer-checked:bg-white peer-checked:text-merah peer-checked:shadow peer-focus-visible:outline-3 peer-focus-visible:outline-emas">{jenisLabel}</span>
 				</label>
 			{/each}
 		</div>
 
 		{#if jenis === 'usaha'}
-			<Field compact id="r-usaha" name="business_name" label="Nama usaha" icon="store" autocomplete="organization" placeholder="mis. Toko Maju Jaya" bind:value={usaha} error={err.usaha} />
+			<Field compact id="r-usaha" name="business_name" label={t('reg.bizName')} icon="store" autocomplete="organization" placeholder={t('reg.bizNamePh')} bind:value={usaha} error={err.usaha} />
 		{/if}
-		<Field compact id="r-nama" name="name" label="Nama lengkap" icon="user" autocomplete="name" placeholder="Sesuai KTP" bind:value={nama} error={err.nama} />
+		<Field compact id="r-nama" name="name" label={t('reg.name')} icon="user" autocomplete="name" placeholder={t('reg.namePh')} bind:value={nama} error={err.nama} />
 		<Field compact id="r-email" name="email" label="Email" icon="mail" type="email" autocomplete="email" placeholder="nama@usaha.co.id" bind:value={email} error={err.email} />
-		<Field compact id="r-hp" name="phone" label="Nomor ponsel" icon="phone" prefix="+62" type="tel" autocomplete="tel-national" placeholder="812 3456 7890" bind:value={hp} error={err.hp} />
+		<Field compact id="r-hp" name="phone" label={t('reg.phone')} icon="phone" prefix="+62" type="tel" autocomplete="tel-national" placeholder="812 3456 7890" bind:value={hp} error={err.hp} />
 
 		<Field
-			compact id="r-sandi" name="password" label="Kata sandi" icon="lock"
-			type={showPw ? 'text' : 'password'} autocomplete="new-password" placeholder="Minimal 12 karakter"
+			compact id="r-sandi" name="password" label={t('login.pw')} icon="lock"
+			type={showPw ? 'text' : 'password'} autocomplete="new-password" placeholder={t('reg.pwPh')}
 			bind:value={sandi} error={err.sandi}
 		>
 			{#snippet trailing()}
 				<button
 					type="button"
 					onclick={() => (showPw = !showPw)}
-					aria-label={showPw ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+					aria-label={showPw ? t('auth.pw.hide') : t('auth.pw.show')}
 					aria-pressed={showPw}
 					class="absolute inset-y-0 right-3 grid place-items-center rounded-lg px-1.5 text-neutral-400 transition hover:text-merah"
 				>
@@ -152,15 +153,15 @@
 		</Field>
 
 		<Field
-			compact id="r-sandi2" name="password_confirm" label="Ulangi kata sandi" icon="lock"
-			type={showPw ? 'text' : 'password'} autocomplete="new-password" placeholder="Ketik ulang kata sandi"
+			compact id="r-sandi2" name="password_confirm" label={t('reg.pw2')} icon="lock"
+			type={showPw ? 'text' : 'password'} autocomplete="new-password" placeholder={t('reg.pw2Ph')}
 			bind:value={sandi2} error={err.sandi2}
 		/>
 
 		<div>
 			<label class="flex cursor-pointer items-start gap-2.5 text-xs/5 text-neutral-600 select-none">
 				<input type="checkbox" name="agree" bind:checked={setuju} class="mt-0.5 size-4 shrink-0 rounded border-neutral-300 accent-merah" />
-				<span>Saya menyetujui <a href="/" class="font-semibold text-merah hover:underline">Syarat &amp; Ketentuan</a> dan <a href="/" class="font-semibold text-merah hover:underline">Kebijakan Privasi</a> ERAPAY.</span>
+				<span>{t('reg.agree1')} <a href="/" class="font-semibold text-merah hover:underline">{t('reg.terms')}</a> {t('reg.and')} <a href="/" class="font-semibold text-merah hover:underline">{t('reg.privacy')}</a> {t('reg.agree2')}</span>
 			</label>
 			{#if err.setuju}<p class="mt-1 text-xs font-medium text-merah">{err.setuju}</p>{/if}
 		</div>
@@ -173,16 +174,16 @@
 			{#if busy}
 				<svg class="size-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".3" stroke-width="3" /><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" /></svg>
 			{/if}
-			<span class="relative">{busy ? 'Membuat akun…' : 'Buat akun sekarang'}</span>
+			<span class="relative">{busy ? t('reg.busy') : t('reg.submit')}</span>
 		</button>
 	</form>
 
 	<p class="mt-5 text-center text-sm text-neutral-600">
-		Sudah punya akun?
+		{t('reg.hasAccount')}
 		<a
 			href="/login"
 			onclick={(e) => { e.preventDefault(); auth.pindah('/login'); }}
 			class="font-bold text-merah hover:underline"
-		>Masuk</a>
+		>{t('reg.login')}</a>
 	</p>
 {/if}

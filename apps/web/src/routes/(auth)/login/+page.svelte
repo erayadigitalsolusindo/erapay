@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { getContext, untrack } from 'svelte';
+	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import Field from '../../../lib/components/auth/Field.svelte';
 	import Logo from '../../../lib/components/auth/Logo.svelte';
 
 	let { form } = $props();
 	const auth = getContext<{ goyang(): void; pindah(href: string): void }>('auth');
+	const { t } = getI18n();
 
 	let email = $state(untrack(() => form?.email ?? ''));
 	let password = $state('');
@@ -20,22 +22,21 @@
 	});
 
 	function validate() {
-		errEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? '' : 'Masukkan alamat email yang valid.';
-		errPw = password ? '' : 'Kata sandi wajib diisi.';
+		errEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? '' : t('auth.err.email');
+		errPw = password ? '' : t('login.err.pw');
 		return !errEmail && !errPw;
 	}
 </script>
 
-<svelte:head><title>Masuk · EraPay</title></svelte:head>
+<svelte:head><title>{t('login.title')}</title></svelte:head>
 
-<div class="flex items-center gap-2 lg:hidden">
-	<span class="grid size-9 place-items-center rounded-xl bg-merah-gelap"><Logo /></span>
-	<span class="font-display text-xl font-extrabold tracking-[0.18em] text-merah-tua">ERAPAY</span>
+<div class="flex justify-center lg:hidden">
+	<Logo class="h-16" />
 </div>
 
-<p class="mt-5 text-sm font-semibold tracking-widest text-merah uppercase lg:mt-0">Selamat datang kembali</p>
-<h2 class="font-display mt-1 text-3xl font-extrabold text-merah-gelap">Masuk ke akun Anda</h2>
-<p class="mt-2 text-sm text-neutral-500">Kelola pembayaran bisnis Anda dengan aman.</p>
+<p class="mt-5 text-sm font-semibold tracking-widest text-merah uppercase lg:mt-0">{t('login.eyebrow')}</p>
+<h2 class="font-display mt-1 text-3xl font-extrabold text-merah-gelap">{t('login.heading')}</h2>
+<p class="mt-2 text-sm text-neutral-500">{t('login.sub')}</p>
 
 <form
 	method="POST"
@@ -61,7 +62,7 @@
 	<Field id="email" name="email" label="Email" icon="mail" type="email" autocomplete="username" placeholder="nama@usaha.co.id" bind:value={email} error={errEmail} />
 
 	<Field
-		id="password" name="password" label="Kata sandi" icon="lock"
+		id="password" name="password" label={t('login.pw')} icon="lock"
 		type={showPw ? 'text' : 'password'} autocomplete="current-password" placeholder="••••••••"
 		bind:value={password} error={errPw}
 	>
@@ -69,7 +70,7 @@
 			<button
 				type="button"
 				onclick={() => (showPw = !showPw)}
-				aria-label={showPw ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+				aria-label={showPw ? t('auth.pw.hide') : t('auth.pw.show')}
 				aria-pressed={showPw}
 				class="absolute inset-y-0 right-3 grid place-items-center rounded-lg px-1.5 text-neutral-400 transition hover:text-merah"
 			>
@@ -89,7 +90,7 @@
 	</p>
 
 	{#if form?.needMerchant}
-		<Field id="merchant_id" name="merchant_id" label="ID merchant" icon="store" autocomplete="off" placeholder="Tempel ID merchant" bind:value={merchantId} />
+		<Field id="merchant_id" name="merchant_id" label={t('login.merchant')} icon="store" autocomplete="off" placeholder={t('login.merchantPh')} bind:value={merchantId} />
 	{/if}
 
 	<button
@@ -100,19 +101,19 @@
 		{#if busy}
 			<svg class="size-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".3" stroke-width="3" /><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" /></svg>
 		{/if}
-		<span class="relative">{busy ? 'Memverifikasi…' : 'Masuk dengan aman'}</span>
+		<span class="relative">{busy ? t('login.busy') : t('login.submit')}</span>
 	</button>
 </form>
 
 <p class="mt-6 flex items-center justify-center gap-2 text-xs text-neutral-500">
 	<svg viewBox="0 0 24 24" class="size-4 text-emerald-600" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
-	Koneksi terenkripsi · Sesi dapat dicabut kapan saja
+	{t('login.secure')}
 </p>
 <p class="mt-3 text-center text-sm text-neutral-600">
-	Belum punya akun?
+	{t('login.noAccount')}
 	<a
 		href="/register"
 		onclick={(e) => { e.preventDefault(); auth.pindah('/register'); }}
 		class="font-bold text-merah hover:underline"
-	>Daftar sekarang</a>
+	>{t('login.register')}</a>
 </p>
