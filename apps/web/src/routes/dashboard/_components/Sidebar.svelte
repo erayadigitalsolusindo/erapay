@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
-	import { aktif, nav } from './nav';
+	import { aktif, visible } from './nav';
 
 	let { user }: { user: { email: string; merchantId: string; permissions?: string[] } } = $props();
 	const { t } = getI18n();
-	const items = $derived(nav.filter((n) => !n.permission || (user.merchantId && user.permissions?.includes(n.permission))));
+	const items = $derived(visible(user));
 	const current = $derived(aktif(page.url.pathname));
 </script>
 

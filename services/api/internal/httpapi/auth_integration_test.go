@@ -17,7 +17,11 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payout"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/refund"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/settlement"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/testdb"
 )
 
@@ -52,6 +56,8 @@ func setup(t *testing.T) *world {
 	mk("owner@b.test", "merchant_owner", w.midB)
 	root, _ := svc.CreateUser(t.Context(), "root@erapay.test", itPW)
 	testdb.AddPlatformRole(t, db, root, "super_admin")
+	fin, _ := svc.CreateUser(t.Context(), "finance@erapay.test", itPW)
+	testdb.AddPlatformRole(t, db, fin, "finance")
 
 	seedPayments(t, db, w.midA, w.midB)
 	w.gw = newTestGW()
@@ -63,6 +69,10 @@ func setup(t *testing.T) *world {
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DB: fakePinger{}, Redis: fakePinger{},
 		Auth: svc, Merchants: merchant.NewRepo(db), APIKeys: apikey.NewService(db, "sandbox"), Payments: paySvc,
 		PaymentFlow: payment.NewOrchestrator(paySvc, db, idempotency.NewStore(db), reg, "sandbox", log),
+		Outbound:    outbound.NewService(db, testBox(t), log),
+		Settlement:  settlement.NewService(db),
+		Refunds:     refund.NewService(db),
+		Payouts:     payout.NewService(db, testBox(t), payout.Config{DryRun: true, MinAmount: 10_000, MaxAmount: 1_000_000, DailyLimit: 5_000_000}),
 	}))
 	t.Cleanup(w.srv.Close)
 	return w

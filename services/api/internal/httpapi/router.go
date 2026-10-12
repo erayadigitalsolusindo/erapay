@@ -15,7 +15,11 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payout"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/refund"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/settlement"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/webhook"
 )
 
@@ -30,8 +34,12 @@ type Deps struct {
 	APIKeys        *apikey.Service
 	Payments       *payment.Service
 	PaymentFlow    *payment.Orchestrator
-	Webhooks       *webhook.Store   // optional raw capture (ERAPAY_WEBHOOK_CAPTURE); see webhooks.go
-	Gateways       payment.Gateways // adapters implementing gateway.WebhookVerifier enable verified webhooks
+	Outbound       *outbound.Service   // nil disables /v1/webhook-endpoints and /v1/webhook-deliveries
+	Settlement     *settlement.Service // nil disables /v1/balance and /v1/admin/settlement routes
+	Payouts        *payout.Service     // nil disables bank accounts and payouts
+	Refunds        *refund.Service     // nil disables refunds
+	Webhooks       *webhook.Store      // optional raw capture (ERAPAY_WEBHOOK_CAPTURE); see webhooks.go
+	Gateways       payment.Gateways    // adapters implementing gateway.WebhookVerifier enable verified webhooks
 	SecureCookies  bool
 	TrustedProxies []netip.Prefix // peers allowed to set X-Forwarded-For
 	Log            *slog.Logger

@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/ledger"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/pricing"
 )
 
@@ -33,6 +34,9 @@ type Payment struct {
 	Currency          string     `json:"currency"`
 	PaymentMethod     string     `json:"payment_method"`
 	Status            Status     `json:"status"`
+	SettlementStatus  string     `json:"settlement_status"` // not_expected | expected | settled; separate from status (PRD §0 #9)
+	RefundedAmount    int64      `json:"refunded_amount"`   // refunds already returned to the customer; separate from status
+	RefundingAmount   int64      `json:"refunding_amount"`  // refunds requested or approved, not yet returned
 	Gateway           string     `json:"gateway"`
 	GatewayReference  string     `json:"-"`
 	QRPayload         string     `json:"-"`
@@ -92,14 +96,19 @@ func NewService(db *pgxpool.Pool) *Service { return &Service{db: db, now: time.N
 
 const cols = `id::text, merchant_id::text, COALESCE(outlet_id::text,''), merchant_reference, COALESCE(description,''),
 	amount, currency, payment_method, status, gateway, COALESCE(gateway_reference,''),
-	mdr_fee, platform_fee, merchant_net, expires_at, final_at, created_at, COALESCE(qr_payload,'')`
+	mdr_fee, platform_fee, merchant_net, expires_at, final_at, created_at, COALESCE(qr_payload,''),
+		CASE WHEN status <> 'succeeded' THEN 'not_expected'
+		     WHEN EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = payments.id) THEN 'settled'
+		     ELSE 'expected' END,
+		COALESCE((SELECT SUM(r.amount) FROM refunds r WHERE r.payment_id = payments.id AND r.status = 'refunded'), 0),
+		COALESCE((SELECT SUM(r.amount) FROM refunds r WHERE r.payment_id = payments.id AND r.status IN ('pending_approval','approved')), 0)`
 
 func scan(row pgx.Row) (Payment, error) {
 	var p Payment
 	var st string
 	err := row.Scan(&p.ID, &p.MerchantID, &p.OutletID, &p.MerchantReference, &p.Description,
 		&p.Amount, &p.Currency, &p.PaymentMethod, &st, &p.Gateway, &p.GatewayReference,
-		&p.Fee.MDRFee, &p.Fee.PlatformFee, &p.Fee.MerchantNet, &p.ExpiresAt, &p.FinalAt, &p.CreatedAt, &p.QRPayload)
+		&p.Fee.MDRFee, &p.Fee.PlatformFee, &p.Fee.MerchantNet, &p.ExpiresAt, &p.FinalAt, &p.CreatedAt, &p.QRPayload, &p.SettlementStatus, &p.RefundedAmount, &p.RefundingAmount)
 	p.Status = Status(st)
 	p.Fee.Bearer = "merchant"
 	if p.Status == Pending && p.QRPayload != "" { // a dynamic QR is only exposed while it can still be paid
@@ -212,13 +221,14 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	var cur string
-	var mid, currency string
+	var mid, currency, merchantRef, method string
 	var amount, mdr, plat, net int64
 	var planVer int
 	err = tx.QueryRow(ctx, `
-		SELECT status, merchant_id::text, currency, amount, mdr_fee, platform_fee, merchant_net, plan_version
-		FROM payments WHERE id = $1 FOR UPDATE`, in.PaymentID).
-		Scan(&cur, &mid, &currency, &amount, &mdr, &plat, &net, &planVer)
+		SELECT status, merchant_id::text, currency, amount, mdr_fee, platform_fee, merchant_net, plan_version,
+		       merchant_reference, payment_method
+		FROM payments WHERE id = $1 FOR NO KEY UPDATE`, in.PaymentID).
+		Scan(&cur, &mid, &currency, &amount, &mdr, &plat, &net, &planVer, &merchantRef, &method)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Result{}, ErrNotFound
 	}
@@ -263,7 +273,8 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 		return Result{}, fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, from, in.To)
 	}
 
-	if _, err := tx.Exec(ctx, `
+	var finalAt *time.Time
+	if err := tx.QueryRow(ctx, `
 		UPDATE payments SET status = $2,
 		    gateway_raw_status = COALESCE(NULLIF($3,''), gateway_raw_status),
 		    gateway_reference = COALESCE(gateway_reference, NULLIF($4,'')),
@@ -271,8 +282,8 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 		    next_inquiry_at = CASE WHEN $2 IN ('pending','unknown') THEN now() + interval '60 seconds' ELSE NULL END,
 		    final_at = CASE WHEN $5 THEN now() ELSE final_at END,
 		    updated_at = now(), version = version + 1
-		WHERE id = $1`,
-		in.PaymentID, string(in.To), in.RawGatewayStatus, in.GatewayReference, in.To.IsFinal(), in.QRPayload); err != nil {
+		WHERE id = $1 RETURNING final_at`,
+		in.PaymentID, string(in.To), in.RawGatewayStatus, in.GatewayReference, in.To.IsFinal(), in.QRPayload).Scan(&finalAt); err != nil {
 		return Result{}, err
 	}
 	if err := event(true); err != nil {
@@ -285,6 +296,18 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 			return Result{}, err
 		}
 		if _, err := ledger.PostTx(ctx, tx, j); err != nil {
+			return Result{}, err
+		}
+	}
+	if in.To.IsFinal() {
+		// Same transaction as the status change: a committed final status always has its merchant
+		// notification queued, and a rolled-back one never leaks an event (transactional outbox).
+		if err := outbound.EnqueueTx(ctx, tx, mid, "payment."+string(in.To), in.PaymentID, map[string]any{
+			"payment": map[string]any{
+				"id": in.PaymentID, "merchant_reference": merchantRef, "amount": amount, "currency": currency,
+				"payment_method": method, "status": string(in.To), "final_at": finalAt,
+				"fee": map[string]any{"bearer": "merchant", "mdr_fee": mdr, "platform_fee": plat, "merchant_net": net},
+			}}); err != nil {
 			return Result{}, err
 		}
 	}
