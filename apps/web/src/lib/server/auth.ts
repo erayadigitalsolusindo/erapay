@@ -9,7 +9,12 @@ export type Me = { id: string; email: string; merchantId: string; emailVerified:
 
 export type LoginResult =
 	| { ok: true; token: string; maxAge: number }
-	| { ok: false; code: 'invalid' | 'rate_limited' | 'merchant_required' | 'invalid_input' | 'unavailable' };
+	| {
+			ok: false;
+			code: 'invalid' | 'rate_limited' | 'merchant_required' | 'invalid_input' | 'unavailable';
+			retryAfter?: number; // detik sampai boleh mencoba lagi (rate_limited)
+			attemptsLeft?: number; // sisa kesempatan sebelum dikunci (invalid)
+		  };
 
 export async function login(
 	f: typeof fetch,
@@ -28,8 +33,11 @@ export async function login(
 	} catch {
 		return { ok: false, code: 'unavailable' };
 	}
-	if (res.status === 429) return { ok: false, code: 'rate_limited' };
-	if (res.status === 401) return { ok: false, code: 'invalid' };
+	if (res.status === 429) return { ok: false, code: 'rate_limited', retryAfter: Number(res.headers.get('retry-after')) || undefined };
+	if (res.status === 401) {
+		const left = res.headers.get('x-attempts-left');
+		return { ok: false, code: 'invalid', attemptsLeft: left === null ? undefined : Number(left) };
+	}
 	if (res.status === 400) {
 		const body = await res.json().catch(() => null);
 		return { ok: false, code: /merchant_id/.test(body?.error?.message ?? '') ? 'merchant_required' : 'invalid_input' };
