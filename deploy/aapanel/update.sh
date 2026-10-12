@@ -26,7 +26,7 @@ if ls "$APP_DIR"/bin/erapay-* >/dev/null 2>&1; then
   cp -a "$APP_DIR"/bin/. "$APP_DIR/backups/$STAMP/"
 fi
 # simpan 5 backup terakhir
-ls -1dt "$APP_DIR"/backups/*/ 2>/dev/null | tail -n +6 | xargs -r rm -rf
+{ ls -1dt "$APP_DIR"/backups/*/ 2>/dev/null || true; } | tail -n +6 | xargs -r rm -rf
 
 echo "==> migrasi database (versi $(cat "$STAGE/VERSION"))"
 ( set -a; . "$ENV_FILE"; set +a; "$STAGE/bin/erapay-migrate" up; "$STAGE/bin/erapay-migrate" status )
