@@ -45,14 +45,28 @@ func TestVerifyWebhookRejectsAnythingNotAuthentic(t *testing.T) {
 	body := []byte(sampleBody)
 
 	cases := map[string]func(h http.Header) (http.Header, string, []byte){
-		"tampered body":    func(h http.Header) (http.Header, string, []byte) { return h, hookPath, []byte(strings.Replace(sampleBody, "1000.00", "9000.00", 1)) },
-		"other path":       func(h http.Header) (http.Header, string, []byte) { return h, "/webhooks/doku/x", body },
-		"wrong client id":  func(h http.Header) (http.Header, string, []byte) { h.Set("Client-Id", "someone-else"); return h, hookPath, body },
-		"bad signature":    func(h http.Header) (http.Header, string, []byte) { h.Set("Signature", "HMACSHA256=AAAA"); return h, hookPath, body },
-		"missing signature": func(h http.Header) (http.Header, string, []byte) { h.Del("Signature"); return h, hookPath, body },
+		"tampered body": func(h http.Header) (http.Header, string, []byte) {
+			return h, hookPath, []byte(strings.Replace(sampleBody, "1000.00", "9000.00", 1))
+		},
+		"other path": func(h http.Header) (http.Header, string, []byte) { return h, "/webhooks/doku/x", body },
+		"wrong client id": func(h http.Header) (http.Header, string, []byte) {
+			h.Set("Client-Id", "someone-else")
+			return h, hookPath, body
+		},
+		"bad signature": func(h http.Header) (http.Header, string, []byte) {
+			h.Set("Signature", "HMACSHA256=AAAA")
+			return h, hookPath, body
+		},
+		"missing signature":  func(h http.Header) (http.Header, string, []byte) { h.Del("Signature"); return h, hookPath, body },
 		"missing request id": func(h http.Header) (http.Header, string, []byte) { h.Del("Request-Id"); return h, hookPath, body },
-		"changed timestamp": func(h http.Header) (http.Header, string, []byte) { h.Set("Request-Timestamp", "2026-10-12T06:25:25Z"); return h, hookPath, body },
-		"changed request id": func(h http.Header) (http.Header, string, []byte) { h.Set("Request-Id", "req-2"); return h, hookPath, body },
+		"changed timestamp": func(h http.Header) (http.Header, string, []byte) {
+			h.Set("Request-Timestamp", "2026-10-12T06:25:25Z")
+			return h, hookPath, body
+		},
+		"changed request id": func(h http.Header) (http.Header, string, []byte) {
+			h.Set("Request-Id", "req-2")
+			return h, hookPath, body
+		},
 	}
 	for name, mutate := range cases {
 		h, p, b := mutate(signed(a, sampleBody, hookPath))
