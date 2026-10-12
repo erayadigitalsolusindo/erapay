@@ -1,6 +1,6 @@
 import { dev } from '$app/env';
 import { fail, redirect } from '@sveltejs/kit';
-import { login, setSession } from '../../../lib/server/auth';
+import { login, setSession, type LoginResult } from '../../../lib/server/auth';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
@@ -30,10 +30,22 @@ export const actions: Actions = {
 			return fail(r.code === 'rate_limited' ? 429 : r.code === 'unavailable' ? 503 : 401, {
 				needMerchant: false,
 				email,
-				error: MESSAGES[r.code]
+				error: pesan(r)
 			});
 		}
 		setSession(cookies, r.token, r.maxAge, !dev);
 		redirect(303, '/dashboard');
 	}
 };
+
+function pesan(r: Extract<LoginResult, { ok: false }>): string {
+	if (r.code === 'rate_limited' && r.retryAfter) {
+		return `Terlalu banyak percobaan. Coba lagi dalam ${Math.ceil(r.retryAfter / 60)} menit.`;
+	}
+	if (r.code === 'invalid' && r.attemptsLeft !== undefined) {
+		return r.attemptsLeft > 0
+			? `${MESSAGES.invalid} Sisa ${r.attemptsLeft} kesempatan sebelum akun dikunci sementara.`
+			: `${MESSAGES.invalid} Percobaan berikutnya akan dikunci sementara.`;
+	}
+	return MESSAGES[r.code];
+}

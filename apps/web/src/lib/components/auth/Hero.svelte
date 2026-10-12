@@ -1,25 +1,24 @@
+<script lang="ts">
+	import { getI18n } from '../../i18n/i18n.svelte';
+	import Logo from './Logo.svelte';
+
+	const { t } = getI18n();
+</script>
+
 <section class="hidden [text-shadow:0_2px_14px_rgb(74_5_16/.55)] lg:block">
 	<div class="animate-naik inline-flex items-center gap-3">
-		<div class="relative grid size-12 place-items-center rounded-2xl bg-merah-gelap/70 shadow-lg shadow-black/30 backdrop-blur">
-			<span class="absolute inset-0 rounded-2xl ring-2 ring-emas/70"></span>
-			<svg viewBox="0 0 32 32" class="size-8" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="url(#emas)" stroke="#8a0a1f" stroke-width="1.5" /><text x="16" y="21.6" text-anchor="middle" font-family="Fraunces, serif" font-weight="800" font-size="16" fill="#8a0a1f">E</text></svg>
-		</div>
-		<span class="font-display text-2xl font-extrabold tracking-[0.18em]">ERAPAY</span>
+		<Logo class="h-16 drop-shadow-lg" />
 	</div>
 
 	<h1 class="animate-naik font-display mt-6 text-4xl leading-[1.1] font-extrabold [animation-delay:.1s] xl:text-5xl">
-		Bayar dengan <span class="teks-bendera">bangga</span>,<br />
-		dari Sabang<br />sampai Merauke.
+		{t('auth.hero.l1')} <span class="teks-bendera">{t('auth.hero.pride')}</span>,<br />
+		{t('auth.hero.l2')}<br />{t('auth.hero.l3')}
 	</h1>
 
 	<div class="garis-emas animate-kilau mt-6 h-0.5 w-48 rounded-full"></div>
 
-	<p class="animate-naik mt-6 max-w-md text-lg/8 text-gading/80 [animation-delay:.2s]">
-		Terima pembayaran QRIS untuk usaha Anda. Cepat, aman, dan bisa dilacak sampai ke rupiah terakhir.
-	</p>
-
 	<div class="animate-naik relative mt-6 [animation-delay:.3s]">
-		<svg viewBox="0 0 800 470" class="w-full max-w-2xl drop-shadow-[0_20px_40px_rgb(0_0_0/.3)]" role="img" aria-label="Pelanggan memindai kode QR untuk membayar di warung sementara pedagang tersenyum">
+		<svg viewBox="0 0 800 470" class="w-full max-w-2xl drop-shadow-[0_20px_40px_rgb(0_0_0/.3)]" role="img" aria-label={t('auth.hero.alt')}>
 			<ellipse cx="400" cy="446" rx="380" ry="13" fill="#000" fill-opacity=".25" />
 
 			<rect x="432" y="150" width="10" height="272" fill="#8a0a1f" />
@@ -98,11 +97,5 @@
 				</g>
 			{/each}
 		</svg>
-
-		<div class="mt-3 flex flex-nowrap gap-1.5 text-[11px] font-semibold whitespace-nowrap xl:gap-2 xl:text-xs">
-			<span class="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 backdrop-blur">Scan &amp; bayar</span>
-			<span class="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 backdrop-blur">Dari warung sampai toko online</span>
-			<span class="rounded-full border border-emas/60 bg-emas/15 px-3 py-1.5 text-emas backdrop-blur">Aman &amp; terlacak</span>
-		</div>
 	</div>
 </section>

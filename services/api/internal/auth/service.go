@@ -25,6 +25,18 @@ var (
 	ErrForbidden          = errors.New("forbidden")
 )
 
+// RateLimitedError carries how long the caller must wait. errors.Is(err, ErrRateLimited) holds.
+type RateLimitedError struct{ RetryAfter time.Duration }
+
+func (e *RateLimitedError) Error() string   { return ErrRateLimited.Error() }
+func (e *RateLimitedError) Is(t error) bool { return t == ErrRateLimited }
+
+// BadCredentialsError carries the failed attempts left before lockout. errors.Is(err, ErrInvalidCredentials) holds.
+type BadCredentialsError struct{ AttemptsLeft int }
+
+func (e *BadCredentialsError) Error() string   { return ErrInvalidCredentials.Error() }
+func (e *BadCredentialsError) Is(t error) bool { return t == ErrInvalidCredentials }
+
 type Config struct {
 	SessionTTL   time.Duration // absolute lifetime
 	IdleTTL      time.Duration // max gap between requests
@@ -100,7 +112,7 @@ func (s *Service) CreateUser(ctx context.Context, email, password string) (strin
 // token (shown to the caller once; only its sha256 is stored).
 func (s *Service) Login(ctx context.Context, in LoginInput) (string, *Principal, error) {
 	ek := emailKey(in.Email)
-	attemptID, err := s.reserveAttempt(ctx, ek, in.IP)
+	attemptID, left, err := s.reserveAttempt(ctx, ek, in.IP)
 	if err != nil {
 		if errors.Is(err, ErrRateLimited) {
 			s.audit(ctx, "", "auth.login.rate_limited", in, ek)
@@ -112,14 +124,14 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (string, *Principal,
 	if errors.Is(err, pgx.ErrNoRows) {
 		VerifyPassword(in.Password, s.dummy()) // equalize timing; result ignored
 		s.audit(ctx, "", "auth.login.failed", in, ek)
-		return "", nil, ErrInvalidCredentials
+		return "", nil, &BadCredentialsError{left}
 	}
 	if err != nil {
 		return "", nil, err
 	}
 	if !VerifyPassword(in.Password, hash) || status != "active" {
 		s.audit(ctx, uid, "auth.login.failed", in, ek)
-		return "", nil, ErrInvalidCredentials
+		return "", nil, &BadCredentialsError{left}
 	}
 
 	merchantID, err := s.pickMerchant(ctx, uid, in.MerchantID)
@@ -164,37 +176,58 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (string, *Principal,
 // reserveAttempt enforces the rate limit and records the attempt as a failure
 // BEFORE the password is checked, under advisory locks, so parallel guesses
 // cannot exceed the limit. A successful login later flips succeeded=true.
-func (s *Service) reserveAttempt(ctx context.Context, ek, ip string) (int64, error) {
+func (s *Service) reserveAttempt(ctx context.Context, ek, ip string) (int64, int, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	// Fixed lock order (email, then ip) avoids deadlocks.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('login:e:'||$1, 0))`, ek); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('login:i:'||$1, 0))`, ip); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	since := s.now().Add(-s.cfg.AttemptWin)
+	now := s.now()
+	since := now.Add(-s.cfg.AttemptWin)
 	var byEmail, byIP int
 	if err := tx.QueryRow(ctx, `
 		SELECT count(*) FILTER (WHERE email_key = $1), count(*) FILTER (WHERE ip = $2)
 		FROM auth_attempts WHERE NOT succeeded AND created_at > $3 AND (email_key = $1 OR ip = $2)`,
 		ek, ip, since).Scan(&byEmail, &byIP); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if byEmail >= s.cfg.MaxFailEmail || byIP >= s.cfg.MaxFailIP {
-		return 0, ErrRateLimited
+		// Lockout lifts when enough old failures leave the window: the (count-max+1)-th oldest per dimension.
+		var wait time.Duration
+		for _, d := range []struct {
+			col      string
+			val      string
+			n, limit int
+		}{{"email_key", ek, byEmail, s.cfg.MaxFailEmail}, {"ip", ip, byIP, s.cfg.MaxFailIP}} {
+			if d.n < d.limit {
+				continue
+			}
+			var oldest time.Time
+			if err := tx.QueryRow(ctx, `SELECT created_at FROM auth_attempts WHERE NOT succeeded AND created_at > $2 AND `+d.col+` = $1
+				ORDER BY created_at OFFSET $3 LIMIT 1`, d.val, since, d.n-d.limit).Scan(&oldest); err != nil {
+				return 0, 0, err
+			}
+			if w := oldest.Add(s.cfg.AttemptWin).Sub(now); w > wait {
+				wait = w
+			}
+		}
+		return 0, 0, &RateLimitedError{RetryAfter: wait}
 	}
 	var id int64
 	if err := tx.QueryRow(ctx,
 		`INSERT INTO auth_attempts (email_key, ip, created_at) VALUES ($1,$2,$3) RETURNING id`,
-		ek, ip, s.now()).Scan(&id); err != nil {
-		return 0, err
+		ek, ip, now).Scan(&id); err != nil {
+		return 0, 0, err
 	}
-	return id, tx.Commit(ctx)
+	left := min(s.cfg.MaxFailEmail-byEmail-1, s.cfg.MaxFailIP-byIP-1)
+	return id, left, tx.Commit(ctx)
 }
 
 func (s *Service) lookupUser(ctx context.Context, email string) (id, hash, status string, err error) {

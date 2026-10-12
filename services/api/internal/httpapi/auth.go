@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -102,13 +104,22 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 	})
 	switch {
 	case errors.Is(err, auth.ErrRateLimited):
-		w.Header().Set("Retry-After", "900")
+		secs := 900
+		var rl *auth.RateLimitedError
+		if errors.As(err, &rl) {
+			secs = int(math.Ceil(rl.RetryAfter.Seconds()))
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
 		writeError(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "too many attempts, try again later", true)
 		return
 	case errors.Is(err, auth.ErrMerchantRequired):
 		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "merchant_id is required for this account", false)
 		return
 	case errors.Is(err, auth.ErrInvalidCredentials):
+		var bc *auth.BadCredentialsError
+		if errors.As(err, &bc) {
+			w.Header().Set("X-Attempts-Left", strconv.Itoa(max(bc.AttemptsLeft, 0)))
+		}
 		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "invalid credentials", false)
 		return
 	case err != nil:

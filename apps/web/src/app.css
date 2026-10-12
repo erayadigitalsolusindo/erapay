@@ -131,3 +131,18 @@
 @media (prefers-color-scheme: dark) {
 	.adm[data-theme='system'] .text-merah, .adm[data-theme='system'] .text-red-700 { color: #ff7a8c; }
 }
+
+/* Mode gelap halaman masuk/daftar: latar digelapkan lewat overlay di layout, kartu memakai warna panel admin. */
+.auth-gelap .kartu { background: #271216; color: #f6e7e7; }
+.auth-gelap .kartu .text-merah-gelap { color: #fff; }
+.auth-gelap .kartu .text-merah { color: #ff7a8c; }
+.auth-gelap .kartu .text-neutral-800, .auth-gelap .kartu .text-neutral-700 { color: #f6e7e7; }
+.auth-gelap .kartu .text-neutral-600, .auth-gelap .kartu .text-neutral-500 { color: #d3bcbe; }
+.auth-gelap .kartu .text-neutral-400 { color: #b99ea0; }
+.auth-gelap .kartu input:not([type='radio']):not([type='checkbox']) { background: #1a0c0f; border-color: #5a3a40; color: #f6e7e7; }
+.auth-gelap .kartu .bg-neutral-200\/70 { background: #1a0c0f; }
+.auth-gelap .kartu .bg-neutral-200 { background: #4a2f34; }
+.auth-gelap .kartu input[type='radio'] + span { color: #d3bcbe; }
+.auth-gelap .kartu input[type='radio']:checked + span { background: #3a1c22; color: #ff7a8c; }
+.auth-gelap .kartu .bg-red-50 { background: #3a1418; border-color: #7a2630; color: #ffc9d0; }
+.auth-gelap .kartu .text-red-800 { color: #ffc9d0; }

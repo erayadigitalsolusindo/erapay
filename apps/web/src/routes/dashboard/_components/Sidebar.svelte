@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import { aktif, visible } from './nav';
+	import Logo from '../../../lib/components/auth/Logo.svelte';
 
 	let { user }: { user: { email: string; merchantId: string; permissions?: string[] } } = $props();
 	const { t } = getI18n();
@@ -10,12 +11,9 @@
 </script>
 
 <aside class="sidebar-batik relative flex flex-col overflow-hidden p-4 text-gading lg:sticky lg:top-0 lg:h-screen">
-	<a href="/dashboard" class="mb-4 flex items-center gap-3 px-2 py-3 lg:mb-7">
-		<div class="grid size-10 place-items-center rounded-full border-2 border-[#fff3c4] bg-emas font-display text-xl font-extrabold text-merah-tua">E</div>
-		<div>
-			<div class="font-display text-lg font-extrabold tracking-[.18em]">ERAPAY</div>
-			<div class="text-[10px] tracking-widest text-white/75">PAYMENT OPERATIONS</div>
-		</div>
+	<a href="/dashboard" class="mb-4 flex flex-col items-center px-2 py-3 lg:mb-7 lg:items-start" aria-label="EraPay">
+		<Logo class="h-16 lg:h-12" />
+		<div class="mt-2 text-[10px] tracking-widest text-white/75">PAYMENT OPERATIONS</div>
 	</a>
 
 	<div class="mb-2 hidden px-3 text-[10px] font-bold tracking-[.16em] text-white/70 uppercase lg:block">{t('nav.workspace')}</div>
