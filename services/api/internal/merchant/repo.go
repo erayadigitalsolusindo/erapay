@@ -17,10 +17,11 @@ type Repo struct{ db *pgxpool.Pool }
 func NewRepo(db *pgxpool.Pool) *Repo { return &Repo{db: db} }
 
 type Profile struct {
-	ID               string `json:"id"`
-	LegalName        string `json:"legal_name"`
-	DisplayName      string `json:"display_name"`
-	OnboardingStatus string `json:"onboarding_status"`
+	ID               string  `json:"id"`
+	LegalName        string  `json:"legal_name"`
+	DisplayName      string  `json:"display_name"`
+	OnboardingStatus string  `json:"onboarding_status"`
+	ReviewNote       *string `json:"review_note"` // reason given when an application was rejected
 }
 
 type Outlet struct {
@@ -31,8 +32,8 @@ type Outlet struct {
 func (r *Repo) Profile(ctx context.Context, merchantID string) (Profile, error) {
 	var p Profile
 	err := r.db.QueryRow(ctx,
-		`SELECT id::text, legal_name, display_name, onboarding_status FROM merchants WHERE id = $1`,
-		merchantID).Scan(&p.ID, &p.LegalName, &p.DisplayName, &p.OnboardingStatus)
+		`SELECT id::text, legal_name, display_name, onboarding_status, review_note FROM merchants WHERE id = $1`,
+		merchantID).Scan(&p.ID, &p.LegalName, &p.DisplayName, &p.OnboardingStatus, &p.ReviewNote)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound
 	}

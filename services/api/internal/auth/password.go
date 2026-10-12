@@ -24,6 +24,17 @@ const (
 	maxPasswordLen = 256 // bound CPU/memory work on attacker-supplied input
 )
 
+// MaxNewPasswordLen bounds what sign-up and reset accept (the hash itself tolerates more).
+const MaxNewPasswordLen = 128
+
+// ValidateNewPassword is the one password policy for every flow that sets a password.
+func ValidateNewPassword(pw string) error {
+	if len(pw) < MinPasswordLen || len(pw) > MaxNewPasswordLen {
+		return fmt.Errorf("password must be %d-%d characters", MinPasswordLen, MaxNewPasswordLen)
+	}
+	return nil
+}
+
 var ErrWeakPassword = fmt.Errorf("password must be %d-%d characters", MinPasswordLen, maxPasswordLen)
 
 // HashPassword returns a PHC-format argon2id hash.

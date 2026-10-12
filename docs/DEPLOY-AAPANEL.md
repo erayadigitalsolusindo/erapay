@@ -69,12 +69,21 @@ Pada deploy pertama, jika service belum jalan: `sudo systemctl start erapay-api`
 
 Log: `journalctl -u erapay-api -f`. Jangan jalankan `migrate down`/`reset` di server.
 
-Admin pertama (tidak ada signup publik):
+Admin pertama (akun staf tidak bisa mendaftar sendiri):
 ```bash
 cd /www/wwwroot/erapay-api.erayadigital.co.id
 set -a; . ./erapay.env; set +a
 ERAPAY_BOOTSTRAP_EMAIL=... ERAPAY_BOOTSTRAP_PASSWORD='...' ./bin/erapay-bootstrap platform-admin
 ```
+Kata sandi minimal 12 karakter. Akun Finance (review settlement, payout, refund, dan antrean pendaftaran merchant; tidak bisa menyetujui merchant) dibuat dengan cara yang sama: `./bin/erapay-bootstrap finance`.
+
+**Pendaftaran merchant mandiri** (halaman `/register`): merchant baru berstatus `submitted`. Ia bisa login dan melihat dashboard, tetapi pembayaran dan payout ditolak sampai disetujui. Admin (`super_admin`) membuka **Review merchant** (`/dashboard/finance/merchants`), mengisi MDR dan fee platform (basis poin), lalu menyetujui; itu membuat plan harga QRIS dan mengaktifkan merchant. Persetujuan **belum** mengaktifkan pembayaran: akun gateway (`merchant_gateway_accounts`, DOKU) tetap harus diaktifkan terpisah, sama seperti merchant buatan `bootstrap merchant`. 
+
+Alur lengkapnya: daftar → email berisi tautan verifikasi → pemilik membuka tautan dan menekan tombol → (opsional) reviewer menekan **Mulai review** atau **Minta perbaikan** (pemohon memperbaiki di menu **Status akun** lalu kirim ulang) → `super_admin` menyetujui. Persetujuan **ditolak** (`EMAIL_NOT_VERIFIED`) selama email pemilik belum diverifikasi. Lupa sandi: `/forgot-password` mengirim tautan sekali pakai berlaku 1 jam; memakainya menutup semua sesi akun itu.
+
+**Email wajib dikonfigurasi di production** (`ERAPAY_SMTP_HOST`, `ERAPAY_SMTP_PORT`, `ERAPAY_SMTP_USER`, `ERAPAY_SMTP_PASSWORD`, `ERAPAY_SMTP_FROM`, `ERAPAY_WEB_URL` di `erapay.env`). Tanpa `ERAPAY_SMTP_HOST`, API menulis peringatan saat start dan endpoint daftar, verifikasi, dan reset sandi tidak ada (404): sengaja, agar tautan tidak pernah "terkirim" ke kehampaan. Klien SMTP menolak koneksi tanpa enkripsi ke host non-lokal. Akun yang dibuat lewat `bootstrap` otomatis dianggap terverifikasi.
+
+Batas: pendaftaran 5 percobaan per IP per jam (`ERAPAY_REGISTER_PER_IP_HOUR`); kirim ulang verifikasi dan lupa sandi 10 per IP dan 3 per alamat email per jam. Pastikan `ERAPAY_TRUSTED_PROXIES` benar agar IP klien yang dihitung, bukan IP proxy. Jawaban daftar, kirim ulang, dan lupa sandi sama untuk email terdaftar maupun tidak; pemilik email yang sudah terdaftar diberi tahu lewat email.
 
 Merchant pertama (mis. aplikasi kasir ARUS) beserta user owner-nya. Aman dijalankan di production (berbeda dengan `dev-merchant`). Nama dari env; tarif QRIS (basis poin, 100 = 1%) adalah keputusan bisnis sehingga tidak ada nilai bawaan. Tanpa kedua tarif, merchant dibuat tetapi pembayarannya ditolak (`PAYMENT_METHOD_UNAVAILABLE`) sampai plan harga di-assign:
 ```bash

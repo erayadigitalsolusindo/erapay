@@ -1,25 +1,48 @@
 import { fail, redirect } from '@sveltejs/kit';
+import { register } from '../../../lib/server/auth';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
 	if (locals.user) redirect(303, '/dashboard');
 };
 
-// Belum ada endpoint pendaftaran di Go API, dan "merchant daftar mandiri atau dibuat tim?"
-// masih open question (docs/prd/open-questions.md). Form sudah divalidasi di sini, tetapi
-// tidak ada akun yang dibuat. Saat endpoint ada: panggil di sini lalu kembalikan
-// { success: true, name, email } agar UI menampilkan layar sukses.
+const MESSAGES = {
+	rate_limited: 'Terlalu banyak pendaftaran dari jaringan ini. Coba lagi dalam beberapa waktu.',
+	unavailable: 'Layanan sedang tidak tersedia. Coba lagi sebentar lagi.',
+	invalid: 'Data pendaftaran belum valid. Periksa kembali isian Anda.'
+} as const;
+
+// Pendaftaran membuat akun merchant berstatus "submitted"; tim EraPay menyetujuinya (dan menetapkan tarif)
+// sebelum pembayaran bisa dipakai. Semua aturan ada di Go; di sini hanya membentuk permintaan dan pesan.
 export const actions: Actions = {
-	default: async ({ request }) => {
+	default: async ({ request, fetch, getClientAddress }) => {
 		const f = await request.formData();
-		const email = String(f.get('email') ?? '').trim();
-		const name = String(f.get('name') ?? '').trim();
-		if (!name || !email) return fail(400, { success: false as const, name, email, error: 'Nama dan email wajib diisi.' });
-		return fail(503, {
-			success: false as const,
+		const s = (k: string) => String(f.get(k) ?? '').trim();
+		const name = s('name');
+		const email = s('email');
+		const businessName = s('business_name');
+		const keep = { name, email, business_name: businessName, success: false as const };
+
+		const password = String(f.get('password') ?? '');
+		if (password !== String(f.get('password_confirm') ?? '')) return fail(400, { ...keep, error: 'Kata sandi tidak sama.' });
+
+		const r = await register(fetch, getClientAddress(), {
+			account_type: s('jenis') === 'usaha' ? 'business' : 'individual',
 			name,
+			business_name: businessName,
 			email,
-			error: 'Pendaftaran mandiri belum dibuka. Akun dibuat oleh tim EraPay; hubungi kami untuk mendapatkan akses.'
+			phone: s('phone'),
+			password,
+			accept_terms: f.get('agree') === 'on'
 		});
+		if (!r.ok) {
+			// Pesan validasi dari Go (bahasa Inggris, aman ditampilkan) ikut disertakan agar pengguna tahu bagian mana.
+			const detail = r.code === 'invalid' && r.message ? ` (${r.message})` : '';
+			return fail(r.code === 'rate_limited' ? 429 : r.code === 'unavailable' ? 503 : 400, {
+				...keep,
+				error: MESSAGES[r.code] + detail
+			});
+		}
+		return { success: true as const, name, email, business_name: businessName };
 	}
 };

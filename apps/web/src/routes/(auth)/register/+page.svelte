@@ -9,6 +9,7 @@
 
 	let jenis = $state('pribadi');
 	let nama = $state(untrack(() => form?.name ?? ''));
+	let usaha = $state(untrack(() => form?.business_name ?? ''));
 	let email = $state(untrack(() => form?.email ?? ''));
 	let hp = $state('');
 	let sandi = $state('');
@@ -22,10 +23,10 @@
 	const WARNA = ['#ef4444', '#ef4444', '#f59e0b', '#84cc16', '#16a34a'];
 	const skor = $derived.by(() => {
 		let s = 0;
-		if (sandi.length >= 8) s++;
+		if (sandi.length >= 12) s++;
 		if (/[a-z]/.test(sandi) && /[A-Z]/.test(sandi)) s++;
-		if (/\d/.test(sandi)) s++;
-		if (/[^A-Za-z0-9]/.test(sandi) || sandi.length >= 12) s++;
+		if (/\d/.test(sandi) && /[^A-Za-z0-9]/.test(sandi)) s++;
+		if (sandi.length >= 16) s++;
 		return s;
 	});
 
@@ -42,7 +43,8 @@
 			nama: nama.trim().length >= 3 ? '' : 'Masukkan nama lengkap (minimal 3 huruf).',
 			email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? '' : 'Masukkan alamat email yang valid.',
 			hp: /^8\d{8,11}$/.test(nomor) ? '' : 'Nomor ponsel tidak valid (contoh: 812 3456 7890).',
-			sandi: sandi.length >= 8 && /[A-Za-z]/.test(sandi) && /\d/.test(sandi) ? '' : 'Minimal 8 karakter, kombinasi huruf dan angka.',
+			usaha: jenis !== 'usaha' || usaha.trim().length >= 3 ? '' : 'Masukkan nama usaha (minimal 3 huruf).',
+			sandi: sandi.length >= 12 && sandi.length <= 128 ? '' : 'Kata sandi 12 sampai 128 karakter.',
 			sandi2: sandi && sandi === sandi2 ? '' : 'Kata sandi tidak sama.',
 			setuju: setuju ? '' : 'Anda perlu menyetujui syarat & ketentuan.'
 		};
@@ -57,8 +59,8 @@
 		<div class="animate-naik mx-auto grid size-20 place-items-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/40">
 			<svg viewBox="0 0 24 24" class="size-10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
 		</div>
-		<h2 class="animate-naik font-display mt-5 text-2xl font-extrabold text-merah-gelap [animation-delay:.1s]">Akun berhasil dibuat!</h2>
-		<p class="animate-naik mt-2 text-sm/6 text-neutral-600 [animation-delay:.2s]">Selamat datang, <b>{form.name}</b>.<br />Silakan masuk dengan <b>{form.email}</b>.</p>
+		<h2 class="animate-naik font-display mt-5 text-2xl font-extrabold text-merah-gelap [animation-delay:.1s]">Pendaftaran diterima!</h2>
+		<p class="animate-naik mt-2 text-sm/6 text-neutral-600 [animation-delay:.2s]">Terima kasih, <b>{form.name}</b>.<br />Kami mengirim tautan konfirmasi ke <b>{form.email}</b>. Buka tautan itu untuk memverifikasi email; setelahnya tim EraPay meninjau akun Anda dan pembayaran bisa dipakai setelah disetujui. Tidak menerima email? Cek folder spam, lalu masuk dan kirim ulang dari menu Status akun.</p>
 		<a
 			href="/login"
 			onclick={(e) => { e.preventDefault(); auth.pindah('/login'); }}
@@ -73,7 +75,7 @@
 
 	<p class="mt-5 text-sm font-semibold tracking-widest text-merah uppercase lg:mt-0">Bergabung bersama kami</p>
 	<h2 class="font-display mt-1 text-3xl font-extrabold text-merah-gelap">Buat akun ERAPAY</h2>
-	<p class="mt-2 text-sm text-neutral-500">Gratis dan selesai kurang dari 2 menit.</p>
+	<p class="mt-2 text-sm text-neutral-500">Gratis dan selesai kurang dari 2 menit. Akun ditinjau tim EraPay sebelum aktif.</p>
 
 	<form
 		method="POST"
@@ -105,13 +107,16 @@
 			{/each}
 		</div>
 
+		{#if jenis === 'usaha'}
+			<Field compact id="r-usaha" name="business_name" label="Nama usaha" icon="store" autocomplete="organization" placeholder="mis. Toko Maju Jaya" bind:value={usaha} error={err.usaha} />
+		{/if}
 		<Field compact id="r-nama" name="name" label="Nama lengkap" icon="user" autocomplete="name" placeholder="Sesuai KTP" bind:value={nama} error={err.nama} />
 		<Field compact id="r-email" name="email" label="Email" icon="mail" type="email" autocomplete="email" placeholder="nama@usaha.co.id" bind:value={email} error={err.email} />
 		<Field compact id="r-hp" name="phone" label="Nomor ponsel" icon="phone" prefix="+62" type="tel" autocomplete="tel-national" placeholder="812 3456 7890" bind:value={hp} error={err.hp} />
 
 		<Field
 			compact id="r-sandi" name="password" label="Kata sandi" icon="lock"
-			type={showPw ? 'text' : 'password'} autocomplete="new-password" placeholder="Minimal 8 karakter"
+			type={showPw ? 'text' : 'password'} autocomplete="new-password" placeholder="Minimal 12 karakter"
 			bind:value={sandi} error={err.sandi}
 		>
 			{#snippet trailing()}
