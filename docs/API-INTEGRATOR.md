@@ -76,6 +76,12 @@ Tampilkan `qr_code.value` sebagai QR. Pelanggan membayar **nominal transaksi tan
 
 Jangan menandai pesanan lunas dari layar/redirect pelanggan; gunakan `status == "succeeded"` dari API atau webhook.
 
+### Daftar transaksi
+`GET /payments?status=&merchant_reference=&from=&to=&limit=&cursor=` (scope `payment:read`). Terbaru lebih dulu, maks 100 per halaman (default 25). `from` dan `to` berupa tanggal `YYYY-MM-DD` (hari WIB, `to` inklusif) atau RFC 3339 (`to` eksklusif). `merchant_reference` dicocokkan persis. Bila ada halaman berikutnya, respons memuat `next_cursor`: kirim apa adanya sebagai `cursor` (nilai opak; tetap stabil walau ada transaksi baru masuk). Kode QR tidak pernah ada di daftar; ambil lewat `GET /payments/{id}` selama status masih `pending`.
+
+### Ringkasan periode
+`GET /reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` (scope `report:read`; default 30 hari terakhir, maks 366 hari). Berisi `totals` (jumlah per status; `gross`, `mdr_fee`, `platform_fee`, `merchant_net` untuk transaksi berhasil; dan `refunded`) serta deret harian `daily` (dihitung pada hari transaksi berhasil, zona `Asia/Jakarta`). Selalu berlaku `gross = mdr_fee + platform_fee + merchant_net`.
+
 ## 5. Saldo
 
 `GET /balance` (scope `report:read`, atau sesi dashboard):
