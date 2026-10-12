@@ -69,12 +69,15 @@ Pada deploy pertama, jika service belum jalan: `sudo systemctl start erapay-api`
 
 Log: `journalctl -u erapay-api -f`. Jangan jalankan `migrate down`/`reset` di server.
 
-Admin pertama (tidak ada signup publik):
+Admin pertama (akun staf tidak bisa mendaftar sendiri):
 ```bash
 cd /www/wwwroot/erapay-api.erayadigital.co.id
 set -a; . ./erapay.env; set +a
 ERAPAY_BOOTSTRAP_EMAIL=... ERAPAY_BOOTSTRAP_PASSWORD='...' ./bin/erapay-bootstrap platform-admin
 ```
+Kata sandi minimal 12 karakter. Akun Finance (review settlement, payout, refund, dan antrean pendaftaran merchant; tidak bisa menyetujui merchant) dibuat dengan cara yang sama: `./bin/erapay-bootstrap finance`.
+
+**Pendaftaran merchant mandiri** (halaman `/register`): merchant baru berstatus `submitted`. Ia bisa login dan melihat dashboard, tetapi pembayaran dan payout ditolak sampai disetujui. Admin (`super_admin`) membuka **Review merchant** (`/dashboard/finance/merchants`), mengisi MDR dan fee platform (basis poin), lalu menyetujui; itu membuat plan harga QRIS dan mengaktifkan merchant. Persetujuan **belum** mengaktifkan pembayaran: akun gateway (`merchant_gateway_accounts`, DOKU) tetap harus diaktifkan terpisah, sama seperti merchant buatan `bootstrap merchant`. Batas pendaftaran: 5 percobaan per IP per jam; pastikan `ERAPAY_TRUSTED_PROXIES` benar agar IP klien yang dihitung, bukan IP proxy. Belum ada verifikasi email dan lupa sandi (lihat `docs/prd/open-questions.md`).
 
 Merchant pertama (mis. aplikasi kasir ARUS) beserta user owner-nya. Aman dijalankan di production (berbeda dengan `dev-merchant`). Nama dari env; tarif QRIS (basis poin, 100 = 1%) adalah keputusan bisnis sehingga tidak ada nilai bawaan. Tanpa kedua tarif, merchant dibuat tetapi pembayarannya ditolak (`PAYMENT_METHOD_UNAVAILABLE`) sampai plan harga di-assign:
 ```bash

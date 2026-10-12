@@ -35,6 +35,17 @@
 	<div class="min-w-0">
 		<Header user={data.user} bind:theme />
 		<main class="border-t border-ink/10 bg-page p-5 lg:p-8">
+			{#if data.onboarding}
+				<p class="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900" role="status">
+					{#if data.onboarding.status === 'rejected'}
+						{i18n.t('onb.banner.rejected', { note: data.onboarding.note ?? '—' })}
+					{:else if ['submitted', 'under_review', 'action_required'].includes(data.onboarding.status)}
+						{i18n.t('onb.banner.pending')}
+					{:else}
+						{i18n.t('onb.banner.other', { status: data.onboarding.status })}
+					{/if}
+				</p>
+			{/if}
 			{@render children()}
 			<footer class="muted mt-8 text-[10px]">{i18n.t('footer.tagline')}</footer>
 		</main>

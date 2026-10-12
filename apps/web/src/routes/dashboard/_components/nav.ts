@@ -68,6 +68,14 @@ export const nav: NavItem[] = [
 		desc: 'nav.fRefunds.desc',
 		permission: 'refund:review',
 		platform: true
+	},
+	{
+		href: '/dashboard/finance/merchants',
+		icon: '<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9v11h16V9"/><path d="m9 15 2 2 4-4"/>',
+		label: 'nav.fMerchants',
+		desc: 'nav.fMerchants.desc',
+		permission: 'merchant:review',
+		platform: true
 	}
 ];
 

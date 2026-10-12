@@ -186,6 +186,9 @@ func (d Deps) mountV1(r chi.Router) {
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(requireJSON)
 		r.Post("/auth/login", d.login)
+		if d.Onboarding != nil {
+			r.Post("/auth/register", d.register)
+		}
 		if d.APIKeys != nil {
 			r.With(d.requireAPIKey).Get("/api-keys/self", d.apiKeySelf)
 		}
@@ -206,6 +209,15 @@ func (d Deps) mountV1(r chi.Router) {
 			r.Get("/auth/me", d.me)
 			// Platform (Finance / Ops) endpoints: cross-tenant by design, gated by permission only.
 			r.Route("/admin", func(r chi.Router) {
+				if d.Onboarding != nil {
+					r.Group(func(r chi.Router) {
+						r.Use(requirePlatform)
+						r.With(requirePerm("merchant:review")).Get("/merchants", d.adminListMerchants)
+						r.With(requirePerm("merchant:review")).Get("/merchants/{id}", d.adminGetMerchant)
+						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/approve", d.adminApproveMerchant)
+						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/reject", d.adminRejectMerchant)
+					})
+				}
 				if d.Settlement != nil {
 					r.With(requirePerm("settlement:read")).Get("/unsettled-payments", d.listUnsettled)
 					r.With(requirePerm("settlement:read")).Get("/settlement-batches", d.listSettlementBatches)

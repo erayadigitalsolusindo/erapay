@@ -19,6 +19,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payout"
@@ -98,7 +99,7 @@ func run(log *slog.Logger) error {
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool),
+			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onboarding.NewService(pool),
 			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,

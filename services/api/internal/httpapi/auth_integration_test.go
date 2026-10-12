@@ -17,6 +17,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payout"
@@ -72,6 +73,7 @@ func setup(t *testing.T) *world {
 		Outbound:    outbound.NewService(db, testBox(t), log),
 		Settlement:  settlement.NewService(db),
 		Refunds:     refund.NewService(db),
+		Onboarding:  onboarding.NewService(db),
 		Payouts:     payout.NewService(db, testBox(t), payout.Config{DryRun: true, MinAmount: 10_000, MaxAmount: 1_000_000, DailyLimit: 5_000_000}),
 	}))
 	t.Cleanup(w.srv.Close)

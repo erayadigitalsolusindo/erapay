@@ -45,6 +45,41 @@ export async function login(
 	return { ok: false, code: 'unavailable' };
 }
 
+export type RegisterInput = {
+	account_type: 'individual' | 'business';
+	name: string;
+	business_name: string;
+	email: string;
+	phone: string;
+	password: string;
+	accept_terms: boolean;
+};
+export type RegisterResult =
+	| { ok: true }
+	| { ok: false; code: 'email_taken' | 'rate_limited' | 'invalid' | 'unavailable'; message?: string };
+
+/** Daftar merchant mandiri. Tidak membuat sesi: merchant baru berstatus "submitted" sampai disetujui admin. */
+export async function register(f: typeof fetch, clientIp: string, input: RegisterInput): Promise<RegisterResult> {
+	let res: Response;
+	try {
+		res = await f(`${BASE}/v1/auth/register`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', 'x-forwarded-for': clientIp },
+			body: JSON.stringify(input)
+		});
+	} catch {
+		return { ok: false, code: 'unavailable' };
+	}
+	if (res.status === 201) return { ok: true };
+	if (res.status === 409) return { ok: false, code: 'email_taken' };
+	if (res.status === 429) return { ok: false, code: 'rate_limited' };
+	if (res.status === 400) {
+		const body = await res.json().catch(() => null);
+		return { ok: false, code: 'invalid', message: body?.error?.message };
+	}
+	return { ok: false, code: 'unavailable' };
+}
+
 export async function fetchMe(f: typeof fetch, token: string): Promise<Me | null> {
 	try {
 		const res = await f(`${BASE}/v1/auth/me`, { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
