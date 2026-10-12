@@ -2,6 +2,7 @@
 //
 //	bootstrap platform-admin   create a super_admin
 //	bootstrap dev-merchant     create a demo merchant + owner (refused outside development)
+//	bootstrap reset-password   set a new password for the existing user ERAPAY_BOOTSTRAP_EMAIL
 //
 // Credentials come only from ERAPAY_BOOTSTRAP_EMAIL / ERAPAY_BOOTSTRAP_PASSWORD;
 // nothing secret is printed.
@@ -27,7 +28,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: bootstrap platform-admin|dev-merchant")
+		return fmt.Errorf("usage: bootstrap platform-admin|dev-merchant|reset-password")
 	}
 	url, email, pw := os.Getenv("ERAPAY_DATABASE_URL"), os.Getenv("ERAPAY_BOOTSTRAP_EMAIL"), os.Getenv("ERAPAY_BOOTSTRAP_PASSWORD")
 	if url == "" || email == "" || pw == "" {
@@ -72,6 +73,19 @@ func run(args []string) error {
 			return err
 		}
 		_ = audit.Record(ctx, db, audit.Entry{ActorID: uid, Action: "bootstrap.dev_merchant", EntityType: "merchant", EntityID: mid})
+	case "reset-password":
+		hash, err := auth.HashPassword(pw)
+		if err != nil {
+			return err
+		}
+		var uid string
+		if err := db.QueryRow(ctx, `UPDATE users SET password_hash = $2 WHERE lower(email) = lower($1) RETURNING id::text`, email, hash).Scan(&uid); err != nil {
+			return fmt.Errorf("user not found: %w", err)
+		}
+		if _, err := db.Exec(ctx, `UPDATE sessions SET revoked_at = now(), revoked_reason = 'password_reset' WHERE user_id = $1 AND revoked_at IS NULL`, uid); err != nil {
+			return err
+		}
+		_ = audit.Record(ctx, db, audit.Entry{ActorID: uid, Action: "bootstrap.reset_password", EntityType: "user", EntityID: uid})
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}

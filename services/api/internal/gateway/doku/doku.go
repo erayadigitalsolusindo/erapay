@@ -178,12 +178,21 @@ func (a *Adapter) accessToken(ctx context.Context, force bool) (string, error) {
 		AccessToken  string  `json:"accessToken"`
 		ExpiresIn    flexInt `json:"expiresIn"`
 		ResponseCode string  `json:"responseCode"`
+		ResponseMsg  string  `json:"responseMessage"`
 	}
 	_ = json.Unmarshal(raw, &out)
 	if resp.StatusCode != http.StatusOK || out.AccessToken == "" {
 		// No payment is attached to a token call, so a failure is safe to report as a plain error.
+		// DOKU responseMessage names the reason (unknown client, bad signature); it carries no secret.
+		msg := "could not obtain access token"
+		if m := strings.TrimSpace(out.ResponseMsg); m != "" {
+			if len(m) > 200 {
+				m = m[:200]
+			}
+			msg += ": " + m
+		}
 		return "", &gateway.Error{Kind: gateway.Rejected, Code: out.ResponseCode, HTTPStatus: resp.StatusCode,
-			Retryable: resp.StatusCode >= 500, Message: "could not obtain access token"}
+			Retryable: resp.StatusCode >= 500, Message: msg}
 	}
 	ttl := time.Duration(out.ExpiresIn) * time.Second
 	if ttl <= 0 {

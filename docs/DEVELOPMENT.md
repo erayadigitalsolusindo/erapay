@@ -11,7 +11,7 @@ make test                # semua test
 ```
 
 ### Windows PowerShell (tanpa WSL / tanpa make)
-Pasang: Go 1.24+, Node 22+, Docker Desktop (jalankan dulu), Git. Lalu:
+Pasang: Go 1.27+, Node 22+, Docker Desktop (jalankan dulu), Git. Lalu:
 ```powershell
 Copy-Item .env.example .env        # isi nilai lokal; jangan commit
 .\scripts\dev.ps1 install

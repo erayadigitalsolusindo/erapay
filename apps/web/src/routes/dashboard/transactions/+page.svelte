@@ -1,2 +1,3 @@
 <h1>Transaksi</h1>
-<p>Belum ada data. Daftar transaksi muncul setelah modul payment selesai.</p>
+<p><a href="/dashboard/transactions/new">Buat QRIS</a></p>
+<p>Daftar transaksi muncul setelah endpoint daftar payment tersedia.</p>

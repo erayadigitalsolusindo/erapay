@@ -1,0 +1,19 @@
+# Salin ke /etc/systemd/system/erapay-api.service
+# sudo systemctl daemon-reload && sudo systemctl enable --now erapay-api
+[Unit]
+Description=EraPay API
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=www
+Group=www
+WorkingDirectory=/www/wwwroot/erapay-api.erayadigital.co.id
+EnvironmentFile=/www/wwwroot/erapay-api.erayadigital.co.id/erapay.env
+ExecStart=/www/wwwroot/erapay-api.erayadigital.co.id/bin/erapay-api
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
