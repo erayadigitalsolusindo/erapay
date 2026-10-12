@@ -120,3 +120,6 @@ set -a; . ./erapay.env; set +a
 ./bin/erapay-webhookverify <id-di-tabel-webhook_captures>
 ```
 `MATCH` berarti notifikasi berikutnya akan diterapkan. Matikan `ERAPAY_WEBHOOK_CAPTURE` setelah selesai (capture menyimpan data pembayar).
+
+## 11. Troubleshooting
+Masalah yang pernah terjadi (QRIS "Belum pasti", webhook, login 403) beserta diagnosanya: `docs/TROUBLESHOOTING.md`.
