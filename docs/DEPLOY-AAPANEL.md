@@ -101,7 +101,8 @@ ADDRESS_HEADER=X-Forwarded-For
 XFF_DEPTH=2
 ```
    - `ORIGIN` BUKAN variabel runtime di adapter-node 6 (SvelteKit 3), jangan dipakai. Pemeriksaan CSRF form memakai `csrf.trustedOrigins` di `apps/web/vite.config.ts` (saat build); ubah daftar itu bila domain web berubah. Tanpa itu, Origin dibandingkan dengan alamat yang diturunkan dari header `Host`/`X-Forwarded-*` proxy, yang di Apache tanpa `ProxyPreserveHost On` berisi `127.0.0.1:3001` dan membuat login 403.
-   - Pastikan file env memakai akhir baris Unix (`sed -i 's/$//' erapay-web.env`); CRLF membuat nilai ikut membawa ``.
+   - Pastikan file env memakai akhir baris Unix: `sudo sed -i 's/\r$//' erapay-web.env` (CRLF membuat setiap nilai ikut membawa karakter `\r`). Hal yang sama berlaku untuk `erapay.env` milik API.
+   - Di Apache aaPanel, tambahkan di `/www/server/panel/vhost/apache/extension/erapay.erayadigital.co.id/erapay-proxy.conf` (opsional, tetapi membuat `Host` yang sampai ke Node benar): `ProxyPreserveHost On` dan `RequestHeader set X-Forwarded-Proto "https" env=HTTPS`, lalu `sudo apachectl configtest && sudo systemctl reload apache2`.
    - `ADDRESS_HEADER`+`XFF_DEPTH`: IP klien dipakai rate-limit login di API. `2` bila lewat Cloudflare + aaPanel; `1` bila langsung ke aaPanel.
 3. **Service systemd** (sekali). Sesuaikan path `node` di `ExecStart` bila bukan `/usr/bin/node`:
 ```bash
