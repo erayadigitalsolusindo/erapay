@@ -1,0 +1,20 @@
+# Salin ke /etc/systemd/system/erapay-web.service
+# Cek lokasi node: `which node`. Jika bukan /usr/bin/node (mis. nvm), ubah ExecStart ke path lengkapnya.
+# sudo systemctl daemon-reload && sudo systemctl enable --now erapay-web
+[Unit]
+Description=EraPay Web (SvelteKit)
+After=network.target erapay-api.service
+
+[Service]
+Type=simple
+User=www
+Group=www
+WorkingDirectory=/www/wwwroot/erapay.erayadigital.co.id
+EnvironmentFile=/www/wwwroot/erapay.erayadigital.co.id/erapay-web.env
+ExecStart=/usr/bin/node build
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
