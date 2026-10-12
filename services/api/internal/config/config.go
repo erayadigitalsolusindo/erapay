@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -30,6 +31,12 @@ type Config struct {
 	PayoutMax        int64         // ERAPAY_PAYOUT_MAX
 	PayoutDailyLimit int64         // ERAPAY_PAYOUT_DAILY_LIMIT, rolling 24h per merchant
 	PayoutCooling    time.Duration // ERAPAY_PAYOUT_COOLING, e.g. 24h: wait after an account is verified
+
+	// Outgoing email (sign-up verification, password reset). Without SMTP_HOST the email-sending endpoints
+	// stay disabled outside development, so a link can never be "sent" into the void.
+	SMTPHost, SMTPPort, SMTPUser, SMTPPass, SMTPFrom string
+	WebURL                                           string // ERAPAY_WEB_URL: public base URL of the dashboard, used in email links
+	RegisterPerIPHour                                int    // ERAPAY_REGISTER_PER_IP_HOUR: sign-up attempts per IP per hour
 }
 
 func Load() (Config, error) {
@@ -48,6 +55,26 @@ func Load() (Config, error) {
 		return c, errors.New("ERAPAY_REDIS_URL is required")
 	}
 	c.PayoutLive = os.Getenv("ERAPAY_PAYOUT_LIVE") == "1"
+	c.SMTPHost, c.SMTPPort, c.SMTPUser, c.SMTPPass, c.SMTPFrom =
+		os.Getenv("ERAPAY_SMTP_HOST"), get("ERAPAY_SMTP_PORT", "587"), os.Getenv("ERAPAY_SMTP_USER"), os.Getenv("ERAPAY_SMTP_PASSWORD"), os.Getenv("ERAPAY_SMTP_FROM")
+	c.WebURL = strings.TrimRight(strings.TrimSpace(os.Getenv("ERAPAY_WEB_URL")), "/")
+	if c.WebURL != "" {
+		u, err := url.Parse(c.WebURL)
+		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || (c.Env == "production" && u.Scheme != "https") {
+			return c, errors.New("ERAPAY_WEB_URL must be an absolute URL (https in production)")
+		}
+	}
+	if c.SMTPHost != "" && (c.SMTPFrom == "" || c.WebURL == "") {
+		return c, errors.New("ERAPAY_SMTP_FROM and ERAPAY_WEB_URL are required when ERAPAY_SMTP_HOST is set")
+	}
+	c.RegisterPerIPHour = 5
+	if v := os.Getenv("ERAPAY_REGISTER_PER_IP_HOUR"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return c, errors.New("ERAPAY_REGISTER_PER_IP_HOUR must be a positive integer")
+		}
+		c.RegisterPerIPHour = n
+	}
 	for _, p := range []struct {
 		env string
 		dst *int64

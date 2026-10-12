@@ -31,6 +31,13 @@ func main() {
 	}
 }
 
+// markVerified: accounts created here come from an operator, who vouches for the address
+// (self sign-up users must verify by email instead).
+func markVerified(ctx context.Context, db *pgxpool.Pool, uid string) error {
+	_, err := db.Exec(ctx, `UPDATE users SET email_verified_at = now() WHERE id = $1`, uid)
+	return err
+}
+
 func run(args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: bootstrap platform-admin|finance|merchant|dev-merchant|reset-password")
@@ -53,6 +60,9 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
+		if err := markVerified(ctx, db, uid); err != nil {
+			return err
+		}
 		if _, err := db.Exec(ctx, `INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE code = 'super_admin'`, uid); err != nil {
 			return err
 		}
@@ -60,6 +70,9 @@ func run(args []string) error {
 	case "finance":
 		uid, err := svc.CreateUser(ctx, email, pw)
 		if err != nil {
+			return err
+		}
+		if err := markVerified(ctx, db, uid); err != nil {
 			return err
 		}
 		if _, err := db.Exec(ctx, `INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE code = 'finance'`, uid); err != nil {
@@ -72,6 +85,9 @@ func run(args []string) error {
 		}
 		uid, err := svc.CreateUser(ctx, email, pw)
 		if err != nil {
+			return err
+		}
+		if err := markVerified(ctx, db, uid); err != nil {
 			return err
 		}
 		var mid string
@@ -102,6 +118,9 @@ func run(args []string) error {
 		}
 		uid, err := svc.CreateUser(ctx, email, pw)
 		if err != nil {
+			return err
+		}
+		if err := markVerified(ctx, db, uid); err != nil {
 			return err
 		}
 		var mid string

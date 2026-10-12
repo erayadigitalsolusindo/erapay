@@ -5,7 +5,7 @@ import type { Cookies } from '@sveltejs/kit';
 const BASE = process.env.ERAPAY_API_URL ?? 'http://localhost:8080';
 export const SESSION_COOKIE = 'erapay_session';
 
-export type Me = { id: string; email: string; merchantId: string; permissions: string[] };
+export type Me = { id: string; email: string; merchantId: string; emailVerified: boolean; permissions: string[] };
 
 export type LoginResult =
 	| { ok: true; token: string; maxAge: number }
@@ -54,38 +54,64 @@ export type RegisterInput = {
 	password: string;
 	accept_terms: boolean;
 };
-export type RegisterResult =
-	| { ok: true }
-	| { ok: false; code: 'email_taken' | 'rate_limited' | 'invalid' | 'unavailable'; message?: string };
+type Code = 'rate_limited' | 'invalid' | 'unavailable';
+export type RegisterResult = { ok: true } | { ok: false; code: Code; message?: string };
 
-/** Daftar merchant mandiri. Tidak membuat sesi: merchant baru berstatus "submitted" sampai disetujui admin. */
-export async function register(f: typeof fetch, clientIp: string, input: RegisterInput): Promise<RegisterResult> {
-	let res: Response;
+/** POST publik ke Go API (tanpa sesi). Mengembalikan status + badan JSON, atau null bila jaringan gagal. */
+async function publicPost(f: typeof fetch, path: string, clientIp: string, body: unknown) {
 	try {
-		res = await f(`${BASE}/v1/auth/register`, {
+		const res = await f(`${BASE}${path}`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json', 'x-forwarded-for': clientIp },
-			body: JSON.stringify(input)
+			body: JSON.stringify(body)
 		});
+		return { status: res.status, body: await res.json().catch(() => null) };
 	} catch {
-		return { ok: false, code: 'unavailable' };
+		return null;
 	}
-	if (res.status === 201) return { ok: true };
-	if (res.status === 409) return { ok: false, code: 'email_taken' };
-	if (res.status === 429) return { ok: false, code: 'rate_limited' };
-	if (res.status === 400) {
-		const body = await res.json().catch(() => null);
-		return { ok: false, code: 'invalid', message: body?.error?.message };
-	}
+}
+
+const fail = (r: { status: number; body: any } | null): { ok: false; code: Code; message?: string } =>
+	!r ? { ok: false, code: 'unavailable' }
+	: r.status === 429 ? { ok: false, code: 'rate_limited' }
+	: r.status === 400 ? { ok: false, code: 'invalid', message: r.body?.error?.message }
+	: { ok: false, code: 'unavailable' };
+
+/**
+ * Daftar merchant mandiri. Tidak membuat sesi. Jawaban Go sama untuk email baru maupun yang sudah terdaftar
+ * (202), jadi halaman ini tidak boleh menyiratkan salah satunya.
+ */
+export async function register(f: typeof fetch, clientIp: string, input: RegisterInput): Promise<RegisterResult> {
+	const r = await publicPost(f, '/v1/auth/register', clientIp, input);
+	return r?.status === 202 ? { ok: true } : fail(r);
+}
+
+/** Lupa sandi dan kirim ulang verifikasi: selalu 202 untuk alamat apa pun. */
+export async function requestEmail(f: typeof fetch, clientIp: string, kind: 'forgot-password' | 'resend-verification', email: string): Promise<RegisterResult> {
+	const r = await publicPost(f, `/v1/auth/${kind}`, clientIp, { email });
+	return r?.status === 202 ? { ok: true } : fail(r);
+}
+
+export type TokenResult = { ok: true } | { ok: false; code: 'invalid_token' | 'weak' | 'unavailable'; message?: string };
+
+async function useToken(f: typeof fetch, path: string, clientIp: string, body: unknown): Promise<TokenResult> {
+	const r = await publicPost(f, path, clientIp, body);
+	if (r?.status === 200) return { ok: true };
+	if (r?.status === 400 && r.body?.error?.code === 'INVALID_TOKEN') return { ok: false, code: 'invalid_token' };
+	if (r?.status === 400) return { ok: false, code: 'weak', message: r.body?.error?.message };
 	return { ok: false, code: 'unavailable' };
 }
+
+export const verifyEmail = (f: typeof fetch, clientIp: string, token: string) => useToken(f, '/v1/auth/verify-email', clientIp, { token });
+export const resetPassword = (f: typeof fetch, clientIp: string, token: string, password: string) =>
+	useToken(f, '/v1/auth/reset-password', clientIp, { token, password });
 
 export async function fetchMe(f: typeof fetch, token: string): Promise<Me | null> {
 	try {
 		const res = await f(`${BASE}/v1/auth/me`, { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
 		if (!res.ok) return null;
 		const b = await res.json();
-		return { id: b.user_id, email: b.email, merchantId: b.merchant_id, permissions: b.permissions };
+		return { id: b.user_id, email: b.email, merchantId: b.merchant_id, emailVerified: b.email_verified === true, permissions: b.permissions };
 	} catch {
 		return null;
 	}

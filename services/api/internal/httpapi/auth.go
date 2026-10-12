@@ -139,7 +139,7 @@ func meResponse(p *auth.Principal) map[string]any {
 	for c := range p.Permissions {
 		perms = append(perms, c)
 	}
-	return map[string]any{"user_id": p.UserID, "email": p.Email, "merchant_id": p.MerchantID, "permissions": perms}
+	return map[string]any{"user_id": p.UserID, "email": p.Email, "merchant_id": p.MerchantID, "email_verified": p.EmailVerified, "permissions": perms}
 }
 
 func (d Deps) me(w http.ResponseWriter, r *http.Request) {
@@ -186,8 +186,14 @@ func (d Deps) mountV1(r chi.Router) {
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(requireJSON)
 		r.Post("/auth/login", d.login)
-		if d.Onboarding != nil {
+		if d.Onboarding != nil && d.Onboarding.CanRegister() {
 			r.Post("/auth/register", d.register)
+		}
+		if d.Account != nil {
+			r.Post("/auth/verify-email", d.verifyEmail)
+			r.Post("/auth/resend-verification", d.resendVerification)
+			r.Post("/auth/forgot-password", d.forgotPassword)
+			r.Post("/auth/reset-password", d.resetPassword)
 		}
 		if d.APIKeys != nil {
 			r.With(d.requireAPIKey).Get("/api-keys/self", d.apiKeySelf)
@@ -214,6 +220,8 @@ func (d Deps) mountV1(r chi.Router) {
 						r.Use(requirePlatform)
 						r.With(requirePerm("merchant:review")).Get("/merchants", d.adminListMerchants)
 						r.With(requirePerm("merchant:review")).Get("/merchants/{id}", d.adminGetMerchant)
+						r.With(requirePerm("merchant:review")).Post("/merchants/{id}/start-review", d.adminReviewAction("start-review"))
+						r.With(requirePerm("merchant:review")).Post("/merchants/{id}/request-changes", d.adminReviewAction("request-changes"))
 						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/approve", d.adminApproveMerchant)
 						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/reject", d.adminRejectMerchant)
 					})
@@ -249,6 +257,9 @@ func (d Deps) mountV1(r chi.Router) {
 				r.Use(requireTenant)
 				r.With(requirePerm("merchant:read")).Get("/merchant/profile", d.merchantProfile)
 				r.With(requirePerm("outlet:read")).Get("/merchant/outlets", d.merchantOutlets)
+				if d.Onboarding != nil {
+					r.With(requirePerm("merchant:write")).Post("/merchant/resubmit", d.merchantResubmit)
+				}
 				if d.APIKeys != nil {
 					r.Group(func(r chi.Router) {
 						r.Use(requirePerm("api_key:manage"))

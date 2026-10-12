@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -24,10 +25,38 @@ func register(t *testing.T, w *world, email string) string {
 	t.Helper()
 	r := w.do(t, &http.Client{}, "POST", "/v1/auth/register", regBody(email), nil)
 	m := decode(t, r)
-	if r.StatusCode != 201 || m["status"] != "submitted" {
+	if r.StatusCode != 202 || m["status"] != "check_email" || len(m) != 1 {
 		t.Fatalf("register %s: %d %v", email, r.StatusCode, m)
 	}
-	return m["merchant_id"].(string)
+	var mid string
+	if err := w.db.QueryRow(t.Context(), `SELECT mu.merchant_id::text FROM merchant_users mu JOIN users u ON u.id = mu.user_id
+		WHERE lower(u.email) = lower($1)`, email).Scan(&mid); err != nil {
+		t.Fatal(err)
+	}
+	return mid
+}
+
+// mailLink returns the token of the newest email to `to` whose link contains `path`.
+func mailLink(t *testing.T, w *world, to, path string) string {
+	t.Helper()
+	sent := w.sent()
+	for i := len(sent) - 1; i >= 0; i-- {
+		if strings.EqualFold(sent[i].To, to) {
+			if _, after, ok := strings.Cut(sent[i].Body, path+"?token="); ok {
+				return strings.Fields(after)[0]
+			}
+		}
+	}
+	t.Fatalf("no %s email to %s in %d messages", path, to, len(sent))
+	return ""
+}
+
+func verifyOwner(t *testing.T, w *world, email string) {
+	t.Helper()
+	r := w.do(t, &http.Client{}, "POST", "/v1/auth/verify-email", `{"token":"`+mailLink(t, w, email, "/verify-email")+`"}`, nil)
+	if r.StatusCode != 200 {
+		t.Fatalf("verify %s: %d", email, r.StatusCode)
+	}
 }
 
 const signupPW = "abc12345xyz9"
@@ -98,6 +127,14 @@ func TestSignupReviewApproveHTTP(t *testing.T) {
 	if r := w.do(t, fin, "POST", "/v1/admin/merchants/"+mid+"/approve", `{"mdr_bps":70,"platform_bps":100}`, nil); r.StatusCode != 403 {
 		t.Fatalf("finance approve: %d", r.StatusCode)
 	}
+	// The owner's address is unproven, so approval is refused whatever the fees are.
+	if r := w.do(t, root, "POST", "/v1/admin/merchants/"+mid+"/approve", `{"mdr_bps":70,"platform_bps":100}`, nil); r.StatusCode != 409 || errCode(t, r) != "EMAIL_NOT_VERIFIED" {
+		t.Fatalf("approve before verification: %d", r.StatusCode)
+	}
+	if list[0].(map[string]any)["owner_email_verified"] != false {
+		t.Fatalf("queue should flag the unverified owner: %v", list[0])
+	}
+	verifyOwner(t, w, "budi@toko.test")
 	// Fees have no default: missing or out-of-range values are refused and nothing changes.
 	for _, b := range []string{`{}`, `{"mdr_bps":70}`, `{"mdr_bps":-1,"platform_bps":100}`, `{"mdr_bps":70,"platform_bps":10001}`} {
 		if r := w.do(t, root, "POST", "/v1/admin/merchants/"+mid+"/approve", b, nil); r.StatusCode != 400 {
@@ -228,12 +265,20 @@ func TestRegisterValidationAndDuplicatesHTTP(t *testing.T) {
 	// Individual: the owner's name doubles as the merchant name.
 	r := w.do(t, c, "POST", "/v1/auth/register",
 		`{"account_type":"individual","name":"Siti Aminah","email":"siti@toko.test","phone":"+62 812-3456-7890","password":"abc123456789","accept_terms":true}`, nil)
-	if r.StatusCode != 201 {
+	if r.StatusCode != 202 {
 		t.Fatalf("individual: %d", r.StatusCode)
 	}
 	// The email is taken (case-insensitive), the original account is untouched, and nothing orphaned.
-	if r := w.do(t, c, "POST", "/v1/auth/register", regBody("SITI@toko.test"), nil); r.StatusCode != 409 {
-		t.Fatalf("duplicate: %d", r.StatusCode)
+	before := len(w.sent())
+	r2 := w.do(t, c, "POST", "/v1/auth/register", regBody("SITI@toko.test"), nil)
+	body := decode(t, r2)
+	if r2.StatusCode != 202 || body["status"] != "check_email" || len(body) != 1 {
+		t.Fatalf("duplicate must look exactly like a new sign-up: %d %v", r2.StatusCode, body)
+	}
+	// Only the real owner hears about it, and it carries no verification link.
+	sent := w.sent()
+	if len(sent) != before+1 || !strings.EqualFold(sent[before].To, "siti@toko.test") || strings.Contains(sent[before].Body, "token=") {
+		t.Fatalf("duplicate notice: %v", sent[before:])
 	}
 	var merchants, owners int
 	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM merchants WHERE legal_name = 'Toko Budi'`).Scan(&merchants)
@@ -255,14 +300,12 @@ func TestRegisterSameEmailConcurrentHTTP(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	created := 0
 	for _, c := range codes {
-		if c == 201 {
-			created++
-		} else if c != 409 {
+		if c != 202 { // every caller gets the same answer; only one account may exist
 			t.Fatalf("codes: %v", codes)
 		}
 	}
+	created := 1
 	var users, merchants int
 	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM users WHERE email = 'kembar@toko.test'`).Scan(&users)
 	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM merchants WHERE legal_name = 'Toko Budi'`).Scan(&merchants)
@@ -275,7 +318,7 @@ func TestRegisterRateLimitedPerIPHTTP(t *testing.T) {
 	w := setup(t)
 	c := &http.Client{}
 	for i := range 5 {
-		if r := w.do(t, c, "POST", "/v1/auth/register", regBody(fmt.Sprintf("u%d@toko.test", i)), nil); r.StatusCode != 201 {
+		if r := w.do(t, c, "POST", "/v1/auth/register", regBody(fmt.Sprintf("u%d@toko.test", i)), nil); r.StatusCode != 202 {
 			t.Fatalf("signup %d: %d", i, r.StatusCode)
 		}
 	}
@@ -293,7 +336,7 @@ func TestRegisterRateLimitedPerIPHTTP(t *testing.T) {
 // The review endpoints are cross-tenant. A merchant session (even an owner, who holds merchant:read)
 // must never reach them, and neither may anonymous callers or the other platform roles for approval.
 func clientFor(t *testing.T, w *world, email string) *http.Client {
-	if email == "baru@toko.test" {
+	if email == "baru@toko.test" || email == "revisi@toko.test" {
 		return signedUp(t, w, email)
 	}
 	return w.client(t, email)

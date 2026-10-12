@@ -13,11 +13,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/account"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/mailer"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
@@ -96,10 +98,34 @@ func run(log *slog.Logger) error {
 		log.Warn("webhook capture enabled: raw gateway notifications are stored (contain payer PII)")
 	}
 
+	// Email is needed to prove address ownership. Without a mailer, sign-up, verification and password
+	// reset stay off rather than "sending" links nowhere; development falls back to logging them.
+	var mail mailer.Mailer
+	webURL := cfg.WebURL
+	switch {
+	case cfg.SMTPHost != "":
+		mail = mailer.NewSMTP(mailer.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort, User: cfg.SMTPUser, Pass: cfg.SMTPPass, From: cfg.SMTPFrom})
+	case cfg.Env == "development":
+		mail = mailer.Log{L: log}
+		if webURL == "" {
+			webURL = "http://localhost:5173"
+		}
+		log.Warn("ERAPAY_SMTP_HOST not set: emails (verification, password reset) are only logged in development")
+	default:
+		log.Warn("ERAPAY_SMTP_HOST not set: self sign-up, email verification and password reset are disabled")
+	}
+	var acct *account.Service
+	var notifier onboarding.Notifier
+	if mail != nil {
+		acct = account.NewService(pool, mail, webURL, log)
+		defer acct.Wait() // let queued emails finish on shutdown
+		notifier = acct
+	}
+
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onboarding.NewService(pool),
+			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onboarding.NewService(pool, notifier, onboarding.Config{RegisterPerIP: cfg.RegisterPerIPHour, Log: log}), Account: acct,
 			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,

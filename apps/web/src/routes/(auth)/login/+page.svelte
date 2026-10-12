@@ -84,6 +84,10 @@
 		{/snippet}
 	</Field>
 
+	<p class="-mt-2 text-right text-sm">
+		<a href="/forgot-password" class="font-semibold text-merah hover:underline">Lupa kata sandi?</a>
+	</p>
+
 	{#if form?.needMerchant}
 		<Field id="merchant_id" name="merchant_id" label="ID merchant" icon="store" autocomplete="off" placeholder="Tempel ID merchant" bind:value={merchantId} />
 	{/if}

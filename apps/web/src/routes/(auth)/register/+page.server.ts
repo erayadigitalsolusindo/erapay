@@ -7,7 +7,6 @@ export const load: PageServerLoad = ({ locals }) => {
 };
 
 const MESSAGES = {
-	email_taken: 'Email ini sudah terdaftar. Silakan masuk, atau gunakan email lain.',
 	rate_limited: 'Terlalu banyak pendaftaran dari jaringan ini. Coba lagi dalam beberapa waktu.',
 	unavailable: 'Layanan sedang tidak tersedia. Coba lagi sebentar lagi.',
 	invalid: 'Data pendaftaran belum valid. Periksa kembali isian Anda.'
@@ -39,7 +38,7 @@ export const actions: Actions = {
 		if (!r.ok) {
 			// Pesan validasi dari Go (bahasa Inggris, aman ditampilkan) ikut disertakan agar pengguna tahu bagian mana.
 			const detail = r.code === 'invalid' && r.message ? ` (${r.message})` : '';
-			return fail(r.code === 'rate_limited' ? 429 : r.code === 'unavailable' ? 503 : r.code === 'email_taken' ? 409 : 400, {
+			return fail(r.code === 'rate_limited' ? 429 : r.code === 'unavailable' ? 503 : 400, {
 				...keep,
 				error: MESSAGES[r.code] + detail
 			});

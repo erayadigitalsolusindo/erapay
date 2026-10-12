@@ -46,6 +46,13 @@ export const nav: NavItem[] = [
 		permission: 'webhook:manage'
 	},
 	{
+		href: '/dashboard/onboarding',
+		icon: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6"/><path d="m16 19 2 2 4-4"/>',
+		label: 'nav.account',
+		desc: 'nav.account.desc',
+		permission: 'merchant:write'
+	},
+	{
 		href: '/dashboard/finance/settlement',
 		icon: '<path d="M3 6h18M3 12h18M3 18h12"/><path d="m17 16 2 2 4-4"/>',
 		label: 'nav.fSettlement',

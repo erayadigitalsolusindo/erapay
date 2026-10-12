@@ -12,10 +12,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/account"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/mailer"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
@@ -35,13 +37,15 @@ type world struct {
 	svc              *auth.Service
 	db               *pgxpool.Pool
 	gw               *testGW
+	mail             *mailer.Memory
+	acct             *account.Service
 }
 
 func setup(t *testing.T) *world {
 	t.Helper()
 	db := testdb.New(t)
 	svc := auth.NewService(db, auth.DefaultConfig())
-	w := &world{svc: svc, db: db}
+	w := &world{svc: svc, db: db, mail: &mailer.Memory{}}
 	w.midA, w.outletA = testdb.SeedMerchant(t, db, "Merchant A")
 	w.midB, w.outletB = testdb.SeedMerchant(t, db, "Merchant B")
 	mk := func(email, role, mid string) {
@@ -65,7 +69,9 @@ func setup(t *testing.T) *world {
 	reg := gateway.NewRegistry()
 	reg.Register(w.gw)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	acct := account.NewService(db, w.mail, "https://app.erapay.test", log)
 	paySvc := payment.NewService(db)
+	w.acct = acct
 	w.srv = httptest.NewServer(NewRouter(Deps{
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DB: fakePinger{}, Redis: fakePinger{},
 		Auth: svc, Merchants: merchant.NewRepo(db), APIKeys: apikey.NewService(db, "sandbox"), Payments: paySvc,
@@ -73,11 +79,23 @@ func setup(t *testing.T) *world {
 		Outbound:    outbound.NewService(db, testBox(t), log),
 		Settlement:  settlement.NewService(db),
 		Refunds:     refund.NewService(db),
-		Onboarding:  onboarding.NewService(db),
+		Onboarding:  onboarding.NewService(db, acct, onboarding.Config{Log: log}),
+		Account:     acct,
 		Payouts:     payout.NewService(db, testBox(t), payout.Config{DryRun: true, MinAmount: 10_000, MaxAmount: 1_000_000, DailyLimit: 5_000_000}),
 	}))
 	t.Cleanup(w.srv.Close)
 	return w
+}
+
+// mailNotifier is the account service wired to the world's in-memory mailer.
+func (w *world) mailNotifier() onboarding.Notifier {
+	return account.NewService(w.db, w.mail, "https://app.erapay.test", slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+// sent returns the emails delivered so far, after queued background sends have finished.
+func (w *world) sent() []mailer.Message {
+	w.acct.Wait()
+	return w.mail.Sent()
 }
 
 func (w *world) client(t *testing.T, email string) *http.Client {

@@ -60,7 +60,7 @@
 			<svg viewBox="0 0 24 24" class="size-10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
 		</div>
 		<h2 class="animate-naik font-display mt-5 text-2xl font-extrabold text-merah-gelap [animation-delay:.1s]">Pendaftaran diterima!</h2>
-		<p class="animate-naik mt-2 text-sm/6 text-neutral-600 [animation-delay:.2s]">Terima kasih, <b>{form.name}</b>.<br />Silakan masuk dengan <b>{form.email}</b>. Akun Anda sedang ditinjau tim EraPay; pembayaran baru bisa dipakai setelah disetujui.</p>
+		<p class="animate-naik mt-2 text-sm/6 text-neutral-600 [animation-delay:.2s]">Terima kasih, <b>{form.name}</b>.<br />Kami mengirim tautan konfirmasi ke <b>{form.email}</b>. Buka tautan itu untuk memverifikasi email; setelahnya tim EraPay meninjau akun Anda dan pembayaran bisa dipakai setelah disetujui. Tidak menerima email? Cek folder spam, lalu masuk dan kirim ulang dari menu Status akun.</p>
 		<a
 			href="/login"
 			onclick={(e) => { e.preventDefault(); auth.pindah('/login'); }}

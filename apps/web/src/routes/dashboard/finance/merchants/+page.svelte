@@ -48,6 +48,7 @@
 							<td>
 								<div>{m.owner_name ?? '—'}</div>
 								<div class="muted text-[10px]">{m.owner_email ?? ''}{m.contact_phone ? ` · ${m.contact_phone}` : ''}</div>
+								<div class="mt-1 text-[10px] font-semibold {m.owner_email_verified ? 'text-emerald-700' : 'text-amber-700'}">{m.owner_email_verified ? t('onb.emailOk') : t('onb.emailNo')}</div>
 							</td>
 							<td>
 								<StateBadge kind="onb" value={m.status} />
@@ -55,7 +56,23 @@
 								{#if m.reviewed_at}<div class="muted mt-1 text-[10px]">{fmt(m.reviewed_at)}</div>{/if}
 							</td>
 							<td>
+								{#if data.canReview && ['submitted', 'under_review'].includes(m.status)}
+									<div class="mb-3 flex flex-wrap items-center gap-2">
+										{#if m.status === 'submitted'}
+											<form method="POST" action="?/startReview" use:enhance>
+												<input type="hidden" name="id" value={m.id} />
+												<button class="btn" type="submit">{t('onb.startReview')}</button>
+											</form>
+										{/if}
+										<form method="POST" action="?/requestChanges" class="flex items-center gap-2" use:enhance>
+											<input type="hidden" name="id" value={m.id} />
+											<input class="inp w-44 py-2" name="note" placeholder={t('onb.changesNote')} minlength="3" maxlength="500" required aria-label={t('onb.changesNote')} />
+											<button class="btn" type="submit">{t('onb.requestChanges')}</button>
+										</form>
+									</div>
+								{/if}
 								{#if reviewable.includes(m.status) && data.canApprove}
+									{#if !m.owner_email_verified}<p class="mb-1 text-[10px] font-semibold text-amber-700">{t('onb.needVerify')}</p>{/if}
 									<div class="flex flex-wrap items-start gap-3">
 										<form
 											method="POST"

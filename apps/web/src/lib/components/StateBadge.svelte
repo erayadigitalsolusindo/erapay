@@ -8,7 +8,7 @@
 		(kind === 'onb' ? `onb.st.${value}` : kind === 'bank' ? `bank.st.${value}` : kind === 'wh' ? `wh.st.${value}` : kind === 'wd' ? `wh.d.${value}` : kind === 'settle' ? `settle.${value}` : `${kind}.st.${value}`) as Key
 	);
 	const good = ['paid', 'refunded', 'verified', 'succeeded', 'settled', 'active'];
-	const wait = ['pending_approval', 'approved', 'pending_verification', 'pending', 'expected'];
+	const wait = ['pending_approval', 'approved', 'pending_verification', 'pending', 'expected', 'submitted', 'under_review', 'action_required'];
 	const bad = ['failed', 'dead'];
 	// Untuk onboarding, 'approved' berarti aktif (hijau), bukan "menunggu" seperti pada refund.
 	const tone = $derived(

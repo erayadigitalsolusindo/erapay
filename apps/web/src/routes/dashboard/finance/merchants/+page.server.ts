@@ -9,6 +9,7 @@ export type AdminMerchant = {
 	account_type: 'individual' | 'business' | null;
 	owner_name: string | null;
 	owner_email: string | null;
+	owner_email_verified: boolean;
 	contact_phone: string | null;
 	status: string;
 	review_note: string | null;
@@ -26,11 +27,22 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 	return {
 		merchants: merchants?.data ?? null,
 		status,
-		canApprove: locals.user!.permissions.includes('merchant:approve')
+		canApprove: locals.user!.permissions.includes('merchant:approve'),
+		canReview: locals.user!.permissions.includes('merchant:review')
 	};
 };
 
 export const actions: Actions = {
+	startReview: async ({ request, cookies, fetch, locals }) => {
+		const token = guard(locals, cookies, 'merchant:review', 'platform');
+		const f = await request.formData();
+		return done(await call(fetch, token, 'POST', `/v1/admin/merchants/${encodeURIComponent(str(f, 'id'))}/start-review`, {}));
+	},
+	requestChanges: async ({ request, cookies, fetch, locals }) => {
+		const token = guard(locals, cookies, 'merchant:review', 'platform');
+		const f = await request.formData();
+		return done(await call(fetch, token, 'POST', `/v1/admin/merchants/${encodeURIComponent(str(f, 'id'))}/request-changes`, { note: str(f, 'note') }));
+	},
 	// Tarif tidak punya nilai bawaan: keduanya wajib bilangan bulat 0..10000 (basis point, 100 = 1%).
 	approve: async ({ request, cookies, fetch, locals }) => {
 		const token = guard(locals, cookies, 'merchant:approve', 'platform');

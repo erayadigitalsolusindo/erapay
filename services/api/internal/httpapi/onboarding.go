@@ -16,15 +16,15 @@ func (d Deps) onboardingErr(w http.ResponseWriter, r *http.Request, err error) b
 		return true
 	case errors.As(err, &ve):
 		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", ve.Msg, false)
-	case errors.Is(err, onboarding.ErrEmailTaken):
-		writeError(w, r, http.StatusConflict, "EMAIL_TAKEN", "email is already registered", false)
 	case errors.Is(err, onboarding.ErrRateLimited):
 		w.Header().Set("Retry-After", "3600")
 		writeError(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "too many sign-ups, try again later", true)
 	case errors.Is(err, onboarding.ErrNotFound):
 		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "not found", false)
+	case errors.Is(err, onboarding.ErrEmailUnverified):
+		writeError(w, r, http.StatusConflict, "EMAIL_NOT_VERIFIED", "the owner has not verified their email yet", false)
 	case errors.Is(err, onboarding.ErrState):
-		writeError(w, r, http.StatusConflict, "INVALID_STATE", "merchant is not awaiting review", false)
+		writeError(w, r, http.StatusConflict, "INVALID_STATE", "merchant is not in a state that allows this action", false)
 	default:
 		d.Log.Error("onboarding", "err", err)
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
@@ -33,7 +33,7 @@ func (d Deps) onboardingErr(w http.ResponseWriter, r *http.Request, err error) b
 }
 
 // register is public (no signup session). It never logs the caller in: a new merchant is
-// 'submitted' and cannot take payments until a platform admin approves it.
+// 'submitted' and cannot take payments until its owner verifies their email and a platform admin approves it.
 func (d Deps) register(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		AccountType  string `json:"account_type"`
@@ -55,7 +55,8 @@ func (d Deps) register(w http.ResponseWriter, r *http.Request) {
 	if !d.onboardingErr(w, r, err) {
 		return
 	}
-	writeJSON(w, http.StatusCreated, res)
+	// 202 with the same body whether the address is new or already registered (see Registered).
+	writeJSON(w, http.StatusAccepted, res)
 }
 
 // requirePlatform rejects merchant sessions. Review endpoints are cross-tenant, so a permission
@@ -143,6 +144,54 @@ func (d Deps) adminRejectMerchant(w http.ResponseWriter, r *http.Request) {
 		MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, Note: body.Note,
 		RequestID: middleware.GetReqID(r.Context()),
 	})
+	if !d.onboardingErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
+func (d Deps) adminReviewAction(action string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var body struct {
+			Note string `json:"note"`
+		}
+		if action == "request-changes" {
+			if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
+				return
+			}
+		}
+		in := onboarding.ReviewInput{MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, Note: body.Note,
+			RequestID: middleware.GetReqID(r.Context())}
+		var m onboarding.Merchant
+		var err error
+		if action == "start-review" {
+			m, err = d.Onboarding.StartReview(r.Context(), in)
+		} else {
+			m, err = d.Onboarding.RequestChanges(r.Context(), in)
+		}
+		if !d.onboardingErr(w, r, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, m)
+	}
+}
+
+// merchantResubmit answers a change request. The merchant comes from the session only.
+func (d Deps) merchantResubmit(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		LegalName    *string `json:"legal_name"`
+		ContactPhone *string `json:"contact_phone"`
+	}
+	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
+		return
+	}
+	p := PrincipalFrom(r.Context())
+	m, err := d.Onboarding.Resubmit(r.Context(), onboarding.ResubmitInput{MerchantID: p.MerchantID, ActorID: p.UserID,
+		LegalName: body.LegalName, ContactPhone: body.ContactPhone, RequestID: middleware.GetReqID(r.Context())})
 	if !d.onboardingErr(w, r, err) {
 		return
 	}

@@ -35,11 +35,20 @@
 	<div class="min-w-0">
 		<Header user={data.user} bind:theme />
 		<main class="border-t border-ink/10 bg-page p-5 lg:p-8">
+			{#if data.user.merchantId && !data.user.emailVerified}
+				<p class="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900" role="status">
+					{i18n.t('onb.banner.unverified')}
+					<a href="/dashboard/onboarding" class="ml-1 underline">{i18n.t('onb.banner.link')}</a>
+				</p>
+			{/if}
 			{#if data.onboarding}
 				<p class="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900" role="status">
 					{#if data.onboarding.status === 'rejected'}
 						{i18n.t('onb.banner.rejected', { note: data.onboarding.note ?? '—' })}
-					{:else if ['submitted', 'under_review', 'action_required'].includes(data.onboarding.status)}
+					{:else if data.onboarding.status === 'action_required'}
+						{i18n.t('onb.banner.action', { note: data.onboarding.note ?? '—' })}
+						<a href="/dashboard/onboarding" class="ml-1 underline">{i18n.t('onb.banner.link')}</a>
+					{:else if ['submitted', 'under_review'].includes(data.onboarding.status)}
 						{i18n.t('onb.banner.pending')}
 					{:else}
 						{i18n.t('onb.banner.other', { status: data.onboarding.status })}
