@@ -67,13 +67,13 @@ func run(log *slog.Logger) error {
 	var hooks *webhook.Store
 	if cfg.WebhookCapture {
 		hooks = webhook.NewStore(pool)
-		log.Warn("webhook capture enabled: raw gateway notifications are stored, not processed")
+		log.Warn("webhook capture enabled: raw gateway notifications are stored (contain payer PII)")
 	}
 
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			Webhooks: hooks,
+			Webhooks: hooks, Gateways: reg,
 			Log:      log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
