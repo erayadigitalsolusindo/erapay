@@ -1,6 +1,7 @@
 // Command bootstrap creates the first accounts (there is no public signup).
 //
 //	bootstrap platform-admin   create a super_admin
+//	bootstrap finance          create a Finance user (settlement, payout and refund review)
 //	bootstrap dev-merchant     create a demo merchant + owner (refused outside development)
 //	bootstrap merchant         create a real merchant + owner (production-safe; names from env)
 //	                           (optional ERAPAY_BOOTSTRAP_MDR_BPS + ERAPAY_BOOTSTRAP_PLATFORM_BPS assign a QRIS pricing plan)
@@ -32,7 +33,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: bootstrap platform-admin|merchant|dev-merchant|reset-password")
+		return fmt.Errorf("usage: bootstrap platform-admin|finance|merchant|dev-merchant|reset-password")
 	}
 	url, email, pw := os.Getenv("ERAPAY_DATABASE_URL"), os.Getenv("ERAPAY_BOOTSTRAP_EMAIL"), os.Getenv("ERAPAY_BOOTSTRAP_PASSWORD")
 	if url == "" || email == "" || pw == "" {
@@ -56,6 +57,15 @@ func run(args []string) error {
 			return err
 		}
 		_ = audit.Record(ctx, db, audit.Entry{ActorID: uid, Action: "bootstrap.platform_admin", EntityType: "user", EntityID: uid})
+	case "finance":
+		uid, err := svc.CreateUser(ctx, email, pw)
+		if err != nil {
+			return err
+		}
+		if _, err := db.Exec(ctx, `INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE code = 'finance'`, uid); err != nil {
+			return err
+		}
+		_ = audit.Record(ctx, db, audit.Entry{ActorID: uid, Action: "bootstrap.finance", EntityType: "user", EntityID: uid})
 	case "dev-merchant":
 		if env := os.Getenv("ERAPAY_ENV"); env != "" && env != "development" {
 			return fmt.Errorf("dev-merchant refused when ERAPAY_ENV=%s", env)

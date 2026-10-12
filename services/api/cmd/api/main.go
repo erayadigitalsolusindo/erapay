@@ -19,7 +19,12 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payout"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/refund"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/secretbox"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/settlement"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/webhook"
 )
 
@@ -64,6 +69,26 @@ func run(log *slog.Logger) error {
 	go flow.RunPoller(ctx, 15*time.Second)
 	defer rdb.Close()
 
+	var out *outbound.Service
+	var payouts *payout.Service
+	if len(cfg.EncryptionKey) > 0 {
+		box, err := secretbox.New(cfg.EncryptionKey)
+		if err != nil {
+			return err
+		}
+		out = outbound.NewService(pool, box, log)
+		go out.RunDispatcher(ctx, 5*time.Second)
+
+		dryRun := cfg.Env != "production"
+		payouts = payout.NewService(pool, box, payout.Config{DryRun: dryRun, LiveEnabled: cfg.PayoutLive, MinAmount: cfg.PayoutMin,
+			MaxAmount: cfg.PayoutMax, DailyLimit: cfg.PayoutDailyLimit, Cooling: cfg.PayoutCooling})
+		if !dryRun && !cfg.PayoutLive {
+			log.Warn("payouts are disabled in production until ERAPAY_PAYOUT_LIVE=1 (go/no-go)")
+		}
+	} else {
+		log.Warn("ERAPAY_ENCRYPTION_KEY not set: outbound merchant webhooks, bank accounts and payouts are disabled")
+	}
+
 	var hooks *webhook.Store
 	if cfg.WebhookCapture {
 		hooks = webhook.NewStore(pool)
@@ -73,8 +98,8 @@ func run(log *slog.Logger) error {
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			Webhooks: hooks, Gateways: reg,
-			Log:      log, DB: pool, Redis: redisPinger{rdb},
+			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool),
+			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,

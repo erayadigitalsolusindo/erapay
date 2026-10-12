@@ -195,10 +195,42 @@ func (d Deps) mountV1(r chi.Router) {
 		if d.APIKeys != nil && d.PaymentFlow != nil {
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("payment:create")).Post("/payments", d.createPayment)
 		}
+		if d.APIKeys != nil && d.Settlement != nil {
+			r.With(d.requireAnyAuth, requireTenant, requirePerm("report:read")).Get("/balance", d.getBalance)
+		}
 		r.Group(func(r chi.Router) {
 			r.Use(d.requireAuth)
 			r.Post("/auth/logout", d.logout)
 			r.Get("/auth/me", d.me)
+			// Platform (Finance / Ops) endpoints: cross-tenant by design, gated by permission only.
+			r.Route("/admin", func(r chi.Router) {
+				if d.Settlement != nil {
+					r.With(requirePerm("settlement:read")).Get("/unsettled-payments", d.listUnsettled)
+					r.With(requirePerm("settlement:read")).Get("/settlement-batches", d.listSettlementBatches)
+					r.With(requirePerm("settlement:read")).Get("/reconciliation-exceptions", d.listExceptions)
+					r.With(requirePerm("settlement:manage")).Post("/settlement-batches", d.recordSettlementBatch)
+					r.With(requirePerm("settlement:manage")).Post("/reconciliation-exceptions/{id}/resolve", d.resolveException)
+				}
+				if d.Refunds != nil {
+					r.With(requirePerm("refund:review")).Get("/refunds", d.adminListRefunds)
+					r.With(requirePerm("refund:review")).Get("/refunds/{id}", d.adminGetRefund)
+					r.With(requirePerm("refund:approve")).Post("/refunds/{id}/approve", d.adminRefundAction("approve"))
+					r.With(requirePerm("refund:approve")).Post("/refunds/{id}/reject", d.adminRefundAction("reject"))
+					r.With(requirePerm("refund:execute")).Post("/refunds/{id}/mark-refunded", d.adminRefundAction("mark-refunded"))
+					r.With(requirePerm("refund:execute")).Post("/refunds/{id}/mark-failed", d.adminRefundAction("mark-failed"))
+				}
+				if d.Payouts != nil {
+					r.With(requirePerm("payout:review")).Get("/bank-accounts", d.adminListBankAccounts)
+					r.With(requirePerm("bank_account:verify")).Post("/bank-accounts/{id}/verify", d.adminVerifyBankAccount)
+					r.With(requirePerm("payout:review")).Get("/payouts", d.adminListPayouts)
+					r.With(requirePerm("payout:review")).Get("/payouts/{id}", d.adminGetPayout)
+					r.With(requirePerm("payout:approve")).Post("/payouts/{id}/approve", d.adminPayoutAction("approve"))
+					r.With(requirePerm("payout:approve")).Post("/payouts/{id}/reject", d.adminPayoutAction("reject"))
+					r.With(requirePerm("payout:execute")).Post("/payouts/{id}/mark-paid", d.adminPayoutAction("mark-paid"))
+					r.With(requirePerm("payout:execute")).Post("/payouts/{id}/mark-failed", d.adminPayoutAction("mark-failed"))
+					r.With(requirePerm("payout:execute")).Get("/payouts/{id}/destination", d.adminPayoutDestination)
+				}
+			})
 			r.Group(func(r chi.Router) {
 				r.Use(requireTenant)
 				r.With(requirePerm("merchant:read")).Get("/merchant/profile", d.merchantProfile)
@@ -210,6 +242,34 @@ func (d Deps) mountV1(r chi.Router) {
 						r.Get("/api-keys", d.listAPIKeys)
 						r.Post("/api-keys/{id}/revoke", d.revokeAPIKey)
 						r.Post("/api-keys/{id}/rotate", d.rotateAPIKey)
+					})
+				}
+				if d.Refunds != nil {
+					// Session only, like payouts.
+					r.With(requirePerm("refund:request")).Post("/payments/{id}/refund", d.requestRefund)
+					r.With(requirePerm("refund:request")).Post("/refunds/{id}/cancel", d.cancelRefund)
+					r.With(requirePerm("refund:read")).Get("/refunds", d.listRefunds)
+					r.With(requirePerm("refund:read")).Get("/refunds/{id}", d.getRefund)
+				}
+				if d.Payouts != nil {
+					// Session only: money-out is never reachable with an API key.
+					r.With(requirePerm("bank_account:manage")).Post("/bank-accounts", d.createBankAccount)
+					r.With(requirePerm("bank_account:manage")).Get("/bank-accounts", d.listBankAccounts)
+					r.With(requirePerm("bank_account:manage")).Post("/bank-accounts/{id}/disable", d.disableBankAccount)
+					r.With(requirePerm("payout:request")).Post("/payouts", d.requestPayout)
+					r.With(requirePerm("payout:request")).Post("/payouts/{id}/cancel", d.cancelPayout)
+					r.With(requirePerm("payout:read")).Get("/payouts", d.listPayouts)
+					r.With(requirePerm("payout:read")).Get("/payouts/{id}", d.getPayout)
+				}
+				if d.Outbound != nil {
+					r.Group(func(r chi.Router) {
+						r.Use(requirePerm("webhook:manage"))
+						r.Post("/webhook-endpoints", d.createWebhookEndpoint)
+						r.Get("/webhook-endpoints", d.listWebhookEndpoints)
+						r.Post("/webhook-endpoints/{id}/rotate-secret", d.rotateWebhookSecret)
+						r.Post("/webhook-endpoints/{id}/disable", d.disableWebhookEndpoint)
+						r.Get("/webhook-deliveries", d.listWebhookDeliveries)
+						r.Post("/webhook-deliveries/{id}/redeliver", d.redeliverWebhook)
 					})
 				}
 			})
