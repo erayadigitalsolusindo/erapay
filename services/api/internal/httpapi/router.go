@@ -30,7 +30,8 @@ type Deps struct {
 	APIKeys        *apikey.Service
 	Payments       *payment.Service
 	PaymentFlow    *payment.Orchestrator
-	Webhooks       *webhook.Store // nil disables /webhooks (capture-only, see webhooks.go)
+	Webhooks       *webhook.Store   // optional raw capture (ERAPAY_WEBHOOK_CAPTURE); see webhooks.go
+	Gateways       payment.Gateways // adapters implementing gateway.WebhookVerifier enable verified webhooks
 	SecureCookies  bool
 	TrustedProxies []netip.Prefix // peers allowed to set X-Forwarded-For
 	Log            *slog.Logger
@@ -63,7 +64,7 @@ func NewRouter(d Deps) http.Handler {
 	if d.Auth != nil {
 		d.mountV1(r)
 	}
-	if d.Webhooks != nil {
+	if d.Webhooks != nil || (d.Gateways != nil && d.PaymentFlow != nil) {
 		d.mountWebhooks(r)
 	}
 	return r

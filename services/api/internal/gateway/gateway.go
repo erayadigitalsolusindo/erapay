@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 )
 
@@ -125,6 +126,28 @@ type Adapter interface {
 	// MapStatus maps a raw gateway status to a normalized one. ok=false means
 	// "no confirmed mapping": callers must leave the payment unchanged.
 	MapStatus(raw string) (Status, bool)
+}
+
+// ErrInvalidSignature: the notification is not authentic. Callers answer 4xx and change nothing.
+var ErrInvalidSignature = errors.New("gateway: invalid webhook signature")
+
+// WebhookEvent is an authenticated, normalized inbound payment notification.
+// It carries no PII: adapters must drop payer data while parsing.
+type WebhookEvent struct {
+	PaymentRef string // our payment ID (the gateway's partner/invoice reference)
+	RawStatus  string // gateway's own status string
+	Status     Status // normalized; meaningful only when StatusOK
+	StatusOK   bool   // false = no confirmed mapping: record, never apply
+	Amount     int64  // minor units
+	Currency   string
+	DedupKey   string // unique per notification (gateway-scoped)
+}
+
+// WebhookVerifier is implemented by adapters whose notification format and signature
+// are confirmed. path is the request path exactly as the gateway called it.
+// A verified-but-unparseable payload returns a non-ErrInvalidSignature error.
+type WebhookVerifier interface {
+	VerifyWebhook(h http.Header, path string, body []byte) (WebhookEvent, error)
 }
 
 // Registry maps gateway code -> adapter. Only adapters explicitly registered exist.
