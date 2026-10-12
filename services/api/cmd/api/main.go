@@ -20,6 +20,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/webhook"
 )
 
 type redisPinger struct{ c *redis.Client }
@@ -63,10 +64,17 @@ func run(log *slog.Logger) error {
 	go flow.RunPoller(ctx, 15*time.Second)
 	defer rdb.Close()
 
+	var hooks *webhook.Store
+	if cfg.WebhookCapture {
+		hooks = webhook.NewStore(pool)
+		log.Warn("webhook capture enabled: raw gateway notifications are stored, not processed")
+	}
+
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			Log: log, DB: pool, Redis: redisPinger{rdb},
+			Webhooks: hooks,
+			Log:      log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,

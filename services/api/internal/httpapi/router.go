@@ -16,6 +16,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/webhook"
 )
 
 // Pinger is satisfied by pgx pools and redis clients' wrappers.
@@ -29,6 +30,7 @@ type Deps struct {
 	APIKeys        *apikey.Service
 	Payments       *payment.Service
 	PaymentFlow    *payment.Orchestrator
+	Webhooks       *webhook.Store // nil disables /webhooks (capture-only, see webhooks.go)
 	SecureCookies  bool
 	TrustedProxies []netip.Prefix // peers allowed to set X-Forwarded-For
 	Log            *slog.Logger
@@ -60,6 +62,9 @@ func NewRouter(d Deps) http.Handler {
 	})
 	if d.Auth != nil {
 		d.mountV1(r)
+	}
+	if d.Webhooks != nil {
+		d.mountWebhooks(r)
 	}
 	return r
 }

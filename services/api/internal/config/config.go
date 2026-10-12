@@ -15,6 +15,7 @@ type Config struct {
 	DatabaseURL    string
 	RedisURL       string
 	TrustedProxies []netip.Prefix // ERAPAY_TRUSTED_PROXIES: comma-separated CIDRs
+	WebhookCapture bool           // ERAPAY_WEBHOOK_CAPTURE=1: store raw inbound gateway notifications (off by default)
 }
 
 func Load() (Config, error) {
@@ -23,6 +24,8 @@ func Load() (Config, error) {
 		HTTPAddr:    get("ERAPAY_HTTP_ADDR", ":8080"),
 		DatabaseURL: os.Getenv("ERAPAY_DATABASE_URL"),
 		RedisURL:    os.Getenv("ERAPAY_REDIS_URL"),
+
+		WebhookCapture: os.Getenv("ERAPAY_WEBHOOK_CAPTURE") == "1",
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("ERAPAY_DATABASE_URL is required")
