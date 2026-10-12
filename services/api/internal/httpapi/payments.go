@@ -3,7 +3,9 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -34,4 +36,114 @@ func (d Deps) getPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, p)
+}
+
+var wib = func() *time.Location {
+	l, err := time.LoadLocation(payment.ReportTimezone)
+	if err != nil {
+		return time.FixedZone("WIB", 7*3600)
+	}
+	return l
+}()
+
+// parseTimeParam accepts RFC 3339, or a date (YYYY-MM-DD) read as a day in WIB. endOfDay turns a bare
+// date into the start of the NEXT day, so `to=2026-10-12` includes the whole of that day.
+func parseTimeParam(v string, endOfDay bool) (time.Time, bool) {
+	if t, err := time.Parse(time.RFC3339, v); err == nil {
+		return t, true
+	}
+	t, err := time.ParseInLocation("2006-01-02", v, wib)
+	if err != nil {
+		return time.Time{}, false
+	}
+	if endOfDay {
+		t = t.AddDate(0, 0, 1)
+	}
+	return t, true
+}
+
+// listPayments implements GET /v1/payments (tenant from the principal only).
+func (d Deps) listPayments(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := payment.ListFilter{MerchantID: PrincipalFrom(r.Context()).MerchantID, Status: payment.Status(q.Get("status")),
+		Reference: q.Get("merchant_reference"), Cursor: q.Get("cursor")}
+	if len(f.Reference) > 64 || (f.Status != "" && !payment.ValidStatus(f.Status)) {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "invalid status or merchant_reference", false)
+		return
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 100 {
+			writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "limit must be 1..100", false)
+			return
+		}
+		f.Limit = n
+	}
+	for _, p := range []struct {
+		name string
+		dst  **time.Time
+		end  bool
+	}{{"from", &f.From, false}, {"to", &f.To, true}} {
+		if v := q.Get(p.name); v != "" {
+			t, ok := parseTimeParam(v, p.end)
+			if !ok {
+				writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", p.name+" must be RFC 3339 or YYYY-MM-DD", false)
+				return
+			}
+			*p.dst = &t
+		}
+	}
+	items, next, err := d.Payments.List(r.Context(), f)
+	switch {
+	case errors.Is(err, payment.ErrValidation):
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), false)
+		return
+	case err != nil:
+		d.Log.Error("list payments", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	resp := map[string]any{"data": items}
+	if next != "" {
+		resp["next_cursor"] = next
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// reportSummary implements GET /v1/reports/summary?from=&to=&currency= (dates in WIB, inclusive).
+func (d Deps) reportSummary(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	cur := q.Get("currency")
+	if cur == "" {
+		cur = "IDR"
+	}
+	today := time.Now().In(wib)
+	from, to := today.AddDate(0, 0, -29), today
+	for _, p := range []struct {
+		name string
+		dst  *time.Time
+	}{{"from", &from}, {"to", &to}} {
+		if v := q.Get(p.name); v != "" {
+			t, err := time.ParseInLocation("2006-01-02", v, wib)
+			if err != nil {
+				writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", p.name+" must be YYYY-MM-DD", false)
+				return
+			}
+			*p.dst = t
+		}
+	}
+	if len(cur) != 3 {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "currency must be a 3-letter code", false)
+		return
+	}
+	s, err := d.Payments.Summarize(r.Context(), PrincipalFrom(r.Context()).MerchantID, cur, from, to)
+	switch {
+	case errors.Is(err, payment.ErrValidation):
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), false)
+	case err != nil:
+		d.Log.Error("summary", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+	default:
+		writeJSON(w, http.StatusOK, s)
+	}
 }

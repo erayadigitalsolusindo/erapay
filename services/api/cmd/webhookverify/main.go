@@ -81,8 +81,8 @@ func run(args []string) error {
 		return nil
 	}
 	for name, s := range map[string]string{
-		"separator \\n + trailing newline":     comp("\n", path) + "\n",
-		"literal backslash-n separator":        comp(`\n`, path),
+		"separator \\n + trailing newline":      comp("\n", path) + "\n",
+		"literal backslash-n separator":         comp(`\n`, path),
 		"Request-Target without /webhooks/doku": comp("\n", strings.TrimPrefix(path, "/webhooks/doku")),
 	} {
 		if hm(s) == got {

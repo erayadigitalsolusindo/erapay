@@ -1,12 +1,16 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { enhance } from '$app/forms';
 	import { onMount } from 'svelte';
+	import StateBadge from '../../../../lib/components/StateBadge.svelte';
 	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
 	import StatusBadge from '../../../../lib/components/StatusBadge.svelte';
 	import { formatIDR } from '../../../../lib/utils/money';
 
-	let { data } = $props();
+	let { data, form } = $props();
 	const p = $derived(data.payment);
+	// Sisa yang masih bisa di-refund = nominal − refund selesai − refund yang sedang diproses.
+	const refundable = $derived(p.amount - (p.refunded_amount ?? 0) - (p.refunding_amount ?? 0));
 	const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString(i18n.locale) : '-');
 
 	const i18n = getI18n();
@@ -44,10 +48,30 @@
 			<dt class="muted">{t('trx.f.mdr')}</dt><dd class="font-bold">{formatIDR(p.fee.mdr_fee)}</dd>
 			<dt class="muted">{t('trx.f.platformFee')}</dt><dd class="font-bold">{formatIDR(p.fee.platform_fee)}</dd>
 			<dt class="muted">{t('trx.f.net')}</dt><dd class="font-bold">{formatIDR(p.fee.merchant_net)}</dd>
+			{#if p.settlement_status}<dt class="muted">{t('trx.f.settlement')}</dt><dd><StateBadge kind="settle" value={p.settlement_status} /></dd>{/if}
+			{#if p.refunded_amount}<dt class="muted">{t('trx.f.refunded')}</dt><dd class="font-bold">{formatIDR(p.refunded_amount)}</dd>{/if}
+			{#if p.refunding_amount}<dt class="muted">{t('trx.f.refunding')}</dt><dd class="font-bold">{formatIDR(p.refunding_amount)}</dd>{/if}
 		</dl>
 		{#if p.description}<p class="muted mt-4 text-[11px]">{p.description}</p>{/if}
 	</section>
 </div>
+{#if data.canRefund && p.status === 'succeeded' && refundable > 0}
+	<form method="POST" action="?/refund" class="card mt-5 max-w-md space-y-4 p-6" use:enhance>
+		<h2 class="text-sm font-bold">{t('rf.request')}</h2>
+		<input type="hidden" name="idem" value={data.idem} />
+		<div>
+			<label class="lbl mb-1.5" for="amount">{t('po.amount')} <span class="muted font-normal">· {t('rf.max', { max: formatIDR(refundable) })}</span></label>
+			<input id="amount" class="inp" name="amount" inputmode="numeric" pattern="[0-9.]*" required />
+		</div>
+		<div>
+			<label class="lbl mb-1.5" for="reason">{t('rf.reason')}</label>
+			<input id="reason" class="inp" name="reason" minlength="3" maxlength="255" placeholder={t('rf.reasonPh')} required />
+		</div>
+		{#if form?.message}<p class="text-xs font-semibold text-red-700" role="alert">{form.message}</p>{/if}
+		{#if form?.done}<p class="text-xs font-semibold text-emerald-700" role="status"><a href="/dashboard/refunds" class="underline">{t('nav.refunds')}</a></p>{/if}
+		<button type="submit" class="btn btn-light">{t('rf.requestBtn')}</button>
+	</form>
+{/if}
 <p class="mt-5"><a href="/dashboard/transactions/new" class="text-xs font-bold text-merah hover:underline">{t('trx.another')}</a></p>
 
 <style>

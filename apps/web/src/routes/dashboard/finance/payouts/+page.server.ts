@@ -1,0 +1,62 @@
+import { fail } from '@sveltejs/kit';
+import { call, done, guard, read, str } from '../../../../lib/server/gw';
+import type { Actions, PageServerLoad } from './$types';
+
+export type AdminPayout = {
+	id: string;
+	merchant_id: string;
+	amount: number;
+	status: string;
+	dry_run: boolean;
+	requested_by: string;
+	bank_reference: string | null;
+	failure_reason: string | null;
+	decision_note: string | null;
+	created_at: string;
+};
+export type PendingAccount = { id: string; merchant_id: string; bank_code: string; account_masked: string; account_name: string; created_at: string };
+
+const STATUSES = ['pending_approval', 'approved', 'paid', 'failed', 'cancelled'];
+
+export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
+	const token = guard(locals, cookies, 'payout:review', 'platform');
+	const status = url.searchParams.get('status') ?? '';
+	const q = STATUSES.includes(status) ? `&status=${status}` : '';
+	const p = locals.user!.permissions;
+	const [payouts, accounts] = await Promise.all([
+		read<{ data: AdminPayout[] }>(fetch, token, `/v1/admin/payouts?limit=100${q}`),
+		read<{ data: PendingAccount[] }>(fetch, token, '/v1/admin/bank-accounts?status=pending_verification')
+	]);
+	return {
+		payouts: payouts?.data ?? null,
+		accounts: accounts?.data ?? null,
+		status,
+		me: locals.user!.id,
+		canVerify: p.includes('bank_account:verify'),
+		canApprove: p.includes('payout:approve'),
+		canExecute: p.includes('payout:execute')
+	};
+};
+
+const act = (perm: string, path: (id: string) => string, body?: (f: FormData) => Record<string, unknown>) =>
+	async ({ request, cookies, fetch, locals }: Parameters<Actions[string]>[0]) => {
+		const token = guard(locals, cookies, perm, 'platform');
+		const f = await request.formData();
+		const id = str(f, 'id');
+		return done(await call(fetch, token, 'POST', path(encodeURIComponent(id)), body?.(f)));
+	};
+
+export const actions: Actions = {
+	verify: act('bank_account:verify', (id) => `/v1/admin/bank-accounts/${id}/verify`),
+	approve: act('payout:approve', (id) => `/v1/admin/payouts/${id}/approve`),
+	reject: act('payout:approve', (id) => `/v1/admin/payouts/${id}/reject`, (f) => ({ note: str(f, 'note') })),
+	markPaid: act('payout:execute', (id) => `/v1/admin/payouts/${id}/mark-paid`, (f) => ({ bank_reference: str(f, 'bank_reference') })),
+	markFailed: act('payout:execute', (id) => `/v1/admin/payouts/${id}/mark-failed`, (f) => ({ reason: str(f, 'reason') })),
+	reveal: async ({ request, cookies, fetch, locals }) => {
+		const token = guard(locals, cookies, 'payout:execute', 'platform');
+		const id = str(await request.formData(), 'id');
+		const r = await call<{ bank_code: string; account_number: string; account_name: string }>(fetch, token, 'GET', `/v1/admin/payouts/${encodeURIComponent(id)}/destination`);
+		// Ditampilkan sekali di respons ini (dan dicatat di audit log oleh Go); tidak disimpan di server web.
+		return r.ok ? { dest: { id, ...r.value } } : fail(400, { message: r.message });
+	}
+};
