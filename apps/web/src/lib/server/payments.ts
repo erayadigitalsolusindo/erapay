@@ -21,6 +21,10 @@ export type Payment = {
 	expires_at: string | null;
 	final_at: string | null;
 	created_at: string;
+	/** Status turunan, terpisah dari status pembayaran (PRD §0 #9). */
+	settlement_status?: 'not_expected' | 'expected' | 'settled';
+	refunded_amount?: number;
+	refunding_amount?: number;
 };
 
 export type CreateResult =

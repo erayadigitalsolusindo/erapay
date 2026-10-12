@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import { LANGS } from '../../../lib/i18n/messages';
-	import { aktif, nav } from './nav';
+	import { aktif, visible } from './nav';
 
 	type Theme = 'light' | 'dark' | 'system';
 	let {
@@ -13,7 +13,7 @@
 	const i18n = getI18n();
 	const { t } = i18n;
 	const current = $derived(aktif(page.url.pathname));
-	const pintas = $derived(nav.filter((n) => !n.permission || (user.merchantId && user.permissions?.includes(n.permission))));
+	const pintas = $derived(visible(user));
 	const nama = $derived(user.email.split('@')[0]);
 	const inisial = $derived(nama.slice(0, 2).toUpperCase());
 
