@@ -191,6 +191,8 @@ func (d Deps) mountV1(r chi.Router) {
 		}
 		if d.APIKeys != nil && d.Payments != nil {
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("payment:read")).Get("/payments/{id}", d.getPayment)
+			r.With(d.requireAnyAuth, requireTenant, requirePerm("payment:read")).Get("/payments", d.listPayments)
+			r.With(d.requireAnyAuth, requireTenant, requirePerm("report:read")).Get("/reports/summary", d.reportSummary)
 		}
 		if d.APIKeys != nil && d.PaymentFlow != nil {
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("payment:create")).Post("/payments", d.createPayment)
