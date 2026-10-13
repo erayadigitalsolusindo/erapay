@@ -1,0 +1,51 @@
+/*
+  batik-theme.css — import ini SETELAH direktif Tailwind di CSS utama kamu.
+
+  Tailwind v4 (di CSS utama):
+    @import "tailwindcss";
+    @custom-variant dark (&:where(.dark, .dark *));
+    @import "./batik-theme.css";
+
+  Tailwind v3 (tailwind.config.js):
+    module.exports = { darkMode: "class", content: ["./src/**/*.{js,jsx,ts,tsx}"], ... }
+    // lalu di CSS utama: @tailwind base; @tailwind components; @tailwind utilities; @import "./batik-theme.css";
+
+  Mode gelap = class "dark" pada <html> (diatur otomatis oleh komponen).
+*/
+:root {
+  --bg: #eef6f5;
+  --sb: #f7fbfa;
+  --card: #ffffff;
+  --ink: #12313a;
+  --mut: #5f8087;
+  --line: #d6e7e6;
+  --soft: #e2f1f0;
+  --acc: #d6364a;
+  --w1: #35bdb8;
+  --w2: #0b5f73;
+  --foam: #ffffff;
+  --glow: none;
+  --sand: #efd9a8;
+  --trunk: #8a5a3c;
+  --palm: #2f9e6b;
+  --cr: rgba(9, 62, 82, 0.8);
+}
+
+.dark {
+  --bg: #07101a;
+  --sb: #0a161d;
+  --card: #0d1b24;
+  --ink: #e4f2f2;
+  --mut: #86a8ad;
+  --line: #1a303a;
+  --soft: #10252e;
+  --acc: #ff6174;
+  --w1: #23c0bd;
+  --w2: #0a4a63;
+  --foam: #d8f4f2;
+  --glow: drop-shadow(0 0 4px rgba(35, 192, 189, 0.45));
+  --sand: #9a8456;
+  --trunk: #a67c5a;
+  --palm: #2fae80;
+  --cr: rgba(190, 238, 235, 0.5);
+}
