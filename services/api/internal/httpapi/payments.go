@@ -38,6 +38,29 @@ func (d Deps) getPayment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
+// paymentTimeline implements GET /v1/payments/{id}/timeline: the append-only log of
+// every transition attempt, oldest first. Read-only - it reports what happened and
+// never re-applies anything, so a conflicting gateway report (applied=false) is shown
+// as evidence rather than acted upon (PRD §0 #2).
+func (d Deps) paymentTimeline(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	events, err := d.Payments.Events(r.Context(), PrincipalFrom(r.Context()).MerchantID, id)
+	switch {
+	case errors.Is(err, payment.ErrNotFound):
+		// Also covers another tenant's payment: the query is scoped by merchant id.
+		writeError(w, r, http.StatusNotFound, "PAYMENT_NOT_FOUND", "payment not found", false)
+		return
+	case err != nil:
+		d.Log.Error("payment timeline", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	if events == nil { // never serialise a null where a list is expected
+		events = []payment.Event{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": events})
+}
+
 var wib = func() *time.Location {
 	l, err := time.LoadLocation(payment.ReportTimezone)
 	if err != nil {

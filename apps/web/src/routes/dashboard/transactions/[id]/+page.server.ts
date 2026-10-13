@@ -1,6 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { SESSION_COOKIE } from '../../../../lib/server/auth';
-import { getPayment, qrSvg } from '../../../../lib/server/payments';
+import { getPayment, getTimeline, qrSvg } from '../../../../lib/server/payments';
 import { call, done, int, newIdemKey, str } from '../../../../lib/server/gw';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -13,6 +13,8 @@ export const load: PageServerLoad = async ({ params, cookies, fetch, locals }) =
 	return {
 		payment,
 		qr,
+		// Riwayat hanya ditampilkan; kegagalan memuat timeline tidak boleh menggagalkan halaman.
+		timeline: token ? await getTimeline(fetch, token, params.id) : [],
 		canRefund: !!locals.user?.merchantId && locals.user.permissions.includes('refund:request'),
 		idem: newIdemKey('rf') // satu kunci per tampilan: submit ganda = satu refund
 	};

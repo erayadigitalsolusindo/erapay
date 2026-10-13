@@ -112,6 +112,18 @@ const id = {
 	'trx.f.net': 'Diterima merchant',
 	'trx.another': 'Buat QRIS lain →',
 
+	'trx.timeline': 'Riwayat status',
+	'trx.timelineEmpty': 'Belum ada perpindahan status tercatat.',
+	'trx.timelineNote':
+		'Setiap baris adalah laporan yang diterima sistem. Baris bertanda “tidak diterapkan” adalah laporan yang bertentangan dengan status final; laporan itu sengaja hanya dicatat sebagai bukti, tidak pernah mengubah apa pun.',
+	'trx.tl.source.internal': 'Sistem',
+	'trx.tl.source.gateway_response': 'Jawaban gateway',
+	'trx.tl.source.webhook': 'Webhook gateway',
+	'trx.tl.source.inquiry': 'Penanyakan ke gateway',
+	'trx.tl.applied': 'Diterapkan',
+	'trx.tl.notApplied': 'Tidak diterapkan',
+	'trx.tl.raw': 'Kode gateway: {code}',
+
 	'status.created': 'Dibuat',
 	'status.pending': 'Menunggu pembayaran',
 	'status.succeeded': 'Pembayaran berhasil',
@@ -513,6 +525,18 @@ const en: Record<keyof typeof id, string> = {
 	'trx.f.platformFee': 'EraPay service fee',
 	'trx.f.net': 'Received by merchant',
 	'trx.another': 'Create another QRIS →',
+
+	'trx.timeline': 'Status history',
+	'trx.timelineEmpty': 'No status changes recorded yet.',
+	'trx.timelineNote':
+		'Each row is a report the system received. A row marked "not applied" contradicts the final status; it is kept as evidence and never changes anything.',
+	'trx.tl.source.internal': 'Internal',
+	'trx.tl.source.gateway_response': 'Gateway response',
+	'trx.tl.source.webhook': 'Gateway webhook',
+	'trx.tl.source.inquiry': 'Gateway inquiry',
+	'trx.tl.applied': 'Applied',
+	'trx.tl.notApplied': 'Not applied',
+	'trx.tl.raw': 'Gateway code: {code}',
 
 	'status.created': 'Created',
 	'status.pending': 'Awaiting payment',
