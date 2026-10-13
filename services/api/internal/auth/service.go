@@ -103,6 +103,14 @@ func emailKey(e string) string {
 	return hex.EncodeToString(h[:])
 }
 
+// ClearFailedAttempts removes recorded failed logins for an email within a
+// transaction. A successful password reset proves mailbox ownership, so stale
+// failures must not keep locking the user out of their own account.
+func ClearFailedAttempts(ctx context.Context, tx pgx.Tx, email string) error {
+	_, err := tx.Exec(ctx, `DELETE FROM auth_attempts WHERE NOT succeeded AND email_key = $1`, emailKey(email))
+	return err
+}
+
 func hashToken(tok string) []byte { h := sha256.Sum256([]byte(tok)); return h[:] }
 
 // CreateUser inserts a user with an argon2id hash (bootstrap/tests; no public signup).

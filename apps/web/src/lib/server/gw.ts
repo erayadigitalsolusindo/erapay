@@ -11,7 +11,7 @@ export type Result<T> = { ok: true; value: T; status: number } | { ok: false; me
 export async function call<T = unknown>(
 	f: typeof fetch,
 	token: string,
-	method: 'GET' | 'POST',
+	method: 'GET' | 'POST' | 'PUT' | 'DELETE',
 	path: string,
 	body?: unknown,
 	idempotencyKey?: string
@@ -25,7 +25,7 @@ export async function call<T = unknown>(
 				cookie: `${SESSION_COOKIE}=${token}`,
 				...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {})
 			},
-			body: method === 'POST' ? JSON.stringify(body ?? {}) : undefined
+			body: method === 'GET' ? undefined : JSON.stringify(body ?? {})
 		});
 	} catch {
 		return { ok: false, message: 'Layanan tidak dapat dihubungi.', status: 0 };

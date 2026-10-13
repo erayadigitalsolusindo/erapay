@@ -39,7 +39,8 @@ INSERT INTO menu_items (id, href, label_key, permission_code, platform_only, sor
     ('/dashboard/finance/settlement','/dashboard/finance/settlement','nav.fSettlement','settlement:read',true,80),
     ('/dashboard/finance/payouts','/dashboard/finance/payouts','nav.fPayouts','payout:review',true,90),
     ('/dashboard/finance/refunds','/dashboard/finance/refunds','nav.fRefunds','refund:review',true,100),
-    ('/dashboard/finance/merchants','/dashboard/finance/merchants','nav.fMerchants','merchant:review',true,110);
+    ('/dashboard/finance/merchants','/dashboard/finance/merchants','nav.fMerchants','merchant:review',true,110),
+    ('/dashboard/admin/access','/dashboard/admin/access','nav.access','rbac:manage',true,120);
 
 -- Default matrix: derived from role permissions + platform/merchant scope.
 INSERT INTO menu_role_access (menu_id, role_id, allowed)
@@ -56,6 +57,7 @@ ON CONFLICT (menu_id, role_id) DO NOTHING;
 -- +goose Down
 DROP TABLE menu_role_access;
 DROP TABLE menu_items;
+DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE code='dewa');
 DELETE FROM role_permissions WHERE permission_code IN ('rbac:manage','menu:manage');
 DELETE FROM permissions WHERE code IN ('rbac:manage','menu:manage');
 DELETE FROM user_roles WHERE role_id IN (SELECT id FROM roles WHERE code='dewa');

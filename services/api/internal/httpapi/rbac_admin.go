@@ -151,6 +151,16 @@ func (d Deps) adminSetUserRole(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (d Deps) adminListRolePermissions(w http.ResponseWriter, r *http.Request) {
+	rps, err := d.Auth.ListRolePermissions(r.Context())
+	if err != nil {
+		d.Log.Error("rbac.role_permissions.list", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": rps})
+}
+
 func (d Deps) adminListRBACUsers(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	users, err := d.Auth.ListUsers(r.Context(), q)

@@ -498,6 +498,7 @@ func (d Deps) mountV1(r chi.Router) {
 					r.With(requirePerm("rbac:manage")).Put("/roles/{id}", d.adminUpdateRole)
 					r.With(requirePerm("rbac:manage")).Delete("/roles/{id}", d.adminDeleteRole)
 					r.With(requirePerm("rbac:manage")).Get("/permissions", d.adminListPermissions)
+					r.With(requirePerm("rbac:manage")).Get("/role-permissions", d.adminListRolePermissions)
 					r.With(requirePerm("rbac:manage")).Post("/role-permissions", d.adminGrantRolePermission)
 					r.With(requirePerm("rbac:manage")).Delete("/role-permissions", d.adminRevokeRolePermission)
 					r.With(requirePerm("rbac:manage")).Put("/users/{id}/roles", d.adminSetUserRole)

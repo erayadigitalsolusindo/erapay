@@ -13,6 +13,7 @@ import (
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/observability"
 )
 
 var (
@@ -273,6 +274,8 @@ func (o *Orchestrator) Inquire(ctx context.Context, paymentID string) error {
 		return gateway.ErrNotSupported
 	}
 
+	gctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	start := time.Now()
 	res, gerr := ad.GetPayment(gctx, gateway.QueryRequest{Reference: paymentID, GatewayReference: gref, AccountRef: acct})
 	lat := time.Since(start)

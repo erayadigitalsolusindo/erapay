@@ -43,7 +43,7 @@ func ObserveGateway(gateway, operation, outcome string, d time.Duration) {
 
 var (
 	pendingUnknownGauge atomic.Int64
-	staleCreatedGauge  atomic.Int64
+	staleCreatedGauge   atomic.Int64
 )
 
 func SetPaymentQueue(pendingUnknown, staleCreated int) {

@@ -46,6 +46,12 @@ type MenuAccess struct {
 	Allowed  bool   `json:"allowed"`
 }
 
+type RolePermission struct {
+	RoleID         string `json:"role_id"`
+	RoleCode       string `json:"role_code"`
+	PermissionCode string `json:"permission_code"`
+}
+
 func (s *Service) ListRoles(ctx context.Context) ([]RBACRole, error) {
 	rows, err := s.db.Query(ctx, `SELECT id::text, code, scope FROM roles ORDER BY scope, code`)
 	if err != nil {
@@ -288,6 +294,28 @@ func (s *Service) ListMenuAccess(ctx context.Context) ([]MenuAccess, error) {
 			return nil, err
 		}
 		out = append(out, ma)
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) ListRolePermissions(ctx context.Context) ([]RolePermission, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT r.id::text, r.code, p.code
+		FROM role_permissions rp
+		JOIN roles r ON r.id = rp.role_id
+		JOIN permissions p ON p.code = rp.permission_code
+		ORDER BY r.code, p.code`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []RolePermission{}
+	for rows.Next() {
+		var rp RolePermission
+		if err := rows.Scan(&rp.RoleID, &rp.RoleCode, &rp.PermissionCode); err != nil {
+			return nil, err
+		}
+		out = append(out, rp)
 	}
 	return out, rows.Err()
 }
