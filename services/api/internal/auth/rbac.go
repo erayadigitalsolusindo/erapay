@@ -46,12 +46,6 @@ type MenuAccess struct {
 	Allowed  bool   `json:"allowed"`
 }
 
-type RolePermission struct {
-	RoleID         string `json:"role_id"`
-	RoleCode       string `json:"role_code"`
-	PermissionCode string `json:"permission_code"`
-}
-
 func (s *Service) ListRoles(ctx context.Context) ([]RBACRole, error) {
 	rows, err := s.db.Query(ctx, `SELECT id::text, code, scope FROM roles ORDER BY scope, code`)
 	if err != nil {
@@ -135,6 +129,34 @@ func (s *Service) DeleteRole(ctx context.Context, id, actor, requestID string) e
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+type RolePermission struct {
+	RoleID         string `json:"role_id"`
+	RoleCode       string `json:"role_code"`
+	PermissionCode string `json:"permission_code"`
+}
+
+func (s *Service) ListRolePermissions(ctx context.Context) ([]RolePermission, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT r.id::text, r.code, p.code
+		FROM role_permissions rp
+		JOIN roles r ON r.id = rp.role_id
+		JOIN permissions p ON p.code = rp.permission_code
+		ORDER BY r.code, p.code`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []RolePermission{}
+	for rows.Next() {
+		var rp RolePermission
+		if err := rows.Scan(&rp.RoleID, &rp.RoleCode, &rp.PermissionCode); err != nil {
+			return nil, err
+		}
+		out = append(out, rp)
+	}
+	return out, rows.Err()
 }
 
 func (s *Service) ListPermissions(ctx context.Context) ([]RBACPermission, error) {
@@ -298,28 +320,6 @@ func (s *Service) ListMenuAccess(ctx context.Context) ([]MenuAccess, error) {
 	return out, rows.Err()
 }
 
-func (s *Service) ListRolePermissions(ctx context.Context) ([]RolePermission, error) {
-	rows, err := s.db.Query(ctx, `
-		SELECT r.id::text, r.code, p.code
-		FROM role_permissions rp
-		JOIN roles r ON r.id = rp.role_id
-		JOIN permissions p ON p.code = rp.permission_code
-		ORDER BY r.code, p.code`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []RolePermission{}
-	for rows.Next() {
-		var rp RolePermission
-		if err := rows.Scan(&rp.RoleID, &rp.RoleCode, &rp.PermissionCode); err != nil {
-			return nil, err
-		}
-		out = append(out, rp)
-	}
-	return out, rows.Err()
-}
-
 func (s *Service) SetMenuAccess(ctx context.Context, menuID, roleID string, allowed bool, actor, requestID string) error {
 	_, err := s.db.Exec(ctx, `
 		INSERT INTO menu_role_access (menu_id, role_id, allowed) VALUES ($1,$2,$3)
@@ -331,6 +331,45 @@ func (s *Service) SetMenuAccess(ctx context.Context, menuID, roleID string, allo
 	_ = audit.Record(ctx, s.db, audit.Entry{ActorID: actor, Action: "rbac.menu_access.set", EntityType: "menu",
 		EntityID: menuID, RequestID: requestID, Metadata: map[string]any{"role_id": roleID, "allowed": allowed}})
 	return nil
+}
+
+func (s *Service) AllowedMenuHrefs(ctx context.Context, p *Principal) ([]string, error) {
+	var roleIDs []string
+	if p == nil {
+		return []string{}, nil
+	}
+	if p.MerchantID == "" {
+		rows, err := s.db.Query(ctx, `SELECT role_id::text FROM user_roles WHERE user_id = $1`, p.UserID)
+		if err != nil {
+			return nil, err
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return nil, err
+		}
+		roleIDs = ids
+	} else {
+		var rid string
+		err := s.db.QueryRow(ctx, `SELECT role_id::text FROM merchant_users WHERE user_id = $1 AND merchant_id = $2`, p.UserID, p.MerchantID).Scan(&rid)
+		if err == nil {
+			roleIDs = append(roleIDs, rid)
+		}
+	}
+	if len(roleIDs) == 0 {
+		return []string{}, nil
+	}
+	q := `SELECT mi.href FROM menu_items mi
+	      JOIN menu_role_access mra ON mra.menu_id = mi.id
+	      WHERE mra.role_id = ANY($1::uuid[]) AND mra.allowed = true`
+	rows, err := s.db.Query(ctx, q, roleIDs)
+	if err != nil {
+		return nil, err
+	}
+	hrefs, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	return hrefs, nil
 }
 
 // expose pool type for callers if needed

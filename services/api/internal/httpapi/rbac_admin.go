@@ -13,6 +13,17 @@ import (
 
 type strPtr *string
 
+func (d Deps) listMenus(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	hrefs, err := d.Auth.AllowedMenuHrefs(r.Context(), p)
+	if err != nil {
+		d.Log.Error("menus.list", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": hrefs})
+}
+
 func (d Deps) adminListRoles(w http.ResponseWriter, r *http.Request) {
 	roles, err := d.Auth.ListRoles(r.Context())
 	if err != nil {
@@ -90,6 +101,16 @@ func (d Deps) adminListPermissions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": perms})
 }
 
+func (d Deps) adminListRolePermissions(w http.ResponseWriter, r *http.Request) {
+	rps, err := d.Auth.ListRolePermissions(r.Context())
+	if err != nil {
+		d.Log.Error("rbac.role_permissions.list", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": rps})
+}
+
 func (d Deps) adminGrantRolePermission(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		RoleID         string `json:"role_id"`
@@ -149,16 +170,6 @@ func (d Deps) adminSetUserRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (d Deps) adminListRolePermissions(w http.ResponseWriter, r *http.Request) {
-	rps, err := d.Auth.ListRolePermissions(r.Context())
-	if err != nil {
-		d.Log.Error("rbac.role_permissions.list", "err", err)
-		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": rps})
 }
 
 func (d Deps) adminListRBACUsers(w http.ResponseWriter, r *http.Request) {

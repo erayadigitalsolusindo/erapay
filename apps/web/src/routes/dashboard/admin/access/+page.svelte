@@ -1,235 +1,208 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
-
-	const i18n = getI18n();
-	const { t } = i18n;
 	let { data, form } = $props();
+	let tab = $state<'roles' | 'perms' | 'menus' | 'users'>('roles');
 
 	let roles = $derived(data.roles as any[]);
 	let permissions = $derived(data.permissions as any[]);
-	let rolePerms = $derived(data.rolePerms as any[]);
+	let rolePermissions = $derived(data.rolePermissions as any[]);
 	let users = $derived(data.users as any[]);
 	let menu = $derived(data.menu as any);
+	let menus = $derived((menu.data ?? []) as any[]);
 
-	let roleById = $derived(new Map(roles.map((r) => [r.id, r])));
-	let permSet = $derived(new Set(rolePerms.map((rp) => `${rp.role_id}:${rp.permission_code}`)));
-	let accessMap = $derived(new Map((menu.access ?? []).map((a: any) => [`${a.menu_id}:${a.role_id}`, a.allowed])));
-
-	let editingRole = $state<string | null>(null);
-	let editCode = $state('');
-	let editScope = $state('');
-
-	function startEdit(r: any) {
-		editingRole = r.id;
-		editCode = r.code;
-		editScope = r.scope;
-	}
-	function cancelEdit() {
-		editingRole = null;
-	}
-
-	const hasPerm = (roleId: string, code: string) => permSet.has(`${roleId}:${code}`);
-	const isAllowed = (menuId: string, roleId: string) => accessMap.get(`${menuId}:${roleId}`) ?? false;
-	const platformRoles = $derived(roles.filter((r) => r.scope === 'platform'));
-	const merchantRoles = $derived(roles.filter((r) => r.scope === 'merchant'));
+	const hasPerm = (roleId: string, code: string) =>
+		rolePermissions.some((p) => p.role_id === roleId && p.permission_code === code);
+	const menuAllowed = (menuId: string, roleId: string) =>
+		(menu.access ?? []).some((a: any) => a.menu_id === menuId && a.role_id === roleId && a.allowed === true);
 </script>
 
 <section class="space-y-6">
-	<div>
-		<h1 class="text-xl font-bold">{t('nav.access')}</h1>
-		<p class="muted text-xs">{t('dewa.sub')}</p>
+	<div class="flex flex-wrap items-center justify-between gap-3">
+		<div>
+			<h1 class="text-xl font-bold">Hak akses (DEWA)</h1>
+			<p class="muted text-xs">Kelola role, izin, menu, dan user secara dinamis.</p>
+		</div>
+		<nav class="flex flex-wrap gap-1.5" aria-label="Tab hak akses">
+			{#each ([['roles', 'Role'], ['perms', 'Matriks izin'], ['menus', 'Akses menu'], ['users', 'User']] as const) as [key, label] (key)}
+				<button
+					type="button"
+					class="rounded-full border border-ink/10 px-3 py-1 text-[11px] font-bold hover:bg-ink/5 aria-[current=true]:bg-merah aria-[current=true]:text-white"
+					aria-current={tab === key ? 'true' : undefined}
+					onclick={() => (tab = key)}
+				>
+					{label}
+				</button>
+			{/each}
+		</nav>
 	</div>
 
-	{#if form?.message}<p class="text-xs font-semibold text-red-700" role="alert">{form.message}</p>{/if}
+	{#if form?.message}<p class="mb-2 text-xs font-semibold text-red-700" role="alert">{form.message}</p>{/if}
+	{#if form?.done}<p class="mb-2 text-xs font-semibold text-emerald-700" role="status">Perubahan tersimpan.</p>{/if}
 
-	<!-- ==================== ROLE ==================== -->
-	<div class="card p-5">
-		<h2 class="mb-3 text-sm font-bold">{t('dewa.role')} ({roles.length})</h2>
-
-		<form method="POST" action="?/createRole" class="mb-4 flex flex-wrap items-end gap-3" use:enhance>
-			<div>
-				<label class="lbl mb-1.5" for="role-code">{t('dewa.role.code')}</label>
-				<input id="role-code" class="inp" name="code" maxlength="60" required placeholder={t('dewa.role.codePh')} />
-			</div>
-			<div>
-				<label class="lbl mb-1.5" for="role-scope">{t('dewa.role.scope')}</label>
-				<select id="role-scope" class="inp" name="scope" required>
-					<option value="platform">{t('dewa.role.scope.platform')}</option>
-					<option value="merchant">{t('dewa.role.scope.merchant')}</option>
+	{#if tab === 'roles'}
+		<div class="card p-5">
+			<h2 class="mb-3 text-sm font-bold">Buat role</h2>
+			<form method="POST" action="?/createRole" use:enhance class="flex flex-wrap items-center gap-2">
+				<input class="inp w-48 py-2" name="code" placeholder="kode_role" required minlength="2" />
+				<select class="inp w-36 py-2" name="scope" aria-label="Lingkup">
+					<option value="platform">platform</option>
+					<option value="merchant">merchant</option>
 				</select>
-			</div>
-			<button type="submit" class="btn btn-red">{t('dewa.role.create')}</button>
-		</form>
+				<button class="btn" type="submit">Simpan</button>
+			</form>
+		</div>
 
-		<div class="overflow-x-auto">
-			<table>
-				<thead><tr><th>{t('dewa.role.code')}</th><th>{t('dewa.role.scope')}</th><th>{t('c.actions')}</th></tr></thead>
-				<tbody>
-					{#each roles as r (r.id)}
-						{#if editingRole === r.id}
+		<div class="card mt-5 overflow-hidden">
+			<div class="p-5 pb-3"><h2 class="text-sm font-bold">Daftar role ({roles.length})</h2></div>
+			<div class="overflow-x-auto">
+				<table>
+					<thead><tr><th>Kode</th><th>Lingkup</th><th>Aksi</th></tr></thead>
+					<tbody>
+						{#each roles as r (r.id)}
 							<tr>
-								<td><input class="inp" name="code" bind:value={editCode} maxlength="60" required form="edit-role-{r.id}" /></td>
+								<td><input class="inp w-48 py-2" name="code" value={r.code} form={`role-${r.id}`} required /></td>
 								<td>
-									<select class="inp" name="scope" bind:value={editScope} required form="edit-role-{r.id}">
-										<option value="platform">{t('dewa.role.scope.platform')}</option>
-										<option value="merchant">{t('dewa.role.scope.merchant')}</option>
+									<select class="inp w-32 py-2" name="scope" form={`role-${r.id}`} aria-label="Lingkup">
+										<option value="platform" selected={r.scope === 'platform'}>platform</option>
+										<option value="merchant" selected={r.scope === 'merchant'}>merchant</option>
 									</select>
 								</td>
-								<td>
-									<div class="flex items-center gap-2">
-										<form method="POST" action="?/updateRole" id="edit-role-{r.id}" use:enhance>
-											<input type="hidden" name="id" value={r.id} />
-										</form>
-										<button type="submit" form="edit-role-{r.id}" class="btn btn-red">{t('dewa.role.save')}</button>
-										<button type="button" class="btn btn-light" onclick={cancelEdit}>{t('dewa.role.cancel')}</button>
-									</div>
+								<td class="flex gap-2">
+									<form id={`role-${r.id}`} method="POST" action="?/updateRole" use:enhance>
+										<input type="hidden" name="id" value={r.id} />
+										<button class="btn" type="submit">Ubah</button>
+									</form>
+									<form method="POST" action="?/deleteRole" use:enhance>
+										<input type="hidden" name="id" value={r.id} />
+										<button class="btn btn-danger" type="submit">Hapus</button>
+									</form>
 								</td>
 							</tr>
-						{:else}
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	{/if}
+
+	{#if tab === 'perms'}
+		<div class="card overflow-hidden">
+			<div class="p-5"><h2 class="text-sm font-bold">Matriks izin</h2></div>
+			<div class="overflow-x-auto">
+				<table>
+					<thead>
+						<tr><th>Role / Izin</th>{#each permissions as p (p.code)}<th class="text-[10px]">{p.code}</th>{/each}</tr>
+					</thead>
+					<tbody>
+						{#each roles as r (r.id)}
 							<tr>
 								<td class="font-mono text-xs">{r.code}</td>
-								<td>{t(r.scope === 'platform' ? 'dewa.role.scope.platform' : 'dewa.role.scope.merchant')}</td>
-								<td>
-									<div class="flex items-center gap-2">
-										<button type="button" class="btn btn-light" onclick={() => startEdit(r)}>{t('dewa.role.edit')}</button>
-										<form
-											method="POST"
-											action="?/deleteRole"
-											use:enhance={({ cancel }) => {
-												if (!confirm(t('dewa.role.deleteConfirm', { code: r.code }))) cancel();
-											}}
-										>
-											<input type="hidden" name="id" value={r.id} />
-											<button type="submit" class="btn btn-danger">{t('dewa.role.delete')}</button>
+								{#each permissions as p (p.code)}
+									<td class="text-center">
+										<form method="POST" action="?/togglePerm" use:enhance>
+											<input type="hidden" name="role_id" value={r.id} />
+											<input type="hidden" name="permission_code" value={p.code} />
+											<input type="hidden" name="allowed" value={hasPerm(r.id, p.code) ? 'false' : 'true'} />
+											<button
+												class="size-7 rounded-md border text-xs font-bold"
+												type="submit"
+												aria-label={`${r.code} ${p.code}`}
+												class:bg-emas={hasPerm(r.id, p.code)}
+												class:text-black={hasPerm(r.id, p.code)}
+												class:border-transparent={hasPerm(r.id, p.code)}
+												class:hover:bg-ink={!hasPerm(r.id, p.code)}
+											>
+												{hasPerm(r.id, p.code) ? '×' : '+'}
+											</button>
 										</form>
-									</div>
-								</td>
+									</td>
+								{/each}
 							</tr>
-						{/if}
-					{/each}
-				</tbody>
-			</table>
+						{/each}
+					</tbody>
+				</table>
+			</div>
 		</div>
-	</div>
+	{/if}
 
-	<!-- ==================== PERMISSION ==================== -->
-	<div class="card p-5">
-		<h2 class="mb-1 text-sm font-bold">{t('dewa.perm')}</h2>
-		<p class="muted mb-3 text-xs">{t('dewa.perm.hint')}</p>
-		<div class="overflow-x-auto">
-			<table>
-				<thead><tr><th>{t('dewa.role.code')}</th>{#each permissions as p (p.code)}<th class="text-center font-mono text-[11px] font-normal">{p.code}</th>{/each}</tr></thead>
-				<tbody>
-					{#each roles as r (r.id)}
-						<tr>
-							<td class="font-mono text-xs">{r.code}</td>
-							{#each permissions as p (p.code)}
-								<td class="text-center">
-									<form method="POST" action={hasPerm(r.id, p.code) ? '?/revokePermission' : '?/grantPermission'} use:enhance>
-										<input type="hidden" name="role_id" value={r.id} />
-										<input type="hidden" name="permission_code" value={p.code} />
-										<button
-											type="submit"
-											class="size-5 rounded border border-ink/20 accent-merah"
-											role="checkbox"
-											aria-checked={hasPerm(r.id, p.code) ? 'true' : 'false'}
-											aria-label={`${r.code} ${p.code}`}
-										></button>
-									</form>
-								</td>
-							{/each}
-						</tr>
-					{/each}
-				</tbody>
-			</table>
+	{#if tab === 'menus'}
+		<div class="card overflow-hidden">
+			<div class="p-5"><h2 class="text-sm font-bold">Akses menu</h2></div>
+			<div class="overflow-x-auto">
+				<table>
+					<thead>
+						<tr><th>Menu / Role</th>{#each roles as r (r.id)}<th class="text-[10px]">{r.code}</th>{/each}</tr>
+					</thead>
+					<tbody>
+						{#each menus as m (m.id)}
+							<tr>
+								<td class="text-xs">{m.label}<div class="muted font-mono text-[10px]">{m.href}</div></td>
+								{#each roles as r (r.id)}
+									<td class="text-center">
+										<form method="POST" action="?/toggleMenu" use:enhance>
+											<input type="hidden" name="menu_id" value={m.id} />
+											<input type="hidden" name="role_id" value={r.id} />
+											<input type="hidden" name="allowed" value={menuAllowed(m.id, r.id) ? 'false' : 'true'} />
+											<button
+												class="size-7 rounded-md border text-xs font-bold"
+												type="submit"
+												aria-label={`${m.href} ${r.code}`}
+												class:bg-emas={menuAllowed(m.id, r.id)}
+												class:text-black={menuAllowed(m.id, r.id)}
+												class:border-transparent={menuAllowed(m.id, r.id)}
+												class:hover:bg-ink={!menuAllowed(m.id, r.id)}
+											>
+												{menuAllowed(m.id, r.id) ? '×' : '+'}
+											</button>
+										</form>
+									</td>
+								{/each}
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
 		</div>
-	</div>
+	{/if}
 
-	<!-- ==================== MENU ACCESS ==================== -->
-	<div class="card p-5">
-		<h2 class="mb-1 text-sm font-bold">{t('dewa.menu')}</h2>
-		<p class="muted mb-3 text-xs">{t('dewa.menu.hint')}</p>
-		<div class="overflow-x-auto">
-			<table>
-				<thead><tr><th>Menu</th><th>Href</th>{#each roles as r (r.id)}<th class="text-center font-mono text-[11px] font-normal">{r.code}</th>{/each}</tr></thead>
-				<tbody>
-					{#each menu.data ?? [] as m (m.id)}
-						<tr>
-							<td class="text-xs">{m.label}</td>
-							<td class="font-mono text-xs">{m.href}</td>
-							{#each roles as r (r.id)}
-								<td class="text-center">
-									<form method="POST" action="?/setMenuAccess" use:enhance>
-										<input type="hidden" name="menu_id" value={m.id} />
-										<input type="hidden" name="role_id" value={r.id} />
-										<input type="hidden" name="allowed" value={isAllowed(m.id, r.id) ? '0' : '1'} />
-										<button
-											type="submit"
-											class="size-5 rounded border border-ink/20 accent-merah"
-											role="checkbox"
-											aria-checked={isAllowed(m.id, r.id) ? 'true' : 'false'}
-											aria-label={`${m.label} ${r.code}`}
-										></button>
-									</form>
-								</td>
-							{/each}
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-	</div>
-
-	<!-- ==================== USER ==================== -->
-	<div class="card p-5">
-		<h2 class="mb-3 text-sm font-bold">{t('dewa.user')} ({users.length})</h2>
-		<div class="overflow-x-auto">
-			<table>
-				<thead><tr><th>{t('dewa.user.email')}</th><th>{t('dewa.user.status')}</th><th>{t('dewa.user.platform')}</th><th>{t('dewa.user.merchant')}</th><th></th></tr></thead>
-				<tbody>
+	{#if tab === 'users'}
+		<div class="card p-5">
+			<h2 class="mb-3 text-sm font-bold">Assign user</h2>
+			<form method="POST" action="?/assignUser" use:enhance class="grid gap-3 sm:grid-cols-4">
+				<select class="inp w-full py-2" name="user_id" required aria-label="User">
+					<option value="">Pilih user</option>
 					{#each users as u (u.id)}
-						<tr>
-							<td class="text-xs">{u.email}</td>
-							<td class="text-xs">{u.status}</td>
-							<td>
-								{#if !u.merchant_id}
-									<form method="POST" action="?/setUserRoles" class="flex flex-wrap items-center gap-2" use:enhance>
-										<input type="hidden" name="user_id" value={u.id} />
-										{#each platformRoles as r (r.id)}
-											<label class="muted flex items-center gap-1 text-[11px]">
-												<input type="checkbox" name="role_ids" value={r.id} checked={(u.platform_roles ?? []).includes(r.code)} class="accent-merah" />
-												{r.code}
-											</label>
-										{/each}
-										<button type="submit" class="btn btn-light">{t('dewa.user.save')}</button>
-									</form>
-								{:else}
-									<span class="muted text-xs">—</span>
-								{/if}
-							</td>
-							<td>
-								{#if u.merchant_id}
-									<form method="POST" action="?/setUserRoles" class="flex items-center gap-2" use:enhance>
-										<input type="hidden" name="user_id" value={u.id} />
-										<input type="hidden" name="merchant_id" value={u.merchant_id} />
-										<select name="role_ids" class="inp max-w-40 px-2 py-1.5 text-xs">
-											<option value="">—</option>
-											{#each merchantRoles as r (r.id)}
-												<option value={r.id} selected={u.merchant_role === r.code}>{r.code}</option>
-											{/each}
-										</select>
-										<button type="submit" class="btn btn-light">{t('dewa.user.save')}</button>
-									</form>
-								{:else}
-									<span class="muted text-xs">—</span>
-								{/if}
-							</td>
-							<td></td>
-						</tr>
+						<option value={u.id}>{u.email}</option>
 					{/each}
-				</tbody>
-			</table>
+				</select>
+				<select class="inp w-full py-2" name="role_id" required aria-label="Role">
+					<option value="">Pilih role</option>
+					{#each roles as r (r.id)}
+						<option value={r.id}>{r.code} ({r.scope})</option>
+					{/each}
+				</select>
+				<input class="inp w-full py-2" name="merchant_id" placeholder="merchant_id (opsional)" />
+				<button class="btn" type="submit">Assign</button>
+			</form>
 		</div>
-	</div>
+
+		<div class="card mt-5 overflow-hidden">
+			<div class="p-5 pb-3"><h2 class="text-sm font-bold">User ({users.length})</h2></div>
+			<div class="overflow-x-auto">
+				<table>
+					<thead><tr><th>Email</th><th>Status</th><th>Role platform</th><th>Role merchant</th></tr></thead>
+					<tbody>
+						{#each users as u (u.id)}
+							<tr>
+								<td class="text-xs">{u.email}</td>
+								<td>{u.status}</td>
+								<td class="text-xs">{(u.platform_roles ?? []).join(', ') || '—'}</td>
+								<td class="text-xs">{u.merchant_role || '—'}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	{/if}
 </section>

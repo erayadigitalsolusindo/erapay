@@ -5,9 +5,9 @@
 	import Logo from '../../../lib/components/auth/Logo.svelte';
 	import Sea from './Sea.svelte';
 
-	let { user }: { user: { email: string; merchantId: string; permissions?: string[] } } = $props();
+	let { user, menus }: { user: { email: string; merchantId: string; permissions?: string[] }, menus?: string[] | null } = $props();
 	const { t } = getI18n();
-	const items = $derived(visible(user));
+	const items = $derived(visible(user, menus));
 	const current = $derived(aktif(page.url.pathname));
 </script>
 

@@ -96,9 +96,11 @@ export const nav: NavItem[] = [
 
 type NavUser = { merchantId: string; permissions?: string[] };
 
-/** Menu yang boleh dilihat: merchant melihat menu merchant, staf platform (tanpa merchant) melihat menu platform. */
-export function visible(user: NavUser): NavItem[] {
+/** Menu yang boleh dilihat: `allowed` (href dari `/v1/menus`) menang atas default permission/platform. */
+export function visible(user: NavUser, allowed?: string[] | null): NavItem[] {
+	const set = allowed && allowed.length ? new Set(allowed) : null;
 	return nav.filter((n) => {
+		if (set && !set.has(n.href)) return false;
 		if (!n.permission) return !n.platform || !user.merchantId;
 		if (!user.permissions?.includes(n.permission)) return false;
 		return n.platform ? !user.merchantId : !!user.merchantId;
