@@ -1,0 +1,50 @@
+# Normalisasi line ending lintas-platform.
+#
+# Tanpa file ini, `core.autocrlf=true` (default di Windows) mengubah LF -> CRLF
+# saat checkout, sehingga `gofmt -l .` melaporkan hampir semua file Go dan
+# `make check` selalu gagal di mesin Windows.
+#
+# Isi repo disimpan sebagai LF; file di checkout juga dipaksa LF.
+
+* text=auto eol=lf
+
+# --- Kode & konfigurasi: WAJIB LF (dijalankan/diparse di Linux & Go tooling) ---
+*.go          text eol=lf
+*.sql         text eol=lf
+*.ts          text eol=lf
+*.svelte      text eol=lf
+*.css         text eol=lf
+*.html        text eol=lf
+*.json        text eol=lf
+*.md          text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.sh          text eol=lf
+*.ps1         text eol=lf
+*.env         text eol=lf
+Makefile      text eol=lf
+Dockerfile    text eol=lf
+
+# --- Kunci & sertifikat: teks, tapi JANGAN pernah diubah ending-nya (tanda tangan) ---
+*.pem         text eol=lf
+*.key         text eol=lf
+*.crt         text eol=lf
+
+# --- Binary: jangan pernah di-line-ending-normalisasi ---
+*.exe         binary
+*.dll         binary
+*.so          binary
+*.a           binary
+*.o           binary
+*.bin         binary
+*.zip         binary
+*.gz          binary
+*.png         binary
+*.jpg         binary
+*.jpeg        binary
+*.gif         binary
+*.ico         binary
+*.woff        binary
+*.woff2       binary
+*.ttf         binary
+*.pdf         binary

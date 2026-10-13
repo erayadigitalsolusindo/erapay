@@ -1,7 +1,8 @@
 import { dev } from '$app/env';
 import { fail, redirect } from '@sveltejs/kit';
-import { login, setSession, type LoginResult } from '../../../lib/server/auth';
+import { login, verifyMfa, setSession } from '../../../lib/server/auth';
 import type { Actions, PageServerLoad } from './$types';
+import type { LoginResult } from '../../../lib/server/auth';
 
 export const load: PageServerLoad = ({ locals }) => {
 	if (locals.user) redirect(303, '/dashboard');
@@ -20,6 +21,26 @@ export const actions: Actions = {
 		const email = String(form.get('email') ?? '').trim();
 		const password = String(form.get('password') ?? '');
 		const merchantId = String(form.get('merchant_id') ?? '').trim();
+		const challengeId = String(form.get('challenge_id') ?? '').trim();
+		const code = String(form.get('mfa_code') ?? '').trim();
+
+		if (challengeId && code) {
+			if (!email || !password) return fail(400, { email, needMerchant: false, error: MESSAGES.invalid_input });
+			const r = await verifyMfa(fetch, getClientAddress(), email, password, merchantId, code, challengeId);
+			if (!r.ok) {
+				return fail(r.code === 'rate_limited' ? 429 : r.code === 'unavailable' ? 503 : 401, {
+					needMerchant: false,
+					email,
+					challenge_id: challengeId,
+					mfa: true,
+					error: r.message ?? 'Kode MFA tidak valid.'
+				});
+			}
+			const okr = r as { ok: true; token: string; maxAge: number };
+			setSession(cookies, okr.token, okr.maxAge, !dev);
+			redirect(303, '/dashboard');
+		}
+
 		if (!email || !password) return fail(400, { email, needMerchant: false, error: MESSAGES.invalid_input });
 
 		const r = await login(fetch, getClientAddress(), email, password, merchantId);
@@ -32,6 +53,9 @@ export const actions: Actions = {
 				email,
 				error: pesan(r)
 			});
+		}
+		if (r.ok === 'mfa') {
+			return { email: r.email, challenge_id: r.challengeId, mfa: true, needMerchant: false, error: null };
 		}
 		setSession(cookies, r.token, r.maxAge, !dev);
 		redirect(303, '/dashboard');

@@ -55,6 +55,38 @@
 		{#if p.description}<p class="muted mt-4 text-[11px]">{p.description}</p>{/if}
 	</section>
 </div>
+
+<!--
+	Riwayat perpindahan status. Read-only: halaman ini hanya menampilkan apa yang
+	sistem terima. Baris `applied=false` adalah laporan gateway yang bertentangan
+	dengan status final; ditampilkan sebagai bukti rekonsiliasi (PRD §0 #2).
+	Status tetap berlabel teks, tidak hanya mengandalkan warna (PRD §4.11).
+-->
+{#if data.timeline.length > 0}
+	<section class="card mt-5 p-6">
+		<h2 class="mb-1 text-sm font-bold">{t('trx.timeline')}</h2>
+		<p class="muted mb-4 text-[11px]">{t('trx.timelineNote')}</p>
+		<ol class="space-y-3">
+			{#each data.timeline as ev, i (i)}
+				<li class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
+					<span class="muted w-40 shrink-0 tabular-nums">{fmt(ev.created_at)}</span>
+					<span class="font-bold">
+						{ev.from_status} &rarr; {ev.to_status}
+					</span>
+					<span class="muted">{t(`trx.tl.source.${ev.source}`)}</span>
+					{#if ev.raw_gateway_status}
+						<span class="muted font-mono text-[11px]">{t('trx.tl.raw', { code: ev.raw_gateway_status })}</span>
+					{/if}
+					{#if ev.applied}
+						<span class="pill bg-emerald-100 text-emerald-800">{t('trx.tl.applied')}</span>
+					{:else}
+						<span class="pill bg-rose-100 text-rose-800">{t('trx.tl.notApplied')}</span>
+					{/if}
+				</li>
+			{/each}
+		</ol>
+	</section>
+{/if}
 {#if data.canRefund && p.status === 'succeeded' && refundable > 0}
 	<form method="POST" action="?/refund" class="card mt-5 max-w-md space-y-4 p-6" use:enhance>
 		<h2 class="text-sm font-bold">{t('rf.request')}</h2>

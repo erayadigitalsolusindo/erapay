@@ -18,6 +18,8 @@
 	const inisial = $derived(nama.slice(0, 2).toUpperCase());
 
 	let menu = $state<'' | 'pintas' | 'profil'>('');
+	let pintasMenu = $state<HTMLDivElement | null>(null);
+	let profilMenu = $state<HTMLDivElement | null>(null);
 	const toggle = (m: 'pintas' | 'profil') => (e: Event) => {
 		e.stopPropagation();
 		menu = menu === m ? '' : m;
@@ -46,7 +48,15 @@
 		'grid size-10 place-items-center rounded-full bg-ink/5 hover:bg-ink/10 focus-visible:ring-4 focus-visible:ring-emas/60';
 </script>
 
-<svelte:window onclick={() => (menu = '')} onkeydown={(e) => e.key === 'Escape' && (menu = '')} />
+<!-- Tutup hanya saat klik di luar: klik di dalam menu (mis. tombol Keluar) harus tetap jalan. -->
+<svelte:window
+	onclick={(e) => {
+		const t = e.target as Node | null;
+		if (t && (pintasMenu?.contains(t) || profilMenu?.contains(t))) return;
+		menu = '';
+	}}
+	onkeydown={(e) => e.key === 'Escape' && (menu = '')}
+/>
 
 <header class="relative bg-surface">
 	<div class="flex items-center justify-between gap-3 px-5 py-3.5 lg:px-8">
@@ -57,7 +67,7 @@
 				<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
 			</button>
 			{#if menu === 'pintas'}
-				<div class="card absolute top-full left-0 z-30 mt-2 w-56 p-1.5 shadow-lg">
+				<div bind:this={pintasMenu} class="card absolute top-full left-0 z-30 mt-2 w-56 p-1.5 shadow-lg">
 					{#each pintas as n (n.href)}
 						<a href={n.href} class="block rounded-lg px-3 py-2 text-xs font-semibold hover:bg-ink/5">{t(n.label)}</a>
 					{/each}
@@ -101,7 +111,7 @@
 					<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
 				</button>
 				{#if menu === 'profil'}
-					<div class="card absolute top-full right-0 z-30 mt-2 w-60 p-1.5 shadow-lg">
+					<div bind:this={profilMenu} class="card absolute top-full right-0 z-30 mt-2 w-60 p-1.5 shadow-lg">
 						<div class="muted truncate px-3 py-2 text-[11px]">{user.email}</div>
 						<form method="POST" action="/logout">
 							<button type="submit" class="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-500/10">{t('hdr.logout')}</button>

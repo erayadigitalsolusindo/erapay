@@ -254,6 +254,11 @@ func (s *Service) ResetPassword(ctx context.Context, tok, password, requestID st
 	if err != nil {
 		return err
 	}
+	// Reset proves mailbox ownership: lift any login lockout so the new
+	// password is usable immediately.
+	if err := auth.ClearFailedAttempts(ctx, tx, email); err != nil {
+		return err
+	}
 	if err := audit.Record(ctx, tx, audit.Entry{ActorID: uid, Action: "auth.password_reset", EntityType: "user", EntityID: uid, RequestID: requestID,
 		Metadata: map[string]any{"sessions_revoked": tag.RowsAffected()}}); err != nil {
 		return err

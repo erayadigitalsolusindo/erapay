@@ -21,6 +21,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/mailer"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/observability"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
@@ -56,6 +57,10 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
+
+	// Start metrics collector (samples queue depths, etc.)
+	go observability.StartCollector(ctx, pool, 30*time.Second)
+	observability.SetReadyz(false) // will be set true by /readyz handler once deps are up
 
 	ropts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {

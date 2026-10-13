@@ -69,22 +69,117 @@
 	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='white' stroke-opacity='.16' stroke-width='1.5'%3E%3Cellipse cx='40' cy='20' rx='10' ry='18'/%3E%3Cellipse cx='40' cy='60' rx='10' ry='18'/%3E%3Cellipse cx='20' cy='40' rx='18' ry='10'/%3E%3Cellipse cx='60' cy='40' rx='18' ry='10'/%3E%3C/g%3E%3Ccircle cx='40' cy='40' r='3' fill='white' fill-opacity='.22'/%3E%3C/svg%3E");
 	background-size: 80px 80px;
 }
-/* Sidebar: gradien merah (sama untuk terang & gelap) + batik kawung yang bergeser pelan. */
-.sidebar-batik {
-	background: linear-gradient(180deg, #a30f29 0%, #c8102e 55%, #d9293f 100%);
+/*
+	Sidebar admin: latar terang + motif batik kawung samar di seluruh permukaan,
+	laut beranimasi (Sea.svelte) occupies BAGIAN BAWAH saja. Surface laut digambar
+	pada 64% tinggi ke bawah, jadi area navigasi tetap lega dan mudah dibaca.
+
+	Aksen merah EraPay dipakai pada titik navigasi dan penanda halaman aktif.
+	Palet air mengikuti tema lewat blok `.adm` di bawah.
+*/
+.sidebar-laut-shell {
+	background: #fff;
+	border-right: 1px solid var(--color-merah) / 0.12;
 	isolation: isolate;
+	--ink: var(--color-merah);             /* merah utama #c8102e */
+	--ink-soft: var(--color-merah-tua);    /* merah tua #8a0a1f */
+	--sb: #fff;
+	--line: var(--color-merah) / 0.12;
+	--w1: #35bdb8;
+	--w2: #0b5f73;
+	--foam: #ffffff;
+	--sand: #efd9a8;
+	--trunk: #8a5a3c;
+	--palm: #2f9e6b;
+	--cr: rgb(9 62 82 / 0.8);
+	--glow: none;
+	--langit: transparent;
+	--bintang: none;
 }
-.sidebar-batik::before {
+/*
+	Bintang malam: HANYA di mode gelap, di area/langit atas laut. Dibuat dari dua lapis
+	background radial-gradient supaya tetap satu elemen (tanpa JS), dan diberi kelipakan
+	sangat halus lewat keyframes. timely dimatikan oleh blok prefers-reduced-motion.
+*/
+@media (prefers-color-scheme: dark) {
+	.adm[data-theme='system'] .sidebar-laut-shell {
+		--bintang:
+			radial-gradient(1.4px 1.4px at 24px 18px, rgb(255 255 255 / 0.9) 50%, transparent 51%),
+			radial-gradient(1px 1px at 74px 42px, rgb(255 255 255 / 0.7) 50%, transparent 51%),
+			radial-gradient(1.6px 1.6px at 128px 26px, rgb(255 244 214 / 0.85) 50%, transparent 51%),
+			radial-gradient(1px 1px at 168px 64px, rgb(255 255 255 / 0.65) 50%, transparent 51%),
+			radial-gradient(1.3px 1.3px at 42px 88px, rgb(255 255 255 / 0.75) 50%, transparent 51%),
+			radial-gradient(1px 1px at 104px 104px, rgb(255 255 255 / 0.55) 50%, transparent 51%),
+			radial-gradient(1.2px 1.2px at 196px 30px, rgb(255 244 214 / 0.7) 50%, transparent 51%),
+			radial-gradient(1px 1px at 148px 120px, rgb(255 255 255 / 0.5) 50%, transparent 51%);
+		--bintang-ukuran: 210px 210px;
+		--bintang-kedip: 4.5s;
+	}
+}
+.adm[data-theme='dark'] .sidebar-laut-shell {
+	--sb: #0a161d;
+	--color-ink: #e4f2f2;
+	--ink-soft: #86a8ad;
+	--w1: #23c0bd;
+	--w2: #0a4a63;
+	--foam: #d8f4f2;
+	--sand: #9a8456;
+	--trunk: #a67c5a;
+	--palm: #2fae80;
+	--cr: rgb(190 238 235 / 0.5);
+	--bintang:
+		radial-gradient(1.4px 1.4px at 24px 18px, rgb(255 255 255 / 0.9) 50%, transparent 51%),
+		radial-gradient(1px 1px at 74px 42px, rgb(255 255 255 / 0.7) 50%, transparent 51%),
+		radial-gradient(1.6px 1.6px at 128px 26px, rgb(255 244 214 / 0.85) 50%, transparent 51%),
+		radial-gradient(1px 1px at 168px 64px, rgb(255 255 255 / 0.65) 50%, transparent 51%),
+		radial-gradient(1.3px 1.3px at 42px 88px, rgb(255 255 255 / 0.75) 50%, transparent 51%),
+		radial-gradient(1px 1px at 104px 104px, rgb(255 255 255 / 0.55) 50%, transparent 51%),
+		radial-gradient(1.2px 1.2px at 196px 30px, rgb(255 244 214 / 0.7) 50%, transparent 51%),
+		radial-gradient(1px 1px at 148px 120px, rgb(255 255 255 / 0.5) 50%, transparent 51%);
+	--bintang-ukuran: 210px 210px;
+	--bintang-kedip: 4.5s;
+}
+
+/*
+	Lapisan bintang: ::after pada shell, hanya occupying "langit" (64% teratas, tepat di
+	atas permukaan air). Pada mode terang --bintang:none sehingga tidak ada yang digambar.
+*/
+.sidebar-laut-shell::after {
+	content: '';
+	position: absolute;
+	inset: 0 0 auto 0;
+	height: 64%; /*area langit, tepat di atas permukaan air */
+	z-index: 0;
+	pointer-events: none;
+	background-image: var(--bintang);
+	background-size: var(--bintang-ukuran, auto);
+	/* Tanpa --bintang (mode terang) animasi tak perlu jalan sama sekali. */
+	animation: bintang-kedip var(--bintang-kedip, 0s) ease-in-out infinite alternate;
+}
+@media (prefers-color-scheme: dark) {
+	.adm[data-theme='system'] .sidebar-laut-shell::after { background-image: var(--bintang); }
+}
+.adm[data-theme='dark'] .sidebar-laut-shell::after { background-image: var(--bintang); }
+@keyframes bintang-kedip {
+	from { opacity: 0.55; }
+	to { opacity: 1; }
+}
+
+/* Batik tipis: hanya garis samar, tidak boleh mengganggu keterbacaan nav. */
+.sidebar-laut-shell::before {
 	content: '';
 	position: absolute;
 	inset: 0;
-	z-index: -1;
+	z-index: 0;
 	pointer-events: none;
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='white' stroke-opacity='.2' stroke-width='1.5'%3E%3Cellipse cx='40' cy='20' rx='10' ry='18'/%3E%3Cellipse cx='40' cy='60' rx='10' ry='18'/%3E%3Cellipse cx='20' cy='40' rx='18' ry='10'/%3E%3Cellipse cx='60' cy='40' rx='18' ry='10'/%3E%3C/g%3E%3Ccircle cx='40' cy='40' r='3' fill='%23e8b84a' fill-opacity='.45'/%3E%3C/svg%3E");
-	background-size: 80px 80px;
-	animation: batik-geser 40s linear infinite;
-	-webkit-mask-image: linear-gradient(180deg, #000 0%, rgb(0 0 0 / 0.55) 100%);
-	mask-image: linear-gradient(180deg, #000 0%, rgb(0 0 0 / 0.55) 100%);
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'%3E%3Cg fill='none' stroke='%230b5f73' stroke-opacity='.07' stroke-width='1.2'%3E%3Cellipse cx='22' cy='11' rx='6' ry='10'/%3E%3Cellipse cx='22' cy='33' rx='6' ry='10'/%3E%3Cellipse cx='11' cy='22' rx='10' ry='6'/%3E%3Cellipse cx='33' cy='22' rx='10' ry='6'/%3E%3C/g%3E%3Ccircle cx='22' cy='22' r='2' fill='%23c8102e' fill-opacity='.08'/%3E%3C/svg%3E");
+	background-size: 44px 44px;
+	animation: batik-geser 48s linear infinite;
+	-webkit-mask-image: linear-gradient(180deg, #000 0%, rgb(0 0 0 / 0.4) 62%, rgb(0 0 0 / 0.15) 100%);
+	mask-image: linear-gradient(180deg, #000 0%, rgb(0 0 0 / 0.4) 62%, rgb(0 0 0 / 0.15) 100%);
+}
+.sidebar-laut {
+	z-index: 0;
 }
 @keyframes batik-geser {
 	to { background-position: 80px 80px; }
@@ -127,9 +222,105 @@
 @media (prefers-color-scheme: dark) {
 	.adm[data-theme='system'] { --ink: #f6e7e7; --surface: #271216; --page: #1a0c0f; --muted: #b99ea0; color-scheme: dark; }
 }
+
+/*
+	Sidebar menimpa token warna tema dengan palet netral sendiri, karena halaman admin
+	berwarna merah tua (ink #4a0510) yang tidak cocok dengan latar sidebar. Palet ini
+	netral+hijau laut, jadi teks nav tetap terbaca dan laut tidak ikut merah.
+	Token merah (--color-merah) sengaja TIDAK diubah: aksen merah EraPay tetap sama
+	di terang dan gelap, hanya di ThemeType yang_failure_ dinaikkan kontrasnya.
+*/
+.adm .sidebar-laut-shell {
+	--color-ink: #12313a;
+	--ink-soft: #5f8087;
+	--sb: #f7fbfa;
+	--line: #d6e7e6;
+}
+.adm[data-theme='dark'] .sidebar-laut-shell {
+	--color-ink: #e4f2f2;
+	--ink-soft: #86a8ad;
+	--sb: #0a161d;
+	--line: #1a303a;
+	--w1: #23c0bd;
+	--w2: #0a4a63;
+	--foam: #d8f4f2;
+	--sand: #9a8456;
+	--trunk: #a67c5a;
+	--palm: #2fae80;
+	--cr: rgb(190 238 235 / 0.5);
+}
+@media (prefers-color-scheme: dark) {
+	.adm[data-theme='system'] .sidebar-laut-shell {
+		--color-ink: #e4f2f2;
+		--ink-soft: #86a8ad;
+		--sb: #0a161d;
+		--line: #1a303a;
+		--w1: #23c0bd;
+		--w2: #0a4a63;
+		--foam: #d8f4f2;
+		--sand: #9a8456;
+		--trunk: #a67c5a;
+		--palm: #2fae80;
+		--cr: rgb(190 238 235 / 0.5);
+	}
+}
+
+/*
+	Sidebar memakai palet netral sendiri supaya laut dan bintang tidak ikut pekat
+	menjadi merah. Teks & garis batas membaca dari token tema, jadi sidebar otomatis
+	selaras dengan halaman: terang -> tinta gelap, gelap -> tinta terang.
+*/
+.adm .sidebar-laut-shell {
+	--color-ink: var(--ink);
+	--ink-soft: var(--muted);
+	--sb: var(--surface);
+	--line: color-mix(in oklab, var(--ink) 14%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+	.adm[data-theme='system'] .sidebar-laut-shell {
+		--sb: #0a161d;
+		--w1: #23c0bd;
+		--w2: #0a4a63;
+		--foam: #d8f4f2;
+		--sand: #9a8456;
+		--trunk: #a67c5a;
+		--palm: #2fae80;
+		--cr: rgb(190 238 235 / 0.5);
+	}
+}
 .adm[data-theme='dark'] .text-merah, .adm[data-theme='dark'] .text-red-700 { color: #ff7a8c; }
 @media (prefers-color-scheme: dark) {
 	.adm[data-theme='system'] .text-merah, .adm[data-theme='system'] .text-red-700 { color: #ff7a8c; }
+}
+
+/*
+	Mode gelap: langit senja jadi lebih pekat supaya laut merah tidak menyilaukan,
+	sedangkan busa tetap terang supaya ikan, manta, dan gelembung tetap terbaca.
+*/
+.adm[data-theme='dark'] .sidebar-laut-shell {
+	background: linear-gradient(180deg, #2c030b 0%, #5c0718 42%, #8a0a1f 72%, #ab1a22 100%);
+	--w1: #c4404f;
+	--w2: #5c0718;
+	--foam: #ffe7e2;
+	--sand: #c9a06a;
+	--trunk: #a67c5a;
+	--palm: #2fae80;
+	--cr: rgb(40 4 12 / 0.75);
+	--glow: drop-shadow(0 0 4px rgb(255 138 107 / 0.35));
+}
+.sidebar-laut-shell { filter: var(--glow); }
+@media (prefers-color-scheme: dark) {
+	.adm[data-theme='system'] .sidebar-laut-shell {
+		background: linear-gradient(180deg, #2c030b 0%, #5c0718 42%, #8a0a1f 72%, #ab1a22 100%);
+		--w1: #c4404f;
+		--w2: #5c0718;
+		--foam: #ffe7e2;
+		--sand: #c9a06a;
+		--trunk: #a67c5a;
+		--palm: #2fae80;
+		--cr: rgb(40 4 12 / 0.75);
+		--glow: drop-shadow(0 0 4px rgb(255 138 107 / 0.35));
+	}
 }
 
 /* Mode gelap halaman masuk/daftar: latar digelapkan lewat overlay di layout, kartu memakai warna panel admin. */

@@ -76,5 +76,38 @@ export async function getPayment(f: typeof fetch, token: string, id: string): Pr
 	}
 }
 
+/**
+ * Satu catatan perpindahan status, oldest first. `applied=false` berarti laporan
+ * gateway yang bertentangan (mis. "berhasil" setelah status final lain): dicatat
+ * sebagai bukti untuk rekonsiliasi, TIDAK pernah diterapkan ulang (PRD §0 #2).
+ */
+export type TimelineEvent = {
+	from_status: string;
+	to_status: string;
+	applied: boolean;
+	source: 'internal' | 'gateway_response' | 'webhook' | 'inquiry';
+	reason?: string;
+	raw_gateway_status?: string;
+	created_at: string;
+};
+
+/** Riwayat perpindahan status. Read-only: halaman hanya menampilkan, Go yang memutuskan. */
+export async function getTimeline(
+	f: typeof fetch,
+	token: string,
+	id: string
+): Promise<TimelineEvent[]> {
+	try {
+		const res = await f(`${BASE}/v1/payments/${encodeURIComponent(id)}/timeline`, {
+			headers: headers(token)
+		});
+		if (!res.ok) return [];
+		const body = (await res.json().catch(() => null)) as { data?: TimelineEvent[] } | null;
+		return body?.data ?? [];
+	} catch {
+		return [];
+	}
+}
+
 /** QR dirender di server menjadi SVG; payload tidak pernah dikirim ke pihak ketiga. */
 export const qrSvg = (value: string) => QRCode.toString(value, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });

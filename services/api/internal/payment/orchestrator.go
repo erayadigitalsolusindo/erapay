@@ -13,6 +13,7 @@ import (
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/observability"
 )
 
 var (
@@ -277,7 +278,7 @@ func (o *Orchestrator) Inquire(ctx context.Context, paymentID string) error {
 	defer cancel()
 	start := time.Now()
 	res, gerr := ad.GetPayment(gctx, gateway.QueryRequest{Reference: paymentID, GatewayReference: gref, AccountRef: acct})
-	lat := int(time.Since(start).Milliseconds())
+	lat := time.Since(start)
 	if gerr != nil {
 		var ge gateway.Error
 		if e := new(gateway.Error); errors.As(gerr, &e) {
@@ -287,7 +288,8 @@ func (o *Orchestrator) Inquire(ctx context.Context, paymentID string) error {
 		if gateway.IsAmbiguous(gerr) {
 			out = "ambiguous"
 		}
-		o.attempt(ctx, paymentID, gw, "inquiry", out, ge.HTTPStatus, ge.Code, "", lat)
+		observability.ObserveGateway(gw, "inquiry", out, lat)
+		o.attempt(ctx, paymentID, gw, "inquiry", out, ge.HTTPStatus, ge.Code, "", int(lat.Milliseconds()))
 		if gateway.IsAmbiguous(gerr) {
 			return nil // try again later; the poller backs off
 		}
@@ -296,17 +298,20 @@ func (o *Orchestrator) Inquire(ctx context.Context, paymentID string) error {
 
 	to, mapped := ad.MapStatus(res.RawStatus)
 	if !mapped {
-		o.attempt(ctx, paymentID, gw, "inquiry", "unmapped", 0, res.ResponseCode, res.RawStatus, lat)
+		observability.ObserveGateway(gw, "inquiry", "unmapped", lat)
+		o.attempt(ctx, paymentID, gw, "inquiry", "unmapped", 0, res.ResponseCode, res.RawStatus, int(lat.Milliseconds()))
 		o.log.Warn("inquiry status has no confirmed mapping; payment unchanged", "payment_id", paymentID, "raw_status", res.RawStatus)
 		return nil
 	}
 	if to == gateway.StatusSucceeded && (res.Amount != amount || (res.Currency != "" && res.Currency != currency)) {
-		o.attempt(ctx, paymentID, gw, "inquiry", "amount_mismatch", 0, res.ResponseCode, res.RawStatus, lat)
+		observability.ObserveGateway(gw, "inquiry", "amount_mismatch", lat)
+		o.attempt(ctx, paymentID, gw, "inquiry", "amount_mismatch", 0, res.ResponseCode, res.RawStatus, int(lat.Milliseconds()))
 		o.log.Error("gateway reports success with a different amount; NOT applied", "payment_id", paymentID,
 			"expected", amount, "got", res.Amount)
 		return ErrAmountMismatch
 	}
-	o.attempt(ctx, paymentID, gw, "inquiry", "ok", 0, res.ResponseCode, res.RawStatus, lat)
+	observability.ObserveGateway(gw, "inquiry", "ok", lat)
+	o.attempt(ctx, paymentID, gw, "inquiry", "ok", 0, res.ResponseCode, res.RawStatus, int(lat.Milliseconds()))
 	_, err = o.svc.Transition(ctx, TransitionInput{PaymentID: paymentID, To: Status(to), Source: SourceInquiry,
 		RawGatewayStatus: res.RawStatus, Reason: "inquiry"})
 	return err

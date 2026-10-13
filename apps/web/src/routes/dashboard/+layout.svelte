@@ -31,7 +31,7 @@
 	data-theme={theme}
 	class="adm font-sans min-h-screen bg-surface text-ink antialiased lg:grid lg:grid-cols-[248px_minmax(0,1fr)]"
 >
-	<Sidebar user={data.user} />
+	<Sidebar user={data.user} menus={data.menus} />
 	<div class="min-w-0">
 		<Header user={data.user} bind:theme />
 		<main class="border-t border-ink/10 bg-page p-5 lg:p-8">

@@ -185,10 +185,19 @@ func TestResetTokenConcurrentHTTP(t *testing.T) {
 	if wins != 1 {
 		t.Fatalf("winners=%d codes=%v", wins, codes)
 	}
+	// Log the winner in first: if the winner came last, the five wrong
+	// attempts before it would trip the per-email login rate limit (429).
+	r := postJSON(t, w, "/v1/auth/login", fmt.Sprintf(`{"email":"integrator@a.test","password":"parallel-password-%d"}`, winner))
+	if r.StatusCode != 200 {
+		t.Fatalf("winner password %d login=%d, want 200", winner, r.StatusCode)
+	}
 	for i := range n {
+		if i == winner {
+			continue
+		}
 		r := postJSON(t, w, "/v1/auth/login", fmt.Sprintf(`{"email":"integrator@a.test","password":"parallel-password-%d"}`, i))
-		if (r.StatusCode == 200) != (i == winner) {
-			t.Fatalf("password %d login=%d, winner=%d", i, r.StatusCode, winner)
+		if r.StatusCode != 401 {
+			t.Fatalf("password %d login=%d, want 401", i, r.StatusCode)
 		}
 	}
 }

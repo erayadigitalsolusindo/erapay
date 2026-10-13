@@ -9,9 +9,11 @@ export type Me = { id: string; email: string; merchantId: string; emailVerified:
 
 export type LoginResult =
 	| { ok: true; token: string; maxAge: number }
+	| { ok: 'mfa'; challengeId: string; email: string }
 	| {
 			ok: false;
 			code: 'invalid' | 'rate_limited' | 'merchant_required' | 'invalid_input' | 'unavailable';
+			message?: string;
 			retryAfter?: number; // detik sampai boleh mencoba lagi (rate_limited)
 			attemptsLeft?: number; // sisa kesempatan sebelum dikunci (invalid)
 		  };
@@ -43,6 +45,10 @@ export async function login(
 		return { ok: false, code: /merchant_id/.test(body?.error?.message ?? '') ? 'merchant_required' : 'invalid_input' };
 	}
 	if (!res.ok) return { ok: false, code: 'unavailable' };
+	const body = await res.json().catch(() => null);
+	if (body?.mfa_required === true && body?.challenge_id) {
+		return { ok: 'mfa', challengeId: body.challenge_id, email };
+	}
 	for (const line of res.headers.getSetCookie()) {
 		const m = line.match(new RegExp(`^${SESSION_COOKIE}=([^;]+)`));
 		if (m) {
@@ -139,4 +145,55 @@ export async function logout(f: typeof fetch, token: string): Promise<void> {
 
 export function setSession(cookies: Cookies, token: string, maxAge: number, secure: boolean) {
 	cookies.set(SESSION_COOKIE, token, { path: '/', httpOnly: true, sameSite: 'lax', secure, maxAge });
+}
+
+export async function verifyMfa(
+	f: typeof fetch,
+	clientIp: string,
+	email: string,
+	password: string,
+	merchantId: string | undefined,
+	code: string,
+	challengeId: string
+): Promise<LoginResult> {
+	let res: Response;
+	try {
+		res = await f(`${BASE}/v1/auth/mfa/verify`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', 'x-forwarded-for': clientIp },
+			body: JSON.stringify({
+				email,
+				password,
+				merchant_id: merchantId || undefined,
+				code,
+				challenge_id: challengeId
+			})
+		});
+	} catch {
+		return { ok: false, code: 'unavailable' };
+	}
+	if (res.status === 429) return { ok: false, code: 'rate_limited', retryAfter: Number(res.headers.get('retry-after')) || undefined };
+	if (res.status === 401) {
+		const body = await res.json().catch(() => null);
+		const left = res.headers.get('x-attempts-left');
+		return {
+			ok: false,
+			code: 'invalid',
+			message: body?.error?.message,
+			attemptsLeft: left === null ? undefined : Number(left)
+		};
+	}
+	if (res.status === 400) {
+		const body = await res.json().catch(() => null);
+		return { ok: false, code: 'invalid_input', message: body?.error?.message };
+	}
+	if (!res.ok) return { ok: false, code: 'unavailable' };
+	for (const line of res.headers.getSetCookie()) {
+		const m = line.match(new RegExp(`^${SESSION_COOKIE}=([^;]+)`));
+		if (m) {
+			const age = line.match(/Max-Age=(\d+)/i);
+			return { ok: true, token: m[1], maxAge: age ? Number(age[1]) : 3600 };
+		}
+	}
+	return { ok: false, code: 'unavailable' };
 }

@@ -1,0 +1,95 @@
+groups:
+  - name: erapay
+    interval: 30s
+    rules:
+      # API / dependency
+      - alert: EraPayAPIDown
+        expr: up{job="erapay-api"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "EraPay API tidak bisa di-scrape (/metrics)"
+          runbook: "docs/RUNBOOK.md#api-down-tidak-responsif"
+
+      - alert: EraPayHighErrorRate
+        expr: sum(rate(erapay_http_requests_total{code=~"5.."}[2m])) / sum(rate(erapay_http_requests_total[2m])) > 0.05
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Error rate HTTP > 5% selama 2 menit"
+          runbook: "docs/RUNBOOK.md#error-spike-5xx"
+
+      - alert: EraPayHighLatency
+        expr: histogram_quantile(0.95, sum(rate(erapay_http_duration_ms_bucket[5m])) by (le)) > 300
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 latency > 300ms selama 5 menit (NFR §8)"
+          runbook: "docs/RUNBOOK.md#latensi-tinggi"
+
+      - alert: EraPayReadyzDown
+        expr: erapay_readyz_ok == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "/readyz tidak OK (Postgres atau Redis down)"
+          runbook: "docs/RUNBOOK.md#readyz-gagal-postgresredis-down"
+
+      # Gateway & inquiry (polling)
+      - alert: EraPayGatewayErrorsSpike
+        expr: sum(rate(erapay_gateway_requests_total{outcome!="ok"}[5m])) > 0.1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Gateway error/ambiguous > 6 per menit selama 5 menit"
+          runbook: "docs/RUNBOOK.md#gateway-error-spike"
+
+      - alert: EraPayStalePendingPayments
+        expr: erapay_payments_pending_unknown > 50
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Banyak pembayaran pending/unknown menumpuk (>50)"
+          runbook: "docs/RUNBOOK.md#penumpukan-queue-polling"
+
+      - alert: EraPayStaleCreatedPayments
+        expr: erapay_payments_stale_created > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Ada pembayaran stuck di status created"
+          runbook: "docs/RUNBOOK.md#penumpukan-queue-polling"
+
+      # Webhook outbound
+      - alert: EraPayWebhookQueueGrowing
+        expr: erapay_webhook_pending > 100
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Webhook delivery pending menumpuk (>100)"
+          runbook: "docs/RUNBOOK.md#webhook-tertunda"
+
+      - alert: EraPayWebhookDeadLetters
+        expr: increase(erapay_webhook_dead_total[10m]) > 0
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "Ada webhook yang mati (dead) dalam 10 menit terakhir"
+          runbook: "docs/RUNBOOK.md#webhook-tertunda"
+
+      # Rekonsiliasi / payout
+      - alert: EraPayReconciliationExceptions
+        expr: erapay_reconciliation_exceptions_open > 0
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Ada exception rekonsiliasi yang masih open"
+          runbook: "docs/RUNBOOK.md#selisih-rekonsiliasi"
+
+      - alert: EraPayPayoutPending
+        expr: erapay_payouts_pending > 0
+        for: 30m
+        labels: { severity: info }
+        annotations:
+          summary: "Ada payout menunggu persetujuan > 30 menit"
+          runbook: "docs/RUNBOOK.md#payout-tertunda"

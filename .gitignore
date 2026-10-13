@@ -4,10 +4,33 @@
 node_modules/
 *.log
 /services/api/bin/
-.DS_Store
 .svelte-kit/
 build/
 
 # Kunci privat/publik DOKU: jangan pernah di-commit
 *.pem
 *.key
+
+# Artefak build Go (binary hasil `go build`), bukan bagian dari source.
+# .gitattributes menandai *.exe sebagai binary; daftar ini mencegahnya
+# ikut ter-commit.
+*.exe
+*.test
+*.out
+
+# Capture notifikasi gateway mentah: BERISI PII PEMBAYAR (nama, issuer, dst).
+# Hanya untuk diagnosis sementara (docs/integrations/doku.md §8).
+# Jangan pernah di-commit.
+doku-capture.txt
+*.capture
+
+# Alat/editor lokal
+.claude/
+.vscode/
+.idea/
+*.swp
+
+# OS lain
+.DS_Store
+Thumbs.db
+desktop.ini
