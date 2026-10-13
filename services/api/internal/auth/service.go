@@ -37,6 +37,16 @@ type BadCredentialsError struct{ AttemptsLeft int }
 func (e *BadCredentialsError) Error() string   { return ErrInvalidCredentials.Error() }
 func (e *BadCredentialsError) Is(t error) bool { return t == ErrInvalidCredentials }
 
+// MFARequiredError indicates that MFA verification is needed before login can complete.
+type MFARequiredError struct {
+	UserID      string
+	ChallengeID string
+	ExpiresAt   time.Time
+}
+
+func (e *MFARequiredError) Error() string   { return ErrMFARequired.Error() }
+func (e *MFARequiredError) Is(t error) bool { return t == ErrMFARequired }
+
 type Config struct {
 	SessionTTL   time.Duration // absolute lifetime
 	IdleTTL      time.Duration // max gap between requests
@@ -110,6 +120,8 @@ func (s *Service) CreateUser(ctx context.Context, email, password string) (strin
 
 // Login verifies credentials and opens a session. It returns the opaque session
 // token (shown to the caller once; only its sha256 is stored).
+// If the user has a platform admin role requiring MFA and MFA is enrolled,
+// it returns an MFARequiredError with a challenge instead of a session.
 func (s *Service) Login(ctx context.Context, in LoginInput) (string, *Principal, error) {
 	ek := emailKey(in.Email)
 	attemptID, left, err := s.reserveAttempt(ctx, ek, in.IP)
@@ -140,6 +152,48 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (string, *Principal,
 		return "", nil, err
 	}
 
+	// Check if this is a platform admin session that requires MFA
+	isPlatformAdmin := merchantID == ""
+	var mfaEnrolled bool
+	if isPlatformAdmin {
+		err = s.db.QueryRow(ctx,
+			`SELECT mfa_secret IS NOT NULL FROM users WHERE id = $1`, uid).Scan(&mfaEnrolled)
+		if err != nil {
+			return "", nil, err
+		}
+	}
+
+	// If platform admin with MFA enrolled, require MFA challenge
+	if isPlatformAdmin && mfaEnrolled {
+		// Generate MFA challenge
+		challengeID, _, err := s.GenerateMFAChallenge(ctx, uid)
+		if err != nil {
+			return "", nil, err
+		}
+
+		// Record that password was verified but MFA pending
+		if _, err := s.db.Exec(ctx, `UPDATE auth_attempts SET succeeded = true WHERE id = $1`, attemptID); err != nil {
+			return "", nil, err
+		}
+		if err := audit.Record(ctx, s.db, audit.Entry{ActorID: uid, Action: "auth.login.password_verified_mfa_pending",
+			EntityType: "user", EntityID: uid, RequestID: in.RequestID,
+			Metadata: map[string]any{"ip": in.IP, "merchant_id": merchantID}}); err != nil {
+			return "", nil, err
+		}
+
+		return "", nil, &MFARequiredError{
+			UserID:      uid,
+			ChallengeID: challengeID,
+			ExpiresAt:   s.now().Add(mfaChallengeTTL),
+		}
+	}
+
+	// No MFA required (merchant user or platform admin without MFA) - create session
+	return s.createSession(ctx, uid, merchantID, attemptID, in)
+}
+
+// createSession creates a session after successful authentication (password + optional MFA).
+func (s *Service) createSession(ctx context.Context, uid, merchantID string, attemptID int64, in LoginInput) (string, *Principal, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", nil, err
@@ -171,6 +225,60 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (string, *Principal,
 	}
 	p, err := s.Authenticate(ctx, token)
 	return token, p, err
+}
+
+// CompleteMFALogin completes the login after successful MFA verification.
+// It re-verifies the password, validates the MFA code against the challenge,
+// and only then opens a session.
+func (s *Service) CompleteMFALogin(ctx context.Context, in LoginInput, code, challengeID string) (string, *Principal, error) {
+	ek := emailKey(in.Email)
+
+	// Reserve an attempt first so rate limiting covers the whole (password+MFA)
+	// verification path, mirroring Login.
+	attemptID, left, err := s.reserveAttempt(ctx, ek, in.IP)
+	if err != nil {
+		if errors.Is(err, ErrRateLimited) {
+			s.audit(ctx, "", "auth.login.rate_limited", in, ek)
+		}
+		return "", nil, err
+	}
+
+	// Verify password (timing-equalized like Login).
+	uid, hash, status, err := s.lookupUser(ctx, in.Email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		VerifyPassword(in.Password, s.dummy())
+		s.audit(ctx, "", "auth.login.failed", in, ek)
+		return "", nil, &BadCredentialsError{AttemptsLeft: left}
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	if !VerifyPassword(in.Password, hash) || status != "active" {
+		s.audit(ctx, uid, "auth.login.failed", in, ek)
+		return "", nil, &BadCredentialsError{AttemptsLeft: left}
+	}
+
+	merchantID, err := s.pickMerchant(ctx, uid, in.MerchantID)
+	if err != nil {
+		s.audit(ctx, uid, "auth.login.failed", in, ek)
+		return "", nil, err
+	}
+
+	// Validate the MFA code against the pending challenge. This also enforces
+	// the MFA-specific rate limit and consumes the challenge on success.
+	if err := s.VerifyMFA(ctx, MFAVerifyInput{
+		UserID:      uid,
+		Code:        code,
+		ChallengeID: challengeID,
+		IP:          in.IP,
+		RequestID:   in.RequestID,
+	}); err != nil {
+		s.audit(ctx, uid, "auth.login.failed", in, ek)
+		return "", nil, err
+	}
+
+	// All checks passed: mark successful and create session.
+	return s.createSession(ctx, uid, merchantID, attemptID, in)
 }
 
 // reserveAttempt enforces the rate limit and records the attempt as a failure

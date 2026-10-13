@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -122,6 +123,18 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "invalid credentials", false)
 		return
+	case errors.Is(err, auth.ErrMFARequired):
+		var mfaErr *auth.MFARequiredError
+		if errors.As(err, &mfaErr) {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"mfa_required": true,
+				"challenge_id": mfaErr.ChallengeID,
+				"expires_at":   mfaErr.ExpiresAt,
+			})
+			return
+		}
+		writeError(w, r, http.StatusUnauthorized, "MFA_REQUIRED", "MFA required", false)
+		return
 	case err != nil:
 		d.Log.Error("login", "err", err)
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
@@ -143,6 +156,212 @@ func (d Deps) logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1,
 		HttpOnly: true, Secure: d.SecureCookies, SameSite: http.SameSiteStrictMode})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// mfaChallenge generates an MFA challenge for the authenticated user.
+// Requires an active session (platform admin with MFA enrolled).
+func (d Deps) mfaChallenge(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	if p == nil || p.MerchantID != "" {
+		writeError(w, r, http.StatusForbidden, "FORBIDDEN", "platform admin session required", false)
+		return
+	}
+	challengeID, secret, err := d.Auth.GenerateMFAChallenge(r.Context(), p.UserID)
+	if err != nil {
+		if errors.Is(err, auth.ErrMFANotEnrolled) {
+			writeError(w, r, http.StatusBadRequest, "MFA_NOT_ENROLLED", "MFA not enrolled", false)
+			return
+		}
+		d.Log.Error("mfa.challenge", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"challenge_id": challengeID,
+		"secret":       secret, // for QR code display (only on enrollment)
+		"expires_at":   time.Now().Add(5 * time.Minute),
+	})
+}
+
+// mfaVerify verifies an MFA code (TOTP or recovery code) and completes login.
+// Called after login returns MFA_REQUIRED with a challenge_id.
+func (d Deps) mfaVerify(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email       string `json:"email"`
+		Password    string `json:"password"`
+		MerchantID  string `json:"merchant_id"`
+		Code        string `json:"code"`
+		ChallengeID string `json:"challenge_id"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Email == "" || body.Password == "" || body.Code == "" || body.ChallengeID == "" {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "email, password, code, and challenge_id are required", false)
+		return
+	}
+	token, p, err := d.Auth.CompleteMFALogin(r.Context(), auth.LoginInput{
+		Email: body.Email, Password: body.Password, MerchantID: body.MerchantID,
+		IP: d.clientIP(r), UserAgent: r.UserAgent(), RequestID: middleware.GetReqID(r.Context()),
+	}, body.Code, body.ChallengeID)
+	switch {
+	case errors.Is(err, auth.ErrMFAInvalidCode):
+		writeError(w, r, http.StatusUnauthorized, "MFA_INVALID_CODE", "invalid MFA code", false)
+		return
+	case errors.Is(err, auth.ErrMFAChallengeExpired):
+		writeError(w, r, http.StatusUnauthorized, "MFA_CHALLENGE_EXPIRED", "MFA challenge expired", false)
+		return
+	case errors.Is(err, auth.ErrRateLimited):
+		var rl *auth.RateLimitedError
+		secs := 900
+		if errors.As(err, &rl) {
+			secs = int(math.Ceil(rl.RetryAfter.Seconds()))
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
+		writeError(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "too many MFA attempts, try again later", true)
+		return
+	case errors.Is(err, auth.ErrMerchantRequired):
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "merchant_id is required for this account", false)
+		return
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		var bc *auth.BadCredentialsError
+		if errors.As(err, &bc) {
+			w.Header().Set("X-Attempts-Left", strconv.Itoa(max(bc.AttemptsLeft, 0)))
+		}
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "invalid credentials", false)
+		return
+	case err != nil:
+		d.Log.Error("mfa.verify", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookie, Value: token, Path: "/", HttpOnly: true,
+		Secure: d.SecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: int(d.Auth.SessionTTL().Seconds()),
+	})
+	writeJSON(w, http.StatusOK, meResponse(p))
+}
+
+// mfaStatus returns the current MFA enrollment status for the authenticated user.
+func (d Deps) mfaStatus(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	if p == nil {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required", false)
+		return
+	}
+	info, err := d.Auth.GetMFAEnrollmentStatus(r.Context(), p.UserID)
+	if err != nil {
+		if errors.Is(err, auth.ErrMFANotEnrolled) {
+			writeJSON(w, http.StatusOK, map[string]any{"enrolled": false})
+			return
+		}
+		d.Log.Error("mfa.status", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enrolled":      info.MFAEnrolled,
+		"registered_at": info.MFARegisteredAt,
+	})
+}
+
+// mfaEnroll starts MFA enrollment for the authenticated platform admin.
+func (d Deps) mfaEnroll(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	if p == nil || p.MerchantID != "" {
+		writeError(w, r, http.StatusForbidden, "FORBIDDEN", "platform admin session required", false)
+		return
+	}
+	if !p.AdminMFARequired() {
+		writeError(w, r, http.StatusForbidden, "FORBIDDEN", "MFA enrollment not required for this role", false)
+		return
+	}
+	enrollment, err := d.Auth.EnrollMFA(r.Context(), p.UserID, p.Email)
+	if err != nil {
+		if errors.Is(err, auth.ErrMFAAlreadyEnrolled) {
+			writeError(w, r, http.StatusConflict, "MFA_ALREADY_ENROLLED", "MFA already enrolled", false)
+			return
+		}
+		if errors.Is(err, auth.ErrMFAEnrollmentPending) {
+			writeError(w, r, http.StatusConflict, "MFA_ENROLLMENT_PENDING", "MFA enrollment already pending", false)
+			return
+		}
+		d.Log.Error("mfa.enroll", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"secret":         enrollment.Secret,
+		"qr_code_url":    enrollment.QRCodeURL,
+		"recovery_codes": enrollment.RecoveryCodes,
+		"expires_at":     enrollment.ExpiresAt,
+	})
+}
+
+// mfaConfirm confirms MFA enrollment with the first TOTP code.
+func (d Deps) mfaConfirm(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	if p == nil {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required", false)
+		return
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Code == "" {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "code is required", false)
+		return
+	}
+	err := d.Auth.ConfirmMFAEnrollment(r.Context(), p.UserID, body.Code, middleware.GetReqID(r.Context()))
+	if err != nil {
+		if errors.Is(err, auth.ErrMFAEnrollmentExpired) {
+			writeError(w, r, http.StatusBadRequest, "MFA_ENROLLMENT_EXPIRED", "MFA enrollment expired", false)
+			return
+		}
+		if errors.Is(err, auth.ErrMFAInvalidCode) {
+			writeError(w, r, http.StatusUnauthorized, "MFA_INVALID_CODE", "invalid TOTP code", false)
+			return
+		}
+		d.Log.Error("mfa.confirm", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": "MFA enrolled successfully"})
+}
+
+// mfaDisable disables MFA for the authenticated user.
+func (d Deps) mfaDisable(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	if p == nil {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required", false)
+		return
+	}
+	err := d.Auth.DisableMFA(r.Context(), p.UserID, p.UserID, middleware.GetReqID(r.Context()))
+	if err != nil {
+		d.Log.Error("mfa.disable", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": "MFA disabled successfully"})
+}
+
+// mfaRegenerateRecoveryCodes generates new recovery codes for the authenticated user.
+func (d Deps) mfaRegenerateRecoveryCodes(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	if p == nil {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required", false)
+		return
+	}
+	codes, err := d.Auth.RegenerateRecoveryCodes(r.Context(), p.UserID, middleware.GetReqID(r.Context()))
+	if err != nil {
+		if errors.Is(err, auth.ErrMFANotEnrolled) {
+			writeError(w, r, http.StatusBadRequest, "MFA_NOT_ENROLLED", "MFA not enrolled", false)
+			return
+		}
+		d.Log.Error("mfa.regenerate_recovery_codes", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"recovery_codes": codes})
 }
 
 func meResponse(p *auth.Principal) map[string]any {
@@ -197,6 +416,7 @@ func (d Deps) mountV1(r chi.Router) {
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(requireJSON)
 		r.Post("/auth/login", d.login)
+		r.Post("/auth/mfa/verify", d.mfaVerify) // Complete login with MFA code
 		if d.Onboarding != nil && d.Onboarding.CanRegister() {
 			r.Post("/auth/register", d.register)
 		}
@@ -225,6 +445,12 @@ func (d Deps) mountV1(r chi.Router) {
 			r.Use(d.requireAuth)
 			r.Post("/auth/logout", d.logout)
 			r.Get("/auth/me", d.me)
+			// MFA endpoints (platform admin only, gated by role in handlers)
+			r.Get("/auth/mfa/status", d.mfaStatus)
+			r.Post("/auth/mfa/enroll", d.mfaEnroll)
+			r.Post("/auth/mfa/confirm", d.mfaConfirm)
+			r.Post("/auth/mfa/disable", d.mfaDisable)
+			r.Post("/auth/mfa/regenerate-recovery-codes", d.mfaRegenerateRecoveryCodes)
 			// Platform (Finance / Ops) endpoints: cross-tenant by design, gated by permission only.
 			r.Route("/admin", func(r chi.Router) {
 				if d.Onboarding != nil {
