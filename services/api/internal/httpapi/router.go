@@ -33,24 +33,25 @@ type Pinger interface {
 }
 
 type Deps struct {
-	Auth           *auth.Service // nil disables /v1 routes (health-only tests)
-	Merchants      *merchant.Repo
-	APIKeys        *apikey.Service
-	Payments       *payment.Service
-	PaymentFlow    *payment.Orchestrator
-	Outbound       *outbound.Service   // nil disables /v1/webhook-endpoints and /v1/webhook-deliveries
-	Settlement     *settlement.Service // nil disables /v1/balance and /v1/admin/settlement routes
-	Payouts        *payout.Service     // nil disables bank accounts and payouts
-	Refunds        *refund.Service     // nil disables refunds
-	Onboarding     *onboarding.Service // nil disables /v1/admin/merchants; sign-up also needs its notifier
-	Account        *account.Service    // nil disables email verification and password reset
-	Webhooks       *webhook.Store      // optional raw capture (ERAPAY_WEBHOOK_CAPTURE); see webhooks.go
-	Gateways       payment.Gateways    // adapters implementing gateway.WebhookVerifier enable verified webhooks
-	SecureCookies  bool
-	TrustedProxies []netip.Prefix // peers allowed to set X-Forwarded-For
-	Log            *slog.Logger
-	DB             Pinger
-	Redis          Pinger
+	Auth               *auth.Service // nil disables /v1 routes (health-only tests)
+	Merchants          *merchant.Repo
+	APIKeys            *apikey.Service
+	Payments           *payment.Service
+	PaymentFlow        *payment.Orchestrator
+	Outbound           *outbound.Service   // nil disables /v1/webhook-endpoints and /v1/webhook-deliveries
+	Settlement         *settlement.Service // nil disables /v1/balance and /v1/admin/settlement routes
+	Payouts            *payout.Service     // nil disables bank accounts and payouts
+	Refunds            *refund.Service     // nil disables refunds
+	Onboarding         *onboarding.Service // nil disables /v1/admin/merchants; sign-up also needs its notifier
+	Account            *account.Service    // nil disables email verification and password reset
+	ARUSProvisionToken string              // server-to-server token for ARUS tenant provisioning
+	Webhooks           *webhook.Store      // optional raw capture (ERAPAY_WEBHOOK_CAPTURE); see webhooks.go
+	Gateways           payment.Gateways    // adapters implementing gateway.WebhookVerifier enable verified webhooks
+	SecureCookies      bool
+	TrustedProxies     []netip.Prefix // peers allowed to set X-Forwarded-For
+	Log                *slog.Logger
+	DB                 Pinger
+	Redis              Pinger
 }
 
 func NewRouter(d Deps) http.Handler {
@@ -95,6 +96,13 @@ func NewRouter(d Deps) http.Handler {
 	})
 	if d.Auth != nil {
 		d.mountV1(r)
+	}
+	if d.ARUSProvisionToken != "" {
+		r.Route("/v1/integrations/arus", func(ir chi.Router) {
+			ir.Use(d.requireARUSProvisionToken)
+			ir.Get("/tenants/{tenant_id}", d.arusTenantStatus)
+			ir.Post("/tenants", d.provisionARUSTenant)
+		})
 	}
 	if d.Webhooks != nil || (d.Gateways != nil && d.PaymentFlow != nil) {
 		d.mountWebhooks(r)

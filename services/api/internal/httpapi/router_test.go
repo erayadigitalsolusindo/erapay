@@ -48,3 +48,27 @@ func TestReadyz(t *testing.T) {
 		}
 	}
 }
+
+func TestARUSIntegrationRequiresProvisionToken(t *testing.T) {
+	router := NewRouter(Deps{
+		ARUSProvisionToken: "a-server-side-token-long-enough-for-tests",
+		Log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	for _, tc := range []struct {
+		name  string
+		token string
+		want  int
+	}{{"missing", "", http.StatusUnauthorized}, {"wrong", "wrong", http.StatusUnauthorized}, {"valid", "a-server-side-token-long-enough-for-tests", http.StatusServiceUnavailable}} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/v1/integrations/arus/tenants/11111111-1111-4111-8111-111111111111", nil)
+			if tc.token != "" {
+				req.Header.Set("Authorization", "Bearer "+tc.token)
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("status=%d want=%d body=%s", rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+}
