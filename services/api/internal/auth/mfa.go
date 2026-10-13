@@ -6,8 +6,10 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base32"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -82,19 +84,28 @@ const (
 )
 
 // generateTOTPSecret generates a new base32-encoded TOTP secret.
-func generateTOTPSecret() (string, error) {
+func generateTOTPSecret(accountName string) (string, []byte, error) {
+	if accountName == "" {
+		accountName = "erapay-mfa-setup"
+	}
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "EraPay",
-		AccountName: "", // will be set per-user
+		AccountName: accountName,
 		SecretSize:  20, // 160 bits
 		Algorithm:   otp.AlgorithmSHA1,
 		Digits:      otp.DigitsSix,
 		Period:      30,
 	})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return key.Secret(), nil
+	// Decode the base32 secret back to raw bytes so the QR URL below
+	// encodes the exact same secret (Generate expects raw bytes).
+	raw, err := decodeTOTPSecret(key.Secret())
+	if err != nil {
+		return "", nil, err
+	}
+	return key.Secret(), raw, nil
 }
 
 // generateRecoveryCodes generates one-time recovery codes.
@@ -184,16 +195,16 @@ func (s *Service) EnrollMFA(ctx context.Context, userID, email string) (*MFAEnro
 		return nil, ErrMFAEnrollmentPending
 	}
 
-	secret, err := generateTOTPSecret()
+	secret, secretRaw, err := generateTOTPSecret(email)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build otpauth:// URL for QR code
+	// Build otpauth:// URL for QR code (use the same raw secret)
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "EraPay",
 		AccountName: email,
-		Secret:      []byte(secret),
+		Secret:      secretRaw,
 		Algorithm:   otp.AlgorithmSHA1,
 		Digits:      otp.DigitsSix,
 		Period:      30,
@@ -371,8 +382,10 @@ func (s *Service) GenerateMFAChallenge(ctx context.Context, userID string) (stri
 	}
 	challengeID := hex.EncodeToString(nonce)
 
-	// Store challenge (for rate limiting)
-	challengeHash := sha256.Sum256(nonce)
+	// Store challenge (for rate limiting). Hash the hex-encoded challengeID
+	// itself so VerifyMFA / checkMFARateLimit / recordMFAAttempt (which all
+	// hash []byte(challengeID)) compute the same value.
+	challengeHash := sha256.Sum256([]byte(challengeID))
 	challengeHashHex := hex.EncodeToString(challengeHash[:])
 
 	_, err = s.db.Exec(ctx, `
@@ -551,6 +564,18 @@ func (s *Service) RegenerateRecoveryCodes(ctx context.Context, userID, requestID
 	})
 
 	return newCodes, nil
+}
+
+// decodeTOTPSecret decodes a base32 (no padding) TOTP secret into raw bytes.
+func decodeTOTPSecret(secret string) ([]byte, error) {
+	s := strings.ToUpper(strings.TrimSpace(secret))
+	// pquerna/otp uses base32 StdEncoding without padding for TOTP secrets.
+	enc := base32.StdEncoding.WithPadding(base32.NoPadding)
+	if pad := len(s) % 8; pad != 0 {
+		s += strings.Repeat("=", 8-pad)
+		enc = base32.StdEncoding
+	}
+	return enc.DecodeString(s)
 }
 
 // MFA migration requires a new table for challenges
