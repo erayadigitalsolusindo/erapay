@@ -136,6 +136,17 @@ func (s *Service) SendVerification(ctx context.Context, uid, email string) error
 	return nil
 }
 
+// SendOwnerSetup invites a provisioned merchant owner to choose their password.
+func (s *Service) SendOwnerSetup(ctx context.Context, uid, email string) error {
+	tok, err := s.issue(ctx, uid, purposeReset, resetTTL)
+	if err != nil {
+		return err
+	}
+	s.send(mailer.Message{To: email, Subject: "Aktifkan akun EraPay Anda", Body: fmt.Sprintf(
+		"Akun pemilik EraPay Anda telah disiapkan melalui integrasi ARUS. Buat kata sandi dan verifikasi alamat email Anda melalui tautan berikut (berlaku 1 jam):\n\n%s/reset-password?token=%s\n\nJika Anda tidak mengharapkan undangan ini, abaikan email ini.\n", s.webURL, tok)})
+	return nil
+}
+
 // SendAlreadyRegistered is what an existing address receives when someone tries to sign up with it.
 // Sign-up answers the same either way, so this email is the only place the owner learns about it.
 func (s *Service) SendAlreadyRegistered(ctx context.Context, email string) error {

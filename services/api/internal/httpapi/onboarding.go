@@ -23,6 +23,10 @@ func (d Deps) onboardingErr(w http.ResponseWriter, r *http.Request, err error) b
 		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "not found", false)
 	case errors.Is(err, onboarding.ErrEmailUnverified):
 		writeError(w, r, http.StatusConflict, "EMAIL_NOT_VERIFIED", "the owner has not verified their email yet", false)
+	case errors.Is(err, onboarding.ErrEmailDeliveryUnavailable):
+		writeError(w, r, http.StatusServiceUnavailable, "EMAIL_DELIVERY_UNAVAILABLE", "owner email delivery is not configured", false)
+	case errors.Is(err, onboarding.ErrARUSMerchantAmbiguous):
+		writeError(w, r, http.StatusConflict, "MERCHANT_LINK_AMBIGUOUS", "multiple existing merchants match this ARUS tenant", false)
 	case errors.Is(err, onboarding.ErrState):
 		writeError(w, r, http.StatusConflict, "INVALID_STATE", "merchant is not in a state that allows this action", false)
 	default:

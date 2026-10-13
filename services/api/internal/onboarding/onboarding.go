@@ -31,7 +31,9 @@ var (
 	ErrState       = errors.New("merchant is not awaiting review")
 	ErrValidation  = errors.New("validation")
 	// ErrEmailUnverified: approving means trusting the owner's contact details, so the address must be proven first.
-	ErrEmailUnverified = errors.New("owner email is not verified")
+	ErrEmailUnverified          = errors.New("owner email is not verified")
+	ErrEmailDeliveryUnavailable = errors.New("owner email delivery is not configured")
+	ErrARUSMerchantAmbiguous    = errors.New("multiple existing merchants match this ARUS tenant")
 )
 
 // ValidationError carries a message that is safe to show to the caller.

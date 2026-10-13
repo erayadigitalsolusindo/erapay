@@ -135,6 +135,7 @@ func run(log *slog.Logger) error {
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
+			ARUSProvisionToken: cfg.ARUSProvisionToken,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
