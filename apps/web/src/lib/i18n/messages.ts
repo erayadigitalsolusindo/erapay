@@ -174,6 +174,8 @@ const id = {
 	'nav.fRefunds.desc': 'Setujui refund dan catat pengembalian dana.',
 	'nav.fMerchants': 'Review merchant',
 	'nav.fMerchants.desc': 'Tinjau pendaftaran merchant baru, tetapkan tarif, lalu setujui atau tolak.',
+	'nav.access': 'Hak akses (DEWA)',
+	'nav.access.desc': 'Kelola role, izin, menu, dan user secara dinamis.',
 
 	'c.loadFail': 'Data tidak dapat dimuat.',
 	'c.none': 'Belum ada data.',
@@ -589,6 +591,8 @@ const en: Record<keyof typeof id, string> = {
 	'nav.fRefunds.desc': 'Approve refunds and record the money returned.',
 	'nav.fMerchants': 'Merchant review',
 	'nav.fMerchants.desc': 'Review new merchant sign-ups, set fees, then approve or reject.',
+	'nav.access': 'Access (DEWA)',
+	'nav.access.desc': 'Dynamically manage roles, permissions, menus, and users.',
 
 	'c.loadFail': 'The data could not be loaded.',
 	'c.none': 'No data yet.',

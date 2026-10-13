@@ -73,7 +73,9 @@ func (p *Principal) AdminMFARequired() bool {
 		p.Has("merchant:write") || // super_admin
 		p.Has("merchant:review") || // ops_support, super_admin
 		p.Has("merchant:approve") || // super_admin
-		p.Has("report:read") // finance, super_admin
+		p.Has("report:read") || // finance, super_admin
+		p.Has("rbac:manage") || // dewa
+		p.Has("menu:manage") // dewa
 }
 
 const (

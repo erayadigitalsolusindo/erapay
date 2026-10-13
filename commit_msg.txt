@@ -1,0 +1,10 @@
+fix(auth): betulkan MFA TOTP secret encoding dan challenge hash
+
+- generateTOTPSecret sekarang isi AccountName (wajib pquerna/otp) dan
+  kembalikan raw bytes agar QR URL encode secret yang sama persis
+- GenerateMFAChallenge hash challengeID (hex) bukan raw nonce agar
+  cocok dengan VerifyMFA/checkMFARateLimit/recordMFAAttempt
+- tambah decodeTOTPSecret helper untuk base32 tanpa padding
+
+Test: TestMFAEnrollmentAndLoginFlow + TestMFAInvalidPasswordDuringVerify hijau,
+go test ./... semua PASS (was FAIL 2 packages)

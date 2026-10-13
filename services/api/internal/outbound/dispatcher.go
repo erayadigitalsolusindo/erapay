@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/observability"
 )
 
 type job struct {
@@ -169,6 +171,7 @@ func (s *Service) finish(ctx context.Context, j job, o outcome) error {
 			    last_http_status = $3, last_latency_ms = $4, last_error = NULL
 			WHERE id = $1 AND status = 'pending'`, j.deliveryID, n, o.httpStatus, o.latencyMS)
 	case n >= MaxAttempts:
+		observability.IncWebhookDead()
 		_, err = tx.Exec(ctx, `
 			UPDATE webhook_deliveries SET status = 'dead', attempts = $2,
 			    last_http_status = NULLIF($3,0), last_latency_ms = $4, last_error = $5

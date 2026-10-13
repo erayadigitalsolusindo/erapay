@@ -1,0 +1,59 @@
+{
+  "title": "EraPay — API & Operations",
+  "uid": "erapay-ops",
+  "tags": ["erapay"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP RPS (by code)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{ "expr": "sum(rate(erapay_http_requests_total[1m])) by (code)", "legendFormat": "{{code}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "p50 / p95 latency (ms)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(erapay_http_duration_ms_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(erapay_http_duration_ms_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Gateway create / inquiry (by outcome)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [{ "expr": "sum(rate(erapay_gateway_requests_total[2m])) by (gateway, operation, outcome)", "legendFormat": "{{gateway}} {{operation}}:{{outcome}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Gateway latency p95 (ms)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(erapay_gateway_duration_ms_bucket[2m])) by (le, gateway))", "legendFormat": "{{gateway}}" }]
+    },
+    {
+      "type": "stat",
+      "title": "Readiness / Pending",
+      "gridPos": {"h": 4, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        { "expr": "erapay_readyz_ok", "legendFormat": "readyz ok" },
+        { "expr": "erapay_payments_pending_unknown", "legendFormat": "pending/unknown payments" },
+        { "expr": "erapay_payments_stale_created", "legendFormat": "stale created" },
+        { "expr": "erapay_webhook_pending", "legendFormat": "webhook pending" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Exceptions / Payouts",
+      "gridPos": {"h": 4, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        { "expr": "erapay_reconciliation_exceptions_open", "legendFormat": "open reconciliation exceptions" },
+        { "expr": "erapay_webhook_dead", "legendFormat": "webhook dead" },
+        { "expr": "erapay_payouts_pending", "legendFormat": "payouts pending" },
+        { "expr": "erapay_ledger_entries_total", "legendFormat": "ledger entries (counter)" }
+      ]
+    }
+  ]
+}

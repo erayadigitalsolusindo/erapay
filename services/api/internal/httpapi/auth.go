@@ -490,6 +490,21 @@ func (d Deps) mountV1(r chi.Router) {
 					r.With(requirePerm("payout:execute")).Post("/payouts/{id}/mark-failed", d.adminPayoutAction("mark-failed"))
 					r.With(requirePerm("payout:execute")).Get("/payouts/{id}/destination", d.adminPayoutDestination)
 				}
+				// DEWA: RBAC management (platform-only).
+				r.Group(func(r chi.Router) {
+					r.Use(requirePlatform)
+					r.With(requirePerm("rbac:manage")).Get("/roles", d.adminListRoles)
+					r.With(requirePerm("rbac:manage")).Post("/roles", d.adminCreateRole)
+					r.With(requirePerm("rbac:manage")).Put("/roles/{id}", d.adminUpdateRole)
+					r.With(requirePerm("rbac:manage")).Delete("/roles/{id}", d.adminDeleteRole)
+					r.With(requirePerm("rbac:manage")).Get("/permissions", d.adminListPermissions)
+					r.With(requirePerm("rbac:manage")).Post("/role-permissions", d.adminGrantRolePermission)
+					r.With(requirePerm("rbac:manage")).Delete("/role-permissions", d.adminRevokeRolePermission)
+					r.With(requirePerm("rbac:manage")).Put("/users/{id}/roles", d.adminSetUserRole)
+					r.With(requirePerm("rbac:manage")).Get("/users", d.adminListRBACUsers)
+					r.With(requirePerm("rbac:manage")).Get("/menu-permissions", d.adminListMenuItems)
+					r.With(requirePerm("rbac:manage")).Put("/menu-permissions", d.adminSetMenuPermissions)
+				})
 			})
 			r.Group(func(r chi.Router) {
 				r.Use(requireTenant)
