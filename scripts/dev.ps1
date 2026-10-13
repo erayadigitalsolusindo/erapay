@@ -37,7 +37,10 @@ switch ($Task) {
         Push-Location (Join-Path $Root 'services/api')
         try { Invoke-Checked { go run ./cmd/api } } finally { Pop-Location }
     }
-    'web'     { Push-Location (Join-Path $Root 'apps/web'); try { Invoke-Checked { npm run dev } } finally { Pop-Location } }
+    'web'     {
+        Import-DotEnv
+        Push-Location (Join-Path $Root 'apps/web'); try { Invoke-Checked { npm run dev } } finally { Pop-Location }
+    }
     'test'    {
         Push-Location (Join-Path $Root 'services/api'); try { Invoke-Checked { go test ./... } } finally { Pop-Location }
         Push-Location (Join-Path $Root 'apps/web');     try { Invoke-Checked { npm test } }       finally { Pop-Location }
