@@ -191,7 +191,7 @@ export async function verifyMfa(
 	for (const line of res.headers.getSetCookie()) {
 		const m = line.match(new RegExp(`^${SESSION_COOKIE}=([^;]+)`));
 		if (m) {
-			const age = line.match(/Max-Age=(\\d+)/i);
+			const age = line.match(/Max-Age=(\d+)/i);
 			return { ok: true, token: m[1], maxAge: age ? Number(age[1]) : 3600 };
 		}
 	}
