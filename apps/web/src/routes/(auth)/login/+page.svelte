@@ -12,12 +12,21 @@
 	let email = $state(untrack(() => form?.email ?? ''));
 	let password = $state('');
 	let merchantId = $state('');
+	let challengeId = $state(untrack(() => form?.challenge_id ?? ''));
+	let mfaCode = $state('');
+	let mfa = $state(untrack(() => form?.mfa ?? false));
 	let showPw = $state(false);
 	let busy = $state(false);
 	let errEmail = $state('');
 	let errPw = $state('');
+	let errCode = $state('');
 
 	$effect(() => {
+		if (form?.mfa) {
+			mfa = true;
+			challengeId = form.challenge_id ?? challengeId;
+			email = form.email ?? email;
+		}
 		if (form?.error) auth.goyang();
 	});
 
@@ -59,8 +68,16 @@
 		<div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{form.error}</div>
 	{/if}
 
-	<Field id="email" name="email" label="Email" icon="mail" type="email" autocomplete="username" placeholder="nama@usaha.co.id" bind:value={email} error={errEmail} />
-
+	{#if !mfa}
+		<Field id="email" name="email" label="Email" icon="mail" type="email" autocomplete="username" placeholder="nama@usaha.co.id" bind:value={email} error={errEmail} />
+	{:else}
+		<p class="text-sm font-medium text-neutral-600">Login MFA untuk <b class="text-merah">{email}</b></p>
+		<input type="hidden" name="email" value={email} />
+		<input type="hidden" name="password" value={password} />
+		<input type="hidden" name="challenge_id" value={challengeId} />
+		<Field id="mfa_code" name="mfa_code" label="Kode OTP / recovery code" icon="lock" type="text" autocomplete="one-time-code" placeholder="123456" bind:value={mfaCode} error={errCode} />
+	{/if}
+	{#if !mfa}
 	<Field
 		id="password" name="password" label={t('login.pw')} icon="lock"
 		type={showPw ? 'text' : 'password'} autocomplete="current-password" placeholder="••••••••"
@@ -84,10 +101,13 @@
 			</button>
 		{/snippet}
 	</Field>
+	{/if}
 
+	{#if !mfa}
 	<p class="-mt-2 text-right text-sm">
 		<a href="/forgot-password" class="font-semibold text-merah hover:underline">Lupa kata sandi?</a>
 	</p>
+	{/if}
 
 	{#if form?.needMerchant}
 		<Field id="merchant_id" name="merchant_id" label={t('login.merchant')} icon="store" autocomplete="off" placeholder={t('login.merchantPh')} bind:value={merchantId} />
