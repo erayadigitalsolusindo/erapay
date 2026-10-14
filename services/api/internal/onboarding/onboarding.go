@@ -64,7 +64,12 @@ type Notifier interface {
 
 type Config struct {
 	RegisterPerIP int // sign-up attempts per IP per hour; default 5
-	Log           *slog.Logger
+	// MDRCap / MDRCapUpTo: optional MDR cap for plans assigned at approval, e.g. the BI QRIS
+	// rule (Rp500 for Rp0-Rp100.000, effective 1 Nov 2026). 0 = uncapped, so nothing changes
+	// until the operator opts in (docs/integrations/doku.md §6).
+	MDRCap     int64
+	MDRCapUpTo int64
+	Log        *slog.Logger
 }
 
 type Service struct {
@@ -316,6 +321,12 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 	if in.MDRBPS < 0 || in.MDRBPS > 10000 || in.PlatformBPS < 0 || in.PlatformBPS > 10000 {
 		return Merchant{}, invalid("mdr_bps and platform_bps must be integers 0..10000")
 	}
+	if s.cfg.MDRCap < 0 || s.cfg.MDRCapUpTo < 0 {
+		return Merchant{}, invalid("mdr_cap and mdr_cap_up_to must be non-negative")
+	}
+	if s.cfg.MDRCapUpTo > 0 && s.cfg.MDRCap == 0 {
+		return Merchant{}, invalid("mdr_cap_up_to requires mdr_cap > 0")
+	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return Merchant{}, err
@@ -335,9 +346,9 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 	}
 	var planID string
 	if err := tx.QueryRow(ctx, `INSERT INTO pricing_plans
-		(code, version, gateway, payment_method, mdr_bps, mdr_rounding, platform_bps, platform_rounding, created_by, approved_by)
-		VALUES ('qris-'||$1::text, 1, 'doku', 'QRIS', $2, 'half_up', $3, 'half_up', $4, $4) RETURNING id::text`,
-		in.MerchantID, in.MDRBPS, in.PlatformBPS, in.ActorID).Scan(&planID); err != nil {
+		(code, version, gateway, payment_method, mdr_bps, mdr_rounding, platform_bps, platform_rounding, mdr_cap, mdr_cap_up_to, created_by, approved_by)
+		VALUES ('qris-'||$1::text, 1, 'doku', 'QRIS', $2, 'half_up', $3, 'half_up', $5, $6, $4, $4) RETURNING id::text`,
+		in.MerchantID, in.MDRBPS, in.PlatformBPS, in.ActorID, s.cfg.MDRCap, s.cfg.MDRCapUpTo).Scan(&planID); err != nil {
 		return Merchant{}, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from, created_by)

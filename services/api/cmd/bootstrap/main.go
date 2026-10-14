@@ -137,7 +137,8 @@ func run(args []string) error {
 		}
 		// Optional pricing plan (QRIS via DOKU). Rates are a business decision, so there are no defaults:
 		// both ERAPAY_BOOTSTRAP_MDR_BPS and ERAPAY_BOOTSTRAP_PLATFORM_BPS (basis points, 100 = 1%) must be set,
-		// otherwise payments are refused until a plan is assigned.
+		// otherwise payments are refused until a plan is assigned. The MDR cap is optional too
+		// (ERAPAY_BOOTSTRAP_MDR_CAP / ERAPAY_BOOTSTRAP_MDR_CAP_UPTO, minor units, 0 = uncapped).
 		mdr, plat := os.Getenv("ERAPAY_BOOTSTRAP_MDR_BPS"), os.Getenv("ERAPAY_BOOTSTRAP_PLATFORM_BPS")
 		if mdr != "" && plat != "" {
 			mdrBPS, e1 := strconv.Atoi(mdr)
@@ -145,9 +146,25 @@ func run(args []string) error {
 			if e1 != nil || e2 != nil || mdrBPS < 0 || mdrBPS > 10000 || platBPS < 0 || platBPS > 10000 {
 				return fmt.Errorf("ERAPAY_BOOTSTRAP_MDR_BPS / ERAPAY_BOOTSTRAP_PLATFORM_BPS must be integers 0..10000")
 			}
+			mdrCap, mdrCapUpTo := int64(0), int64(0)
+			for _, e := range []struct {
+				env string
+				dst *int64
+			}{{"ERAPAY_BOOTSTRAP_MDR_CAP", &mdrCap}, {"ERAPAY_BOOTSTRAP_MDR_CAP_UPTO", &mdrCapUpTo}} {
+				if v := os.Getenv(e.env); v != "" {
+					n, err := strconv.ParseInt(v, 10, 64)
+					if err != nil || n < 0 {
+						return fmt.Errorf("%s must be a non-negative integer (minor units)", e.env)
+					}
+					*e.dst = n
+				}
+			}
+			if mdrCapUpTo > 0 && mdrCap == 0 {
+				return fmt.Errorf("ERAPAY_BOOTSTRAP_MDR_CAP_UPTO requires ERAPAY_BOOTSTRAP_MDR_CAP > 0")
+			}
 			var planID string
-			if err := db.QueryRow(ctx, `INSERT INTO pricing_plans (code, version, gateway, payment_method, mdr_bps, mdr_rounding, platform_bps, platform_rounding, created_by)
-					VALUES ('qris-'||$1, 1, 'doku', 'QRIS', $2, 'half_up', $3, 'half_up', $4) RETURNING id::text`, mid, mdrBPS, platBPS, uid).Scan(&planID); err != nil {
+			if err := db.QueryRow(ctx, `INSERT INTO pricing_plans (code, version, gateway, payment_method, mdr_bps, mdr_rounding, platform_bps, platform_rounding, mdr_cap, mdr_cap_up_to, created_by)
+					VALUES ('qris-'||$1, 1, 'doku', 'QRIS', $2, 'half_up', $3, 'half_up', $5, $6, $4) RETURNING id::text`, mid, mdrBPS, platBPS, uid, mdrCap, mdrCapUpTo).Scan(&planID); err != nil {
 				return err
 			}
 			if _, err := db.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from, created_by) VALUES ($1,$2,now(),$3)`, mid, planID, uid); err != nil {

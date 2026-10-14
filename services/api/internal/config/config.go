@@ -37,8 +37,13 @@ type Config struct {
 	SMTPHost, SMTPPort, SMTPUser, SMTPPass, SMTPFrom string
 	WebURL                                           string // ERAPAY_WEB_URL: public base URL of the dashboard, used in email links
 	RegisterPerIPHour                                int    // ERAPAY_REGISTER_PER_IP_HOUR: sign-up attempts per IP per hour
-	ARUSProvisionToken                               string // ERAPAY_ARUS_PROVISION_TOKEN: server-to-server tenant provisioning secret
-	PlatformSetupToken                               string // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars): bootstrap first DEWA at /platform/setup
+	// Optional MDR cap for plans assigned at merchant approval, e.g. the BI QRIS rule
+	// (Rp500 for Rp0-Rp100.000, effective 1 Nov 2026). Both default 0 = uncapped, so fee
+	// computation is unchanged until the operator opts in (docs/integrations/doku.md §6).
+	MDRCap             int64  // ERAPAY_MDR_CAP, minor units
+	MDRCapUpTo         int64  // ERAPAY_MDR_CAP_UPTO, minor units
+	ARUSProvisionToken string // ERAPAY_ARUS_PROVISION_TOKEN: server-to-server tenant provisioning secret
+	PlatformSetupToken string // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars): bootstrap first DEWA at /platform/setup
 }
 
 func Load() (Config, error) {
@@ -106,6 +111,24 @@ func Load() (Config, error) {
 			return c, errors.New("ERAPAY_PAYOUT_COOLING must be a duration such as 24h")
 		}
 		c.PayoutCooling = d
+	}
+	for _, e := range []struct {
+		env string
+		dst *int64
+	}{
+		{"ERAPAY_MDR_CAP", &c.MDRCap},
+		{"ERAPAY_MDR_CAP_UPTO", &c.MDRCapUpTo},
+	} {
+		if v := os.Getenv(e.env); v != "" {
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil || n < 0 {
+				return c, errors.New(e.env + " must be a non-negative integer (minor units)")
+			}
+			*e.dst = n
+		}
+	}
+	if c.MDRCapUpTo > 0 && c.MDRCap == 0 {
+		return c, errors.New("ERAPAY_MDR_CAP_UPTO requires ERAPAY_MDR_CAP > 0")
 	}
 	if k := os.Getenv("ERAPAY_ENCRYPTION_KEY"); k != "" {
 		key, err := secretbox.ParseKey(k)

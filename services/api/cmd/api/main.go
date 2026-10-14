@@ -130,7 +130,7 @@ func run(log *slog.Logger) error {
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onboarding.NewService(pool, notifier, onboarding.Config{RegisterPerIP: cfg.RegisterPerIPHour, Log: log}), Account: acct,
+			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onboarding.NewService(pool, notifier, onboarding.Config{RegisterPerIP: cfg.RegisterPerIPHour, MDRCap: cfg.MDRCap, MDRCapUpTo: cfg.MDRCapUpTo, Log: log}), Account: acct,
 			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
