@@ -4,6 +4,7 @@ Baca juga: `../PRD.md`, `api.md`, `data.md`, `gateway-adapter.md`, `webhook-inbo
 
 - Create payment: nominal, currency, merchant_reference, deskripsi, metode, expiry (jika didukung). **Idempotency-Key wajib.**
 - Respons: ID EraPay, status, data QR yang diizinkan, expiry, nominal, timestamp. Get status by ID berizin.
+- Inquiry status manual: `POST /v1/payments/{id}/inquiry` (dashboard: tombol "Cek status") menanyakan ulang status nyata ke gateway dan menerapkan hasil sebagai `source=inquiry` — jalur yang sama dengan poller otomatis, dipicu atas permintaan merchant. Hanya berjalan untuk `pending`/`unknown` yang punya `gateway_reference`; nominal berbeda tidak pernah diterapkan (`amount_mismatch`); status final tak dibalik.
 - Status: `created, pending, succeeded, failed, expired, cancelled, unknown` (mapping per gateway terdokumentasi). Simpan raw gateway status dan normalized status terpisah. Callback telat tidak boleh membalik status terminal yang bertentangan.
 - Validasi: tolak nominal negatif/nol (bila tak diizinkan)/overflow/currency tak didukung/format salah; min/max dari konfigurasi + batas gateway.
 - `merchant_reference` unik per scope (merchant+reference) bila kebijakan menuntut, bukan global.

@@ -25,7 +25,19 @@
 	});
 </script>
 
-<div class="mb-5 flex flex-wrap items-center gap-3"><h2 class="font-bold">{t('trx.payment', { ref: p.merchant_reference })}</h2><StatusBadge status={p.status} /></div>
+<div class="mb-5 flex flex-wrap items-center gap-3">
+	<h2 class="font-bold">{t('trx.payment', { ref: p.merchant_reference })}</h2><StatusBadge status={p.status} />
+	{#if ['pending', 'unknown', 'created'].includes(p.status)}
+		<form method="POST" action="?/inquiry" use:enhance>
+			<button type="submit" class="btn btn-light">🔄 {t('trx.inquiryBtn')}</button>
+		</form>
+	{/if}
+</div>
+{#if form?.done}
+	<p class="mb-4 text-xs font-semibold text-emerald-700" role="status">{t('trx.inquiryDone')}</p>
+{:else if form?.message}
+	<p class="mb-4 text-xs font-semibold text-red-700" role="alert">{form.message}</p>
+{/if}
 
 <div class="flex flex-wrap items-start gap-4">
 	{#if data.qr}

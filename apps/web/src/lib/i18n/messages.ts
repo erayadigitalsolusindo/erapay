@@ -420,6 +420,10 @@ const id = {
 	'trx.first': '← Terbaru',
 	'trx.dates': 'Tanggal dalam WIB',
 
+	'trx.inquiryBtn': 'Cek status',
+	'trx.inquiryDone': 'Status diperiksa ke gateway; hasil sudah diperbarui.',
+	'trx.f.actions': 'Aksi',
+
 	'ov.period': 'Periode',
 	'ov.days': '{n} hari terakhir',
 	'ov.gross': 'Penjualan berhasil',
@@ -861,6 +865,10 @@ const en: Record<keyof typeof id, string> = {
 	'trx.next': 'Older →',
 	'trx.first': '← Newest',
 	'trx.dates': 'Dates are in WIB',
+
+	'trx.inquiryBtn': 'Check status',
+	'trx.inquiryDone': 'Status checked with the gateway; result updated.',
+	'trx.f.actions': 'Actions',
 
 	'ov.period': 'Period',
 	'ov.days': 'Last {n} days',

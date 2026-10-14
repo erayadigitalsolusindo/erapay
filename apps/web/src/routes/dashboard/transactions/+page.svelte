@@ -1,15 +1,33 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
+	import { enhance, type SubmitFunction } from '$app/forms';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import StatusBadge from '../../../lib/components/StatusBadge.svelte';
 	import StateBadge from '../../../lib/components/StateBadge.svelte';
 	import { formatIDR } from '../../../lib/utils/money';
 	import type { Key } from '../../../lib/i18n/messages';
 
-	let { data } = $props();
+	let { data, form } = $props();
 	const i18n = getI18n();
 	const { t } = i18n;
 	const fmt = (iso: string) => new Date(iso).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' });
 	const filtered = $derived(Object.values(data.filters).some(Boolean));
+
+	// Id baris yang sedang di-cek ke gateway: tombol dinonaktifkan selama proses.
+	let submitting = $state('');
+	// Pakai enhance agar status di-refresh setelah inquiry; kunci submit ganda.
+	const inquiryEnhance: SubmitFunction = (input) => {
+		const id = String(input.formData.get('id') ?? '').trim();
+		submitting = id;
+		return async ({ update }) => {
+			try {
+				await update({ reset: false });
+				await invalidateAll();
+			} finally {
+				submitting = '';
+			}
+		};
+	};
 
 	// Tautan "lebih lama" mempertahankan filter; kursor dari server bersifat opak.
 	const nextHref = $derived.by(() => {
@@ -60,6 +78,11 @@
 </form>
 
 <div class="card overflow-hidden">
+	{#if form?.done}
+		<p class="border-b border-ink/10 bg-emerald-50 px-5 py-3 text-xs font-semibold text-emerald-700" role="status">{t('trx.inquiryDone')}</p>
+	{:else if form?.message}
+		<p class="border-b border-ink/10 bg-rose-50 px-5 py-3 text-xs font-semibold text-red-700" role="alert">{form.message}</p>
+	{/if}
 	{#if data.payments === null}
 		<p class="p-5 text-xs font-semibold text-red-700" role="alert">{t('trx.loadFail')}</p>
 	{:else if data.payments.length === 0}
@@ -68,7 +91,7 @@
 		<div class="overflow-x-auto">
 			<table>
 				<thead>
-					<tr><th>{t('c.created')}</th><th>{t('trx.ref')}</th><th>{t('c.amount')}</th><th>{t('trx.f.method')}</th><th>{t('c.status')}</th><th>{t('trx.f.settlement')}</th></tr>
+					<tr><th>{t('c.created')}</th><th>{t('trx.ref')}</th><th>{t('c.amount')}</th><th>{t('trx.f.method')}</th><th>{t('c.status')}</th><th>{t('trx.f.settlement')}</th><th class="text-right">{t('trx.f.actions')}</th></tr>
 				</thead>
 				<tbody>
 					{#each data.payments as p (p.id)}
@@ -82,6 +105,16 @@
 							<td>{p.payment_method}</td>
 							<td><StatusBadge status={p.status} /></td>
 							<td>{#if p.settlement_status && p.settlement_status !== 'not_expected'}<StateBadge kind="settle" value={p.settlement_status} />{:else}<span class="muted">—</span>{/if}</td>
+							<td class="text-right">
+								{#if p.status === 'pending' || p.status === 'unknown'}
+									<form method="POST" action="?/inquiry" use:enhance={inquiryEnhance}>
+										<input type="hidden" name="id" value={p.id} />
+										<button type="submit" class="btn btn-light" disabled={submitting === p.id}>🔄 {t('trx.inquiryBtn')}</button>
+									</form>
+								{:else}
+									<span class="muted text-[11px]">—</span>
+								{/if}
+							</td>
 						</tr>
 					{/each}
 				</tbody>
