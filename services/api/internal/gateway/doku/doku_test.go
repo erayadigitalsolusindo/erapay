@@ -378,3 +378,201 @@ func TestErrorsNeverCarrySecrets(t *testing.T) {
 		}
 	}
 }
+
+// ---- Kirim DOKU disbursement (doku.md §6) ----
+
+// Response codes use HTTP(3)+service(2)+case(2); the Kirim DOKU service code is not
+// published ([?]), so the tests only rely on the "200" success prefix, like classify().
+
+func okInquiry(string, map[string]any) (int, any) {
+	return 200, map[string]any{"responseCode": "2005900", "responseMessage": "Successful",
+		"beneficiaryAccountName": "BUDI SANTOSO", "beneficiaryBankCode": "014",
+		"beneficiaryBankName": "BANK BCA", "beneficiaryBankShortName": "BCA", "sessionId": "INQ-1",
+		"additionalInfo": map[string]string{"feeAmount": "1500.00", "feeCurrency": "IDR"}}
+}
+
+func okTransfer(string, map[string]any) (int, any) {
+	return 200, map[string]any{"responseCode": "2005900", "responseMessage": "Successful",
+		"referenceNo": "KD-REF-1", "partnerReferenceNo": "payout-uuid-1",
+		"transactionDate": "2026-10-14T08:00:00+07:00",
+		"additionalInfo":  map[string]string{"sessionId": "INQ-1", "amount": "98500.00"}}
+}
+
+func okStatus(string, map[string]any) (int, any) {
+	return 200, map[string]any{"responseCode": "2005900", "latestTransactionStatus": "00",
+		"transactionDate": "2026-10-14T08:01:00+07:00",
+		"amount":          map[string]string{"value": "98500.00", "currency": "IDR"}}
+}
+
+func inquiryReq() gateway.BankInquiryRequest {
+	return gateway.BankInquiryRequest{CustomerNumber: "6281234567890", AccountNo: "1234567890", AccountName: "Budi Santoso",
+		BankCode: "014", Amount: 100000, Currency: "IDR", SenderCountry: "ID", ChannelCode: "11", Reference: "inq-uuid-1"}
+}
+
+func transferReq(sessionID string) gateway.TransferRequest {
+	return gateway.TransferRequest{Reference: "payout-uuid-1", CustomerNumber: "6281234567890", SessionID: sessionID,
+		AccountNo: "1234567890", BankCode: "014", BankName: "BANK BCA", Amount: 98500, Currency: "IDR",
+		BeneficiaryFirstName: "Budi", BeneficiaryLastName: "Santoso", BeneficiaryPhone: "6281234567890",
+		BeneficiaryAccountName: "BUDI SANTOSO", SenderCountry: "ID", SenderFirstName: "PT EraPay", SenderLastName: "Digital",
+		SenderPersonalID: "0123456789012345", SenderIDType: "KTP", ChannelCode: "11", Remark: "payout okt 2026"}
+}
+
+func TestInquirySendsDocumentedRequest(t *testing.T) {
+	f, a := newFake(t)
+	f.respond = okInquiry
+	res, err := a.InquiryBankAccount(context.Background(), inquiryReq())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SessionID != "INQ-1" || res.AccountName != "BUDI SANTOSO" || res.BankName != "BANK BCA" ||
+		res.BankShortName != "BCA" || res.FeeAmount != 1500 {
+		t.Fatalf("%+v", res)
+	}
+	m := f.last
+	amt := m["amount"].(map[string]any)
+	add := m["additionalInfo"].(map[string]any)
+	if m["customerNumber"] != "6281234567890" || m["beneficiaryAccountNumber"] != "1234567890" ||
+		m["beneficiaryBankCode"] != "014" || m["partnerReferenceNo"] != "inq-uuid-1" ||
+		amt["value"] != "100000.00" || amt["currency"] != "IDR" ||
+		add["beneficiaryBankCode"] != "014" || add["beneficiaryAccountName"] != "Budi Santoso" ||
+		add["senderCountryCode"] != "ID" || add["channelCode"] != "11" {
+		t.Fatalf("inquiry body: %v", m)
+	}
+}
+
+func TestInquiryIncompleteResponseIsAmbiguous(t *testing.T) {
+	f, a := newFake(t)
+	f.respond = func(string, map[string]any) (int, any) {
+		return 200, map[string]any{"responseCode": "2005900", "beneficiaryAccountName": "BUDI SANTOSO", "sessionId": ""}
+	}
+	if _, err := a.InquiryBankAccount(context.Background(), inquiryReq()); !gateway.IsAmbiguous(err) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestTransferSendsDocumentedRequest(t *testing.T) {
+	f, a := newFake(t)
+	f.respond = okInquiry
+	inquiry, err := a.InquiryBankAccount(context.Background(), inquiryReq())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.respond = okTransfer
+	res, err := a.TransferBank(context.Background(), transferReq(inquiry.SessionID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.GatewayReference != "KD-REF-1" || res.TransactionDate == nil ||
+		res.TransactionDate.Format(time.RFC3339) != "2026-10-14T08:00:00+07:00" {
+		t.Fatalf("%+v", res)
+	}
+	m := f.last
+	amt := m["amount"].(map[string]any)
+	add := m["additionalInfo"].(map[string]any)
+	if m["partnerReferenceNo"] != "payout-uuid-1" || m["customerNumber"] != "6281234567890" ||
+		m["beneficiaryAccountNumber"] != "1234567890" || m["beneficiaryBankCode"] != "014" ||
+		m["sessionId"] != "INQ-1" || amt["value"] != "98500.00" || amt["currency"] != "IDR" ||
+		add["beneficiaryFirstName"] != "Budi" || add["beneficiaryLastName"] != "Santoso" ||
+		add["beneficiaryPhoneNumber"] != "6281234567890" || add["beneficiaryAccountName"] != "BUDI SANTOSO" ||
+		add["beneficiaryBankName"] != "BANK BCA" || add["senderCountryCode"] != "ID" ||
+		add["senderFirstName"] != "PT EraPay" || add["senderLastName"] != "Digital" ||
+		add["senderPersonalId"] != "0123456789012345" || add["senderPersonalIdType"] != "KTP" ||
+		add["channelCode"] != "11" || add["remark"] != "payout okt 2026" {
+		t.Fatalf("transfer body: %v", m)
+	}
+}
+
+func TestTransferDuplicateAndTimeoutAreAmbiguous(t *testing.T) {
+	for _, status := range []int{409, 500} {
+		f, a := newFake(t)
+		f.respond = func(string, map[string]any) (int, any) {
+			return status, map[string]any{"responseCode": "4095900", "responseMessage": "duplicate"}
+		}
+		if _, err := a.TransferBank(context.Background(), transferReq("INQ-1")); !gateway.IsAmbiguous(err) {
+			t.Fatalf("http %d must be ambiguous: %v", status, err)
+		}
+	}
+}
+
+func TestTransferIncompleteSuccessIsAmbiguous(t *testing.T) {
+	f, a := newFake(t)
+	f.respond = func(string, map[string]any) (int, any) {
+		return 200, map[string]any{"responseCode": "2005900", "partnerReferenceNo": "payout-uuid-1"}
+	}
+	if _, err := a.TransferBank(context.Background(), transferReq("INQ-1")); !gateway.IsAmbiguous(err) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestTransferValidatesBeforeSending(t *testing.T) {
+	f, a := newFake(t)
+	f.respond = okTransfer
+	bad := []func(*gateway.TransferRequest){
+		func(r *gateway.TransferRequest) { r.Reference = "" },
+		func(r *gateway.TransferRequest) { r.SessionID = "" }, // inquiry is mandatory before a transfer
+		func(r *gateway.TransferRequest) { r.AccountNo = "" },
+		func(r *gateway.TransferRequest) { r.BankCode = "" },
+		func(r *gateway.TransferRequest) { r.BeneficiaryAccountName = "" },
+		func(r *gateway.TransferRequest) { r.BeneficiaryFirstName = "" },
+		func(r *gateway.TransferRequest) { r.SenderLastName = "" },
+		func(r *gateway.TransferRequest) { r.SenderPersonalID = "" },
+		func(r *gateway.TransferRequest) { r.SenderIDType = "" },
+		func(r *gateway.TransferRequest) { r.Amount = 0 },
+		func(r *gateway.TransferRequest) { r.Currency = "USD" },
+	}
+	for i, m := range bad {
+		r := transferReq("INQ-1")
+		m(&r)
+		if _, err := a.TransferBank(context.Background(), r); !gateway.IsRejected(err) {
+			t.Errorf("case %d: %v", i, err)
+		}
+	}
+	if f.calls.Load() != 0 {
+		t.Fatal("invalid transfer reached the gateway")
+	}
+}
+
+func TestTransferStatusMapsDocumentedCodes(t *testing.T) {
+	f, a := newFake(t)
+	for raw, want := range map[string]gateway.TransferStatus{
+		"00": gateway.TransferSucceeded, "03": gateway.TransferPending,
+		"04": gateway.TransferRefunded, "06": gateway.TransferFailed,
+	} {
+		raw := raw // capture
+		f.respond = func(string, map[string]any) (int, any) {
+			return 200, map[string]any{"responseCode": "2005900", "latestTransactionStatus": raw,
+				"transactionDate": "2026-10-14T08:01:00+07:00",
+				"amount":          map[string]string{"value": "98500.00", "currency": "IDR"}}
+		}
+		res, err := a.TransferStatus(context.Background(), gateway.TransferStatusRequest{
+			OriginalPartnerReference: "payout-uuid-1", AccountNo: "1234567890", BankCode: "014", ServiceCode: "59"})
+		if err != nil {
+			t.Fatalf("%s: %v", raw, err)
+		}
+		if got, ok := a.MapTransferStatus(res.RawStatus); !ok || got != want {
+			t.Fatalf("%s: got %v ok=%v want %v", raw, got, ok, want)
+		}
+		if res.Amount != 98500 || res.TransactionDate == nil {
+			t.Fatalf("%s: %+v", raw, res)
+		}
+	}
+	for _, raw := range []string{"99", ""} {
+		if _, ok := a.MapTransferStatus(raw); ok {
+			t.Fatalf("%q must stay unmapped", raw)
+		}
+	}
+	m := f.last
+	if m["originalPartnerReferenceNo"] != "payout-uuid-1" || m["beneficiaryAccountNumber"] != "1234567890" ||
+		m["beneficiaryBankCode"] != "014" || m["serviceCode"] != "59" {
+		t.Fatalf("status body: %v", m)
+	}
+}
+
+func TestTransferStatusWithoutStatusIsAmbiguous(t *testing.T) {
+	f, a := newFake(t)
+	f.respond = func(string, map[string]any) (int, any) { return 200, map[string]any{"responseCode": "2005900"} }
+	if _, err := a.TransferStatus(context.Background(), gateway.TransferStatusRequest{
+		OriginalPartnerReference: "payout-uuid-1", AccountNo: "1234567890", BankCode: "014"}); !gateway.IsAmbiguous(err) {
+		t.Fatalf("got %v", err)
+	}
+}

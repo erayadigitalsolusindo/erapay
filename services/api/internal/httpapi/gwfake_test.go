@@ -35,6 +35,44 @@ func newTestGW() *testGW {
 	}}
 }
 
+// testDisburser is a TEST-ONLY stand-in for the payout executor (Kirim DOKU); it is never
+// registered by production code.
+type testDisburser struct {
+	code        string
+	inquiry     gateway.BankInquiryResult
+	inquiryErr  error
+	transfer    gateway.TransferResult
+	transferErr error
+	status      gateway.TransferStatusResult
+	statusErr   error
+	calls       atomic.Int32
+}
+
+func (g *testDisburser) Code() string { return g.code }
+func (g *testDisburser) InquiryBankAccount(context.Context, gateway.BankInquiryRequest) (gateway.BankInquiryResult, error) {
+	g.calls.Add(1)
+	return g.inquiry, g.inquiryErr
+}
+func (g *testDisburser) TransferBank(context.Context, gateway.TransferRequest) (gateway.TransferResult, error) {
+	g.calls.Add(1)
+	return g.transfer, g.transferErr
+}
+func (g *testDisburser) TransferStatus(context.Context, gateway.TransferStatusRequest) (gateway.TransferStatusResult, error) {
+	g.calls.Add(1)
+	return g.status, g.statusErr
+}
+func (g *testDisburser) MapTransferStatus(raw string) (gateway.TransferStatus, bool) {
+	switch raw {
+	case "00":
+		return gateway.TransferSucceeded, true
+	case "06":
+		return gateway.TransferFailed, true
+	case "04":
+		return gateway.TransferRefunded, true
+	}
+	return "", false
+}
+
 // seedPayments gives both merchants the same pricing plan; only merchant A has an active gateway account.
 func seedPayments(t *testing.T, db *pgxpool.Pool, midA, midB string) {
 	t.Helper()

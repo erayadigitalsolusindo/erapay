@@ -5,9 +5,73 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 )
 
 const someUUID = "11111111-1111-4111-8111-111111111111"
+
+// Executor endpoints: Finance executes an approved payout; without a disbursement
+// gateway the API says so, and the dry-run submit leaves the confirmation to Finance.
+func TestPayoutExecutorHTTP(t *testing.T) {
+	w := setup(t)
+	owner, fin := w.client(t, "owner@a.test"), w.client(t, "finance@erapay.test")
+
+	r := w.do(t, owner, "POST", "/v1/bank-accounts", `{"bank_code":"BCA","account_number":"1234567890","account_name":"PT Merchant A"}`, nil)
+	acctID := decode(t, r)["id"].(string)
+	if r.StatusCode != 201 {
+		t.Fatalf("add account: %d", r.StatusCode)
+	}
+	if r := w.do(t, fin, "POST", "/v1/admin/bank-accounts/"+acctID+"/verify", `{}`, nil); r.StatusCode != 200 {
+		t.Fatalf("verify: %d", r.StatusCode)
+	}
+	id := w.succeeded(t, "PE1", 100000)
+	pay := decode(t, w.do(t, owner, "GET", "/v1/payments/"+id, "", nil))
+	fees := pay["fee"].(map[string]any)
+	reported := num(fees, "merchant_net") + num(fees, "platform_fee") // settlement nets off MDR only
+	if r := w.do(t, fin, "POST", "/v1/admin/settlement-batches", fmt.Sprintf(
+		`{"gateway":"gw1","batch_ref":"PE-B1","currency":"IDR","settlement_date":"2026-10-12","reported_net":%d,"payment_ids":[%q]}`, reported, id), nil); r.StatusCode != 201 {
+		t.Fatalf("settle: %d", r.StatusCode)
+	}
+	po := decode(t, w.do(t, owner, "POST", "/v1/payouts",
+		fmt.Sprintf(`{"bank_account_id":%q,"amount":20000,"currency":"IDR"}`, acctID), map[string]string{"Idempotency-Key": "pe-key-1"}))
+	if po["status"] != "pending_approval" {
+		t.Fatalf("request: %v", po)
+	}
+	poID := po["id"].(string)
+	if r := w.do(t, fin, "POST", "/v1/admin/payouts/"+poID+"/approve", `{}`, nil); r.StatusCode != 200 {
+		t.Fatalf("approve: %d", r.StatusCode)
+	}
+
+	// No disbursement gateway configured: the endpoint is unavailable, nothing changed.
+	if r := w.do(t, fin, "POST", "/v1/admin/payouts/"+poID+"/execute", `{}`, nil); r.StatusCode != 503 {
+		t.Fatalf("execute without gateway: %d", r.StatusCode)
+	}
+	// Only Finance-level roles may execute (payout:execute).
+	if r := w.do(t, owner, "POST", "/v1/admin/payouts/"+poID+"/execute", `{}`, nil); r.StatusCode != 403 {
+		t.Fatalf("owner execute: %d", r.StatusCode)
+	}
+
+	d := &testDisburser{code: "gw1", transfer: gateway.TransferResult{GatewayReference: "GW-TRF-1"}}
+	w.payouts.SetDisburser(d)
+	r = w.do(t, fin, "POST", "/v1/admin/payouts/"+poID+"/execute", `{}`, nil)
+	po = decode(t, r)
+	if r.StatusCode != 200 || po["status"] != "submitted" || po["gateway"] != "dry-run" || d.calls.Load() != 0 {
+		t.Fatalf("dry-run submit: %d %v calls=%d", r.StatusCode, po, d.calls.Load())
+	}
+	// A repeated execute cannot double-send: the payout is no longer approved.
+	if r := w.do(t, fin, "POST", "/v1/admin/payouts/"+poID+"/execute", `{}`, nil); r.StatusCode != 409 {
+		t.Fatalf("second execute: %d", r.StatusCode)
+	}
+	// A dry-run payout has no gateway transfer to check: it stays manual.
+	if r := w.do(t, fin, "POST", "/v1/admin/payouts/"+poID+"/check-status", `{}`, nil); r.StatusCode != 409 {
+		t.Fatalf("check-status on dry-run: %d", r.StatusCode)
+	}
+	// Finance still confirms manually; the not-yet-instrumented payout stays the source of truth.
+	if r := w.do(t, fin, "POST", "/v1/admin/payouts/"+poID+"/mark-paid", `{"bank_reference":"TRF-0001"}`, nil); r.StatusCode != 200 || decode(t, r)["status"] != "paid" {
+		t.Fatalf("mark-paid: %d", r.StatusCode)
+	}
+}
 
 func TestPayoutFlowHTTP(t *testing.T) {
 	w := setup(t)

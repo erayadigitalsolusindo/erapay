@@ -89,7 +89,14 @@ func run(log *slog.Logger) error {
 
 		dryRun := cfg.Env != "production"
 		payouts = payout.NewService(pool, box, payout.Config{DryRun: dryRun, LiveEnabled: cfg.PayoutLive, MinAmount: cfg.PayoutMin,
-			MaxAmount: cfg.PayoutMax, DailyLimit: cfg.PayoutDailyLimit, Cooling: cfg.PayoutCooling})
+			MaxAmount: cfg.PayoutMax, DailyLimit: cfg.PayoutDailyLimit, Cooling: cfg.PayoutCooling,
+			FeeFlat: cfg.PayoutFee, CashAccount: cfg.PayoutCashAccount, ChannelCode: cfg.PayoutChannelCode, ServiceCode: cfg.PayoutServiceCode,
+			Sender: payout.Sender{CustomerNumber: cfg.PayoutSenderPhone, FirstName: cfg.PayoutSenderFirstName, LastName: cfg.PayoutSenderLastName,
+				PersonalID: cfg.PayoutSenderID, IDType: cfg.PayoutSenderIDType}})
+		if d, ok := disburserOf(reg); ok {
+			payouts.SetDisburser(d)
+			log.Info("payout executor ready", "gateway", d.Code())
+		}
 		if !dryRun && !cfg.PayoutLive {
 			log.Warn("payouts are disabled in production until ERAPAY_PAYOUT_LIVE=1 (go/no-go)")
 		}

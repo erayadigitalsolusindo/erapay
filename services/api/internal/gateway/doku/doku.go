@@ -42,6 +42,13 @@ const (
 	pathQuery    = "/snap-adapter/b2b/v1.0/qr/qr-mpm-query"
 	pathExpire   = "/snap-adapter/b2b/v1.0/qr/qr-expire"
 
+	// Kirim DOKU disbursement (doku.md §6). The check-status path is what the published
+	// spec writes even though it looks like a QRIS copy-paste ([?]: confirm with DOKU;
+	// it is a single constant so a confirmed correction is a one-line change).
+	pathInquiry  = "/snap/v1.1/emoney/bank-account-inquiry"
+	pathTransfer = "/snap/v1.1/emoney/transfer-bank"
+	pathCheck    = "/snap/v1.1/qr/qr-mpm-status"
+
 	serviceCodeQuery = "47" // doku.md §3 (Query)
 	feeTypeFixed     = "1"  // doku.md §3: only value allowed
 )
@@ -114,7 +121,7 @@ func ParsePrivateKey(p []byte) (*rsa.PrivateKey, error) {
 func (a *Adapter) Code() string { return Code }
 
 func (a *Adapter) Capabilities() gateway.Capabilities {
-	return gateway.Capabilities{PaymentMethods: []string{"QRIS"}, Inquiry: true, Cancel: true}
+	return gateway.Capabilities{PaymentMethods: []string{"QRIS"}, Inquiry: true, Cancel: true, Disbursement: true}
 	// Refund, settlement report: unconfirmed ([?]) -> not advertised.
 }
 
@@ -217,6 +224,29 @@ type envelope struct {
 		Value    string `json:"value"`
 		Currency string `json:"currency"`
 	} `json:"amount"`
+
+	// Kirim DOKU disbursement fields (doku.md §6).
+	PartnerReferenceNo       string  `json:"partnerReferenceNo"`
+	OriginalReferenceNo      string  `json:"originalReferenceNo"`
+	SessionID                string  `json:"sessionId"`
+	TransactionDate          string  `json:"transactionDate"`
+	ReferenceNumber          string  `json:"referenceNumber"`
+	BeneficiaryAccountName   string  `json:"beneficiaryAccountName"`
+	BeneficiaryBankCode      string  `json:"beneficiaryBankCode"`
+	BeneficiaryBankName      string  `json:"beneficiaryBankName"`
+	BeneficiaryBankShortName string  `json:"beneficiaryBankShortName"`
+	AdditionalInfo           *kdInfo `json:"additionalInfo"`
+}
+
+// kdInfo is the additionalInfo object of the Kirim DOKU responses.
+type kdInfo struct {
+	SessionID         string `json:"sessionId"`
+	Amount            string `json:"amount"`
+	FeeAmount         string `json:"feeAmount"`
+	FeeCurrency       string `json:"feeCurrency"`
+	BeneficiaryAmount string `json:"beneficiaryAmount"`
+	CashInTime        string `json:"cashInTime"`
+	Remark            string `json:"remark"`
 }
 
 func (a *Adapter) externalID() string {
@@ -396,6 +426,167 @@ func (a *Adapter) MapStatus(raw string) (gateway.Status, bool) {
 	}
 	s, ok := statusTable[raw]
 	return s, ok
+}
+
+// ---- Kirim DOKU disbursement (doku.md §6) ----
+
+// MapTransferStatus maps the documented status codes of the check-status response:
+// 00 Success, 03 Pending, 06 Failed, 04 Refunded (own state machine: payout must not
+// change on it). Anything else is unmapped and callers leave the payout unchanged.
+func (a *Adapter) MapTransferStatus(raw string) (gateway.TransferStatus, bool) {
+	switch raw {
+	case "00":
+		return gateway.TransferSucceeded, true
+	case "03":
+		return gateway.TransferPending, true
+	case "06":
+		return gateway.TransferFailed, true
+	case "04":
+		return gateway.TransferRefunded, true
+	}
+	return "", false
+}
+
+// InquiryBankAccount is the documented account verification: it must succeed before a
+// transfer can be sent, and it is partner-paid per success (doku.md §6).
+func (a *Adapter) InquiryBankAccount(ctx context.Context, r gateway.BankInquiryRequest) (gateway.BankInquiryResult, error) {
+	if r.CustomerNumber == "" || len(r.CustomerNumber) > 32 || r.AccountNo == "" || len(r.AccountNo) > 32 ||
+		r.BankCode == "" || r.AccountName == "" || len(r.AccountName) > 64 ||
+		r.SenderCountry == "" || len(r.SenderCountry) != 2 ||
+		r.Amount <= 0 || r.Currency != "IDR" {
+		return gateway.BankInquiryResult{}, &gateway.Error{Kind: gateway.Rejected, Message: "invalid bank account inquiry request"}
+	}
+	add := map[string]string{
+		"beneficiaryBankCode":    r.BankCode,
+		"beneficiaryAccountName": r.AccountName,
+		"senderCountryCode":      r.SenderCountry,
+	}
+	if r.ChannelCode != "" {
+		add["channelCode"] = r.ChannelCode
+	}
+	payload := map[string]any{
+		"customerNumber":           r.CustomerNumber,
+		"beneficiaryAccountNumber": r.AccountNo,
+		"beneficiaryBankCode":      r.BankCode,
+		"amount":                   amountDTO{fmtAmount(r.Amount), r.Currency},
+		"additionalInfo":           add,
+	}
+	if r.Reference != "" {
+		payload["partnerReferenceNo"] = r.Reference
+	}
+	env, _, err := a.call(ctx, pathInquiry, payload)
+	if err != nil {
+		return gateway.BankInquiryResult{ResponseCode: env.ResponseCode}, err
+	}
+	res := gateway.BankInquiryResult{
+		SessionID:     env.SessionID,
+		AccountName:   env.BeneficiaryAccountName,
+		BankName:      env.BeneficiaryBankName,
+		BankShortName: env.BeneficiaryBankShortName,
+		FeeAmount:     -1,
+		ResponseCode:  env.ResponseCode,
+	}
+	if env.AdditionalInfo != nil {
+		if v := parseAmount(env.AdditionalInfo.FeeAmount); v >= 0 {
+			res.FeeAmount = v
+		}
+	}
+	if res.SessionID == "" {
+		// A "success" without the data we need: we cannot tell what DOKU did.
+		return res, &gateway.Error{Kind: gateway.Ambiguous, Code: env.ResponseCode, HTTPStatus: 200, Message: "inquiry response without sessionId"}
+	}
+	return res, nil
+}
+
+// TransferBank sends the funds. r.Reference is partnerReferenceNo and must be unique per
+// attempt; a duplicate (409) is ambiguous, never re-sent blindly (PRD §0 #3).
+func (a *Adapter) TransferBank(ctx context.Context, r gateway.TransferRequest) (gateway.TransferResult, error) {
+	if r.Reference == "" || len(r.Reference) > 64 || r.CustomerNumber == "" || len(r.CustomerNumber) > 32 ||
+		r.SessionID == "" || len(r.SessionID) > 25 || r.AccountNo == "" || len(r.AccountNo) > 32 || r.BankCode == "" ||
+		r.BeneficiaryAccountName == "" || r.BeneficiaryFirstName == "" || len(r.BeneficiaryFirstName) > 64 ||
+		r.BeneficiaryLastName == "" || len(r.BeneficiaryLastName) > 64 || r.BeneficiaryPhone == "" || len(r.BeneficiaryPhone) > 20 ||
+		r.SenderCountry == "" || len(r.SenderCountry) != 2 || r.SenderFirstName == "" || len(r.SenderFirstName) > 64 ||
+		r.SenderLastName == "" || len(r.SenderLastName) > 64 || r.SenderPersonalID == "" || len(r.SenderPersonalID) > 32 ||
+		r.SenderIDType == "" || len(r.SenderIDType) > 16 ||
+		r.Amount <= 0 || r.Currency != "IDR" {
+		return gateway.TransferResult{}, &gateway.Error{Kind: gateway.Rejected, Message: "invalid transfer request"}
+	}
+	add := map[string]string{
+		"beneficiaryFirstName":   r.BeneficiaryFirstName,
+		"beneficiaryLastName":    r.BeneficiaryLastName,
+		"beneficiaryPhoneNumber": r.BeneficiaryPhone,
+		"beneficiaryAccountName": r.BeneficiaryAccountName,
+		"senderCountryCode":      r.SenderCountry,
+		"senderFirstName":        r.SenderFirstName,
+		"senderLastName":         r.SenderLastName,
+		"senderPersonalId":       r.SenderPersonalID,
+		"senderPersonalIdType":   r.SenderIDType,
+	}
+	if r.BankName != "" {
+		add["beneficiaryBankName"] = r.BankName
+	}
+	if r.ChannelCode != "" {
+		add["channelCode"] = r.ChannelCode
+	}
+	if r.Remark != "" {
+		add["remark"] = r.Remark
+	}
+	payload := map[string]any{
+		"partnerReferenceNo":       r.Reference,
+		"customerNumber":           r.CustomerNumber,
+		"beneficiaryAccountNumber": r.AccountNo,
+		"beneficiaryBankCode":      r.BankCode,
+		"amount":                   amountDTO{fmtAmount(r.Amount), r.Currency},
+		"sessionId":                r.SessionID,
+		"additionalInfo":           add,
+	}
+	env, _, err := a.call(ctx, pathTransfer, payload)
+	if err != nil {
+		return gateway.TransferResult{ResponseCode: env.ResponseCode}, err
+	}
+	res := gateway.TransferResult{GatewayReference: env.ReferenceNo, ResponseCode: env.ResponseCode}
+	if t, err := time.Parse(time.RFC3339, env.TransactionDate); err == nil {
+		res.TransactionDate = &t
+	}
+	if res.GatewayReference == "" {
+		// A "success" without the data we need: we cannot tell what DOKU did.
+		return res, &gateway.Error{Kind: gateway.Ambiguous, Code: env.ResponseCode, HTTPStatus: 200, Message: "transfer response without referenceNo"}
+	}
+	return res, nil
+}
+
+// TransferStatus checks the current outcome of a transfer. It is the only safe action
+// after an ambiguous or pending transfer (doku.md §6; PRD §0 #3).
+func (a *Adapter) TransferStatus(ctx context.Context, r gateway.TransferStatusRequest) (gateway.TransferStatusResult, error) {
+	if (r.OriginalPartnerReference == "" && r.OriginalReference == "") || r.AccountNo == "" || r.BankCode == "" {
+		return gateway.TransferStatusResult{}, &gateway.Error{Kind: gateway.Rejected, Message: "invalid transfer status request"}
+	}
+	payload := map[string]string{
+		"originalPartnerReferenceNo": r.OriginalPartnerReference,
+		"beneficiaryAccountNumber":   r.AccountNo,
+		"beneficiaryBankCode":        r.BankCode,
+	}
+	if r.OriginalReference != "" {
+		payload["originalReferenceNo"] = r.OriginalReference
+	}
+	if r.ServiceCode != "" {
+		payload["serviceCode"] = r.ServiceCode
+	}
+	env, _, err := a.call(ctx, pathCheck, payload)
+	if err != nil {
+		return gateway.TransferStatusResult{ResponseCode: env.ResponseCode}, err
+	}
+	res := gateway.TransferStatusResult{RawStatus: env.LatestTransactionStatus, Amount: -1, ResponseCode: env.ResponseCode}
+	if env.Amount != nil {
+		res.Amount = parseAmount(env.Amount.Value)
+	}
+	if t, err := time.Parse(time.RFC3339, env.TransactionDate); err == nil {
+		res.TransactionDate = &t
+	}
+	if res.RawStatus == "" {
+		return res, &gateway.Error{Kind: gateway.Ambiguous, Code: env.ResponseCode, HTTPStatus: 200, Message: "status response without latestTransactionStatus"}
+	}
+	return res, nil
 }
 
 var _ gateway.Adapter = (*Adapter)(nil)
