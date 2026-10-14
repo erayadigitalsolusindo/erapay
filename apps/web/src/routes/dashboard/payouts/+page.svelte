@@ -9,6 +9,8 @@
 	const { t } = i18n;
 	const fmt = (iso: string) => new Date(iso).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'short' });
 	const verified = $derived((data.accounts ?? []).filter((a) => a.status === 'verified'));
+	const bankName = $derived(new Map(data.banks.map((b) => [b.code, b.name])));
+	const bankLabel = (code: string) => bankName.get(code) ?? code;
 	const cards = $derived(
 		data.balance
 			? ([
@@ -50,7 +52,7 @@
 				<div>
 					<label class="lbl mb-1.5" for="acct">{t('po.account')}</label>
 					<select id="acct" name="bank_account_id" class="inp" required>
-						{#each verified as a (a.id)}<option value={a.id}>{a.bank_code} {a.account_masked} · {a.account_name}</option>{/each}
+						{#each verified as a (a.id)}<option value={a.id}>{bankLabel(a.bank_code)} {a.account_masked} · {a.account_name}</option>{/each}
 					</select>
 				</div>
 				<div>
@@ -74,7 +76,7 @@
 				<ul class="divide-y divide-ink/10 text-xs">
 					{#each data.accounts.filter((a) => a.status !== 'disabled') as a (a.id)}
 						<li class="flex flex-wrap items-center justify-between gap-2 py-2.5">
-							<span><b>{a.bank_code}</b> {a.account_masked} · {a.account_name}</span>
+							<span><b>{bankLabel(a.bank_code)}</b> {a.account_masked} · {a.account_name}</span>
 							<span class="flex items-center gap-2">
 								<StateBadge kind="bank" value={a.status} />
 								<form
@@ -95,7 +97,12 @@
 			<form method="POST" action="?/addAccount" class="grid gap-3 border-t border-ink/10 pt-4 sm:grid-cols-2" use:enhance>
 				<div>
 					<label class="lbl mb-1.5" for="bank_code">{t('bank.code')}</label>
-					<input id="bank_code" class="inp" name="bank_code" placeholder={t('bank.codePh')} maxlength="20" required />
+					<select id="bank_code" class="inp" name="bank_code" required>
+						<option value="">{t('bank.pick')}</option>
+						{#each data.banks as b (b.code)}
+							<option value={b.code}>{b.name} ({b.code})</option>
+						{/each}
+					</select>
 				</div>
 				<div>
 					<label class="lbl mb-1.5" for="account_number">{t('bank.number')}</label>

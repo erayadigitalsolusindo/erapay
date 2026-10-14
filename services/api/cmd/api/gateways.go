@@ -36,3 +36,14 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*gateway.Registry, erro
 	log.Info("gateway registered", "gateway", doku.Code, "status_map_confirmed", dc.StatusMapConfirmed)
 	return reg, nil
 }
+
+// disburserOf returns the first registered adapter that can execute payouts. Adding a
+// second gateway means adding its code here (the domain stays gateway-neutral, PRD §0 #11).
+func disburserOf(reg *gateway.Registry) (gateway.Disburser, bool) {
+	if a, ok := reg.Get(doku.Code); ok {
+		if d, ok := a.(gateway.Disburser); ok {
+			return d, true
+		}
+	}
+	return nil, false
+}

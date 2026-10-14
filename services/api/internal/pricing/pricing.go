@@ -23,6 +23,8 @@ const (
 type Rate struct {
 	BPS      int64
 	Fixed    int64
+	Cap      int64 // 0 = no cap; otherwise the fee never exceeds this total
+	CapUpTo  int64 // 0 = the cap applies at any amount; >0 = the cap applies only when gross <= CapUpTo
 	Rounding Rounding
 }
 
@@ -82,6 +84,12 @@ func fee(gross int64, r Rate) (int64, error) {
 	if r.BPS < 0 || r.BPS > 10000 || r.Fixed < 0 || r.Fixed > MaxGross {
 		return 0, ErrInvalidRate
 	}
+	if r.Cap < 0 || r.Cap > MaxGross || r.CapUpTo < 0 || r.CapUpTo > MaxGross {
+		return 0, ErrInvalidRate
+	}
+	if r.CapUpTo > 0 && r.Cap == 0 {
+		return 0, fmt.Errorf("%w: cap_up_to %d without a cap", ErrInvalidRate, r.CapUpTo)
+	}
 	num := gross * r.BPS // safe: gross <= 1e13, bps <= 1e4
 	var q int64
 	switch r.Rounding {
@@ -94,5 +102,11 @@ func fee(gross int64, r Rate) (int64, error) {
 	default:
 		return 0, fmt.Errorf("%w: rounding %q", ErrInvalidRate, r.Rounding)
 	}
-	return q + r.Fixed, nil
+	f := q + r.Fixed
+	// The cap bounds the total fee of this component and only ever lowers it, so the
+	// gross == mdr + platform + net invariant (net absorbs the difference) still holds.
+	if r.Cap > 0 && (r.CapUpTo == 0 || gross <= r.CapUpTo) && f > r.Cap {
+		f = r.Cap
+	}
+	return f, nil
 }

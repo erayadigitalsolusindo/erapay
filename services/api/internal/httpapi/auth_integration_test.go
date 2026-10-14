@@ -39,6 +39,7 @@ type world struct {
 	gw               *testGW
 	mail             *mailer.Memory
 	acct             *account.Service
+	payouts          *payout.Service
 }
 
 func setup(t *testing.T) *world {
@@ -72,6 +73,8 @@ func setup(t *testing.T) *world {
 	acct := account.NewService(db, w.mail, "https://app.erapay.test", log)
 	paySvc := payment.NewService(db)
 	w.acct = acct
+	payouts := payout.NewService(db, testBox(t), payout.Config{DryRun: true, MinAmount: 10_000, MaxAmount: 1_000_000, DailyLimit: 5_000_000})
+	w.payouts = payouts
 	w.srv = httptest.NewServer(NewRouter(Deps{
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DB: fakePinger{}, Redis: fakePinger{},
 		Auth: svc, Merchants: merchant.NewRepo(db), APIKeys: apikey.NewService(db, "sandbox"), Payments: paySvc,
@@ -81,7 +84,7 @@ func setup(t *testing.T) *world {
 		Refunds:     refund.NewService(db),
 		Onboarding:  onboarding.NewService(db, acct, onboarding.Config{Log: log}),
 		Account:     acct,
-		Payouts:     payout.NewService(db, testBox(t), payout.Config{DryRun: true, MinAmount: 10_000, MaxAmount: 1_000_000, DailyLimit: 5_000_000}),
+		Payouts:     payouts,
 	}))
 	t.Cleanup(w.srv.Close)
 	return w

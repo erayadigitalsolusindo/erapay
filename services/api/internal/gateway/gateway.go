@@ -150,6 +150,109 @@ type WebhookVerifier interface {
 	VerifyWebhook(h http.Header, path string, body []byte) (WebhookEvent, error)
 }
 
+// TransferStatus is the normalized payout status an adapter maps a raw transfer status to.
+// Distinct from payment Status: a payout that fails or is returned is its own state machine.
+type TransferStatus string
+
+const (
+	TransferSucceeded TransferStatus = "succeeded"
+	TransferPending   TransferStatus = "pending"
+	TransferFailed    TransferStatus = "failed"
+	TransferRefunded  TransferStatus = "refunded" // beneficiary was credited back; separate state machine
+)
+
+// Disburser is implemented by adapters whose payout endpoints are confirmed
+// (docs/integrations/<gateway>.md). The payout executor depends on this contract, never
+// on a concrete adapter, so a second gateway can join or replace it (PRD §0 #11).
+// Flow: InquiryBankAccount (mandatory before a transfer, partner-paid per success so
+// callers cache it) -> TransferBank -> TransferStatus (recovery for ambiguous outcomes).
+type Disburser interface {
+	// Code is the gateway code (matching the registered adapter), recorded on the payout.
+	Code() string
+	// InquiryBankAccount validates the beneficiary and returns the gateway's session id,
+	// which TransferBank requires, plus the fee the gateway will charge for the transfer.
+	InquiryBankAccount(ctx context.Context, r BankInquiryRequest) (BankInquiryResult, error)
+	// TransferBank moves funds. Reference (the gateway's partner reference) must be unique
+	// per attempt; a duplicate is ambiguous and must never be re-sent blindly (PRD §0 #3).
+	TransferBank(ctx context.Context, r TransferRequest) (TransferResult, error)
+	// TransferStatus asks for the current outcome of a transfer.
+	TransferStatus(ctx context.Context, r TransferStatusRequest) (TransferStatusResult, error)
+	// MapTransferStatus maps a raw transfer status; ok=false = no confirmed mapping,
+	// callers leave the payout unchanged.
+	MapTransferStatus(raw string) (TransferStatus, bool)
+}
+
+// CustomerNumber is the remitter's phone as the gateway expects it. Bank codes are the
+// gateway's own (see docs/integrations); AccountNo is the account number, or the
+// beneficiary's phone number for e-wallets.
+
+type BankInquiryRequest struct {
+	CustomerNumber string // remitter phone (adapter normalizes to the gateway's format)
+	AccountNo      string // beneficiary account number, or phone for e-wallets
+	AccountName    string // beneficiary name as the merchant stated it
+	BankCode       string // gateway bank code
+	BankName       string // optional, when the domain already knows it
+	Amount         int64
+	Currency       string
+	SenderCountry  string // ISO 3166-1 alpha-2
+	ChannelCode    string // "07" bank deposit | "11" BI-FAST; "" = gateway default
+	Reference      string // optional partner reference (not the payout reference)
+}
+
+type BankInquiryResult struct {
+	SessionID     string // required by TransferBank; gateway-scoped invoice id
+	AccountName   string // name the gateway reports for the account
+	BankName      string
+	BankShortName string
+	FeeAmount     int64 // -1 when the gateway did not return one
+	ResponseCode  string
+}
+
+type TransferRequest struct {
+	Reference      string // partner reference (unique per attempt = gateway idempotency)
+	CustomerNumber string
+	SessionID      string // from InquiryBankAccount
+	AccountNo      string
+	BankCode       string
+	BankName       string // optional
+	Amount         int64
+	Currency       string
+	// Beneficiary: the merchant receiving the payout.
+	BeneficiaryFirstName   string
+	BeneficiaryLastName    string
+	BeneficiaryPhone       string
+	BeneficiaryAccountName string // as returned by the inquiry
+	// Sender: the platform entity remitting the funds.
+	SenderCountry    string // ISO 3166-1 alpha-2
+	SenderFirstName  string
+	SenderLastName   string
+	SenderPersonalID string // national id; for a business remitter this is [?] per gateway
+	SenderIDType     string // gateway-defined, e.g. "KTP" | "PASSPORT"
+	ChannelCode      string // "07" | "11"; "" = gateway default
+	Remark           string
+}
+
+type TransferResult struct {
+	GatewayReference string
+	TransactionDate  *time.Time
+	ResponseCode     string
+}
+
+type TransferStatusRequest struct {
+	OriginalPartnerReference string // the transfer's Reference, when known
+	OriginalReference        string // the gateway reference from TransferResult, when known
+	AccountNo                string
+	BankCode                 string
+	ServiceCode              string // service code of the original request; gateway-specific, may be ""
+}
+
+type TransferStatusResult struct {
+	RawStatus       string
+	Amount          int64 // -1 when the gateway did not return a usable amount
+	TransactionDate *time.Time
+	ResponseCode    string
+}
+
 // Registry maps gateway code -> adapter. Only adapters explicitly registered exist.
 type Registry struct{ m map[string]Adapter }
 

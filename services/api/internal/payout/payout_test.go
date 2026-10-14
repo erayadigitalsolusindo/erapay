@@ -99,7 +99,7 @@ func (e *env) fund(t *testing.T, m string, gross int64) (merchantNet int64) {
 func (e *env) account(t *testing.T, m, maker string) string {
 	t.Helper()
 	ctx := context.Background()
-	b, err := e.svc.AddBankAccount(ctx, m, "BCA", "1234567890", "PT Merchant", Actor{UserID: maker})
+	b, err := e.svc.AddBankAccount(ctx, m, "014", "1234567890", "PT Merchant", Actor{UserID: maker})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,12 +373,18 @@ func TestBankAccountRules(t *testing.T) {
 	e.fund(t, e.a, 1_000_000)
 	e.fund(t, e.b, 1_000_000)
 
-	for _, bad := range [][3]string{{"B", "1234567890", "Name"}, {"BCA", "12ab", "Name"}, {"BCA", "1234567890", "N"}, {"BCA", "12345678901234567890123456789012345", "Name"}} {
+	for _, bad := range [][3]string{
+		{"B", "1234567890", "Name"},                       // format kode terlalu pendek
+		{"BCA", "1234567890", "Name"},                     // nama bank, bukan kode BI Kirim DOKU
+		{"999", "1234567890", "Name"},                     // kode BI well-formed tapi tidak didukung
+		{"SHOPEEPAY", "1234567890", "Name"},               // e-wallet, bukan rekening bank
+		{"014", "12ab", "Name"}, {"014", "1234567890", "N"}, {"014", "12345678901234567890123456789012345", "Name"},
+	} {
 		if _, err := e.svc.AddBankAccount(ctx, e.a, bad[0], bad[1], bad[2], Actor{UserID: e.ua}); !errors.Is(err, ErrValidation) {
 			t.Errorf("%v accepted: %v", bad, err)
 		}
 	}
-	acct, err := e.svc.AddBankAccount(ctx, e.a, "BCA", "9876543210", "PT A", Actor{UserID: e.ua})
+	acct, err := e.svc.AddBankAccount(ctx, e.a, "014", "9876543210", "PT A", Actor{UserID: e.ua})
 	if err != nil || acct.AccountMasked != "••••3210" || acct.Status != "pending_verification" {
 		t.Fatalf("add: %+v %v", acct, err)
 	}
@@ -506,7 +512,7 @@ func TestRevealDestinationIsApprovedOnlyAndAudited(t *testing.T) {
 	}
 	e.svc.Approve(ctx, p.ID, Actor{UserID: e.fin}) //nolint:errcheck
 	d, err := e.svc.RevealDestination(ctx, p.ID, Actor{UserID: e.fin})
-	if err != nil || d.AccountNumber != "1234567890" || d.BankCode != "BCA" || d.AccountName != "PT Merchant" {
+	if err != nil || d.AccountNumber != "1234567890" || d.BankCode != "014" || d.AccountName != "PT Merchant" {
 		t.Fatalf("reveal: %+v %v", d, err)
 	}
 	if e.count(t, `SELECT count(*) FROM audit_logs WHERE action = 'payout.reveal_destination'`) != 1 {

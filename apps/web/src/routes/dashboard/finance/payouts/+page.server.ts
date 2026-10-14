@@ -12,24 +12,29 @@ export type AdminPayout = {
 	bank_reference: string | null;
 	failure_reason: string | null;
 	decision_note: string | null;
+	gateway?: string;
+	fee_amount?: number;
 	created_at: string;
 };
 export type PendingAccount = { id: string; merchant_id: string; bank_code: string; account_masked: string; account_name: string; created_at: string };
+export type Bank = { code: string; name: string };
 
-const STATUSES = ['pending_approval', 'approved', 'paid', 'failed', 'cancelled'];
+const STATUSES = ['pending_approval', 'approved', 'submitted', 'unknown', 'paid', 'failed', 'returned', 'cancelled'];
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 	const token = guard(locals, cookies, 'payout:review', 'platform');
 	const status = url.searchParams.get('status') ?? '';
 	const q = STATUSES.includes(status) ? `&status=${status}` : '';
 	const p = locals.user!.permissions;
-	const [payouts, accounts] = await Promise.all([
+	const [payouts, accounts, banks] = await Promise.all([
 		read<{ data: AdminPayout[] }>(fetch, token, `/v1/admin/payouts?limit=100${q}`),
-		read<{ data: PendingAccount[] }>(fetch, token, '/v1/admin/bank-accounts?status=pending_verification')
+		read<{ data: PendingAccount[] }>(fetch, token, '/v1/admin/bank-accounts?status=pending_verification'),
+		read<{ data: Bank[] }>(fetch, token, '/v1/banks')
 	]);
 	return {
 		payouts: payouts?.data ?? null,
 		accounts: accounts?.data ?? null,
+		banks: banks?.data ?? [],
 		status,
 		me: locals.user!.id,
 		canVerify: p.includes('bank_account:verify'),
@@ -52,6 +57,8 @@ export const actions: Actions = {
 	reject: act('payout:approve', (id) => `/v1/admin/payouts/${id}/reject`, (f) => ({ note: str(f, 'note') })),
 	markPaid: act('payout:execute', (id) => `/v1/admin/payouts/${id}/mark-paid`, (f) => ({ bank_reference: str(f, 'bank_reference') })),
 	markFailed: act('payout:execute', (id) => `/v1/admin/payouts/${id}/mark-failed`, (f) => ({ reason: str(f, 'reason') })),
+	execute: act('payout:execute', (id) => `/v1/admin/payouts/${id}/execute`),
+	checkStatus: act('payout:execute', (id) => `/v1/admin/payouts/${id}/check-status`),
 	reveal: async ({ request, cookies, fetch, locals }) => {
 		const token = guard(locals, cookies, 'payout:execute', 'platform');
 		const id = str(await request.formData(), 'id');

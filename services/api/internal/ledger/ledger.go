@@ -34,6 +34,10 @@ const (
 	PlatformFeeRevenue = "platform_fee_revenue"
 	GatewayFeeExpense  = "gateway_fee_expense"
 	TaxPayable         = "tax_payable"
+	// PayoutFeePayable holds the transfer fee the merchant bears: it is deducted from the
+	// payout nominal when the funds move (payout.md, doku.md §6) and settles with the
+	// gateway, so it is a platform liability, never revenue.
+	PayoutFeePayable = "payout_fee_payable"
 )
 
 var merchantScoped = map[string]bool{MerchantPayable: true, PayoutInTransit: true, RefundPayable: true}

@@ -32,13 +32,30 @@ type Config struct {
 	PayoutDailyLimit int64         // ERAPAY_PAYOUT_DAILY_LIMIT, rolling 24h per merchant
 	PayoutCooling    time.Duration // ERAPAY_PAYOUT_COOLING, e.g. 24h: wait after an account is verified
 
+	// Payout executor (Kirim DOKU, doku.md §6). The sender is the platform entity that
+	// remits the funds; the gateway requires its identity on every transfer.
+	PayoutFee             int64  // ERAPAY_PAYOUT_FEE: fallback transfer fee when the inquiry returns none
+	PayoutCashAccount     string // ERAPAY_PAYOUT_CASH_ACCOUNT: cash_bank_pt (default) | cash_doku_clearing; [KD] source of funds
+	PayoutChannelCode     string // ERAPAY_PAYOUT_CHANNEL_CODE: 07 bank deposit | 11 BI-FAST; "" = gateway default
+	PayoutServiceCode     string // ERAPAY_PAYOUT_SERVICE_CODE: [?] transfer service code for check status
+	PayoutSenderPhone     string // ERAPAY_PAYOUT_SENDER_PHONE, 62/0 prefix
+	PayoutSenderFirstName string // ERAPAY_PAYOUT_SENDER_FIRST_NAME
+	PayoutSenderLastName  string // ERAPAY_PAYOUT_SENDER_LAST_NAME
+	PayoutSenderID        string // ERAPAY_PAYOUT_SENDER_ID; NPWP for a business remitter ([?])
+	PayoutSenderIDType    string // ERAPAY_PAYOUT_SENDER_ID_TYPE; the spec lists KTP | PASSPORT
+
 	// Outgoing email (sign-up verification, password reset). Without SMTP_HOST the email-sending endpoints
 	// stay disabled outside development, so a link can never be "sent" into the void.
 	SMTPHost, SMTPPort, SMTPUser, SMTPPass, SMTPFrom string
 	WebURL                                           string // ERAPAY_WEB_URL: public base URL of the dashboard, used in email links
 	RegisterPerIPHour                                int    // ERAPAY_REGISTER_PER_IP_HOUR: sign-up attempts per IP per hour
-	ARUSProvisionToken                               string // ERAPAY_ARUS_PROVISION_TOKEN: server-to-server tenant provisioning secret
-	PlatformSetupToken                               string // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars): bootstrap first DEWA at /platform/setup
+	// Optional MDR cap for plans assigned at merchant approval, e.g. the BI QRIS rule
+	// (Rp500 for Rp0-Rp100.000, effective 1 Nov 2026). Both default 0 = uncapped, so fee
+	// computation is unchanged until the operator opts in (docs/integrations/doku.md §6).
+	MDRCap             int64  // ERAPAY_MDR_CAP, minor units
+	MDRCapUpTo         int64  // ERAPAY_MDR_CAP_UPTO, minor units
+	ARUSProvisionToken string // ERAPAY_ARUS_PROVISION_TOKEN: server-to-server tenant provisioning secret
+	PlatformSetupToken string // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars): bootstrap first DEWA at /platform/setup
 }
 
 func Load() (Config, error) {
@@ -106,6 +123,50 @@ func Load() (Config, error) {
 			return c, errors.New("ERAPAY_PAYOUT_COOLING must be a duration such as 24h")
 		}
 		c.PayoutCooling = d
+	}
+	c.PayoutFee = 0
+	if v := os.Getenv("ERAPAY_PAYOUT_FEE"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			return c, errors.New("ERAPAY_PAYOUT_FEE must be a non-negative integer (minor units)")
+		}
+		c.PayoutFee = n
+	}
+	c.PayoutCashAccount = os.Getenv("ERAPAY_PAYOUT_CASH_ACCOUNT")
+	switch c.PayoutCashAccount {
+	case "", "cash_bank_pt", "cash_doku_clearing":
+	default:
+		return c, errors.New("ERAPAY_PAYOUT_CASH_ACCOUNT must be cash_bank_pt or cash_doku_clearing")
+	}
+	c.PayoutChannelCode = os.Getenv("ERAPAY_PAYOUT_CHANNEL_CODE")
+	switch c.PayoutChannelCode {
+	case "", "07", "11":
+	default:
+		return c, errors.New("ERAPAY_PAYOUT_CHANNEL_CODE must be 07 or 11")
+	}
+	c.PayoutServiceCode = os.Getenv("ERAPAY_PAYOUT_SERVICE_CODE")
+	c.PayoutSenderPhone = os.Getenv("ERAPAY_PAYOUT_SENDER_PHONE")
+	c.PayoutSenderFirstName = os.Getenv("ERAPAY_PAYOUT_SENDER_FIRST_NAME")
+	c.PayoutSenderLastName = os.Getenv("ERAPAY_PAYOUT_SENDER_LAST_NAME")
+	c.PayoutSenderID = os.Getenv("ERAPAY_PAYOUT_SENDER_ID")
+	c.PayoutSenderIDType = os.Getenv("ERAPAY_PAYOUT_SENDER_ID_TYPE")
+	for _, e := range []struct {
+		env string
+		dst *int64
+	}{
+		{"ERAPAY_MDR_CAP", &c.MDRCap},
+		{"ERAPAY_MDR_CAP_UPTO", &c.MDRCapUpTo},
+	} {
+		if v := os.Getenv(e.env); v != "" {
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil || n < 0 {
+				return c, errors.New(e.env + " must be a non-negative integer (minor units)")
+			}
+			*e.dst = n
+		}
+	}
+	if c.MDRCapUpTo > 0 && c.MDRCap == 0 {
+		return c, errors.New("ERAPAY_MDR_CAP_UPTO requires ERAPAY_MDR_CAP > 0")
 	}
 	if k := os.Getenv("ERAPAY_ENCRYPTION_KEY"); k != "" {
 		key, err := secretbox.ParseKey(k)

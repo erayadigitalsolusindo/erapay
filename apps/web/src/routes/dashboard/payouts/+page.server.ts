@@ -16,19 +16,23 @@ export type Payout = {
 	created_at: string;
 };
 
+export type Bank = { code: string; name: string };
+
 export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 	const token = guard(locals, cookies, 'payout:read', 'merchant');
 	const perms = locals.user!.permissions;
 	const canManage = perms.includes('bank_account:manage');
-	const [balance, payouts, accounts] = await Promise.all([
+	const [balance, payouts, accounts, banks] = await Promise.all([
 		read<Balance>(fetch, token, '/v1/balance'),
 		read<{ data: Payout[] }>(fetch, token, '/v1/payouts?limit=100'),
-		canManage ? read<{ data: BankAccount[] }>(fetch, token, '/v1/bank-accounts') : Promise.resolve({ data: [] as BankAccount[] })
+		canManage ? read<{ data: BankAccount[] }>(fetch, token, '/v1/bank-accounts') : Promise.resolve({ data: [] as BankAccount[] }),
+		read<{ data: Bank[] }>(fetch, token, '/v1/banks')
 	]);
 	return {
 		balance,
 		payouts: payouts?.data ?? null,
 		accounts: accounts?.data ?? null,
+		banks: banks?.data ?? [],
 		canManage,
 		canRequest: perms.includes('payout:request'),
 		idem: newIdemKey('po') // satu kunci per tampilan halaman: submit ganda = satu payout

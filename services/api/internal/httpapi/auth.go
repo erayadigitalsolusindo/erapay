@@ -448,6 +448,7 @@ func (d Deps) mountV1(r chi.Router) {
 		r.Group(func(r chi.Router) {
 			r.Use(d.requireAuth)
 			r.Get("/menus", d.listMenus)
+			r.Get("/banks", d.listBanks) // daftar bank Kirim DOKU untuk form rekening
 			r.Post("/auth/logout", d.logout)
 			r.Get("/auth/me", d.me)
 			// MFA endpoints (platform admin only, gated by role in handlers)
@@ -491,6 +492,8 @@ func (d Deps) mountV1(r chi.Router) {
 					r.With(requirePerm("payout:review")).Get("/payouts/{id}", d.adminGetPayout)
 					r.With(requirePerm("payout:approve")).Post("/payouts/{id}/approve", d.adminPayoutAction("approve"))
 					r.With(requirePerm("payout:approve")).Post("/payouts/{id}/reject", d.adminPayoutAction("reject"))
+					r.With(requirePerm("payout:execute")).Post("/payouts/{id}/execute", d.adminPayoutAction("execute"))
+					r.With(requirePerm("payout:execute")).Post("/payouts/{id}/check-status", d.adminPayoutAction("check-status"))
 					r.With(requirePerm("payout:execute")).Post("/payouts/{id}/mark-paid", d.adminPayoutAction("mark-paid"))
 					r.With(requirePerm("payout:execute")).Post("/payouts/{id}/mark-failed", d.adminPayoutAction("mark-failed"))
 					r.With(requirePerm("payout:execute")).Get("/payouts/{id}/destination", d.adminPayoutDestination)

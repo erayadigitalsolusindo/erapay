@@ -43,6 +43,45 @@ func TestFixedComponent(t *testing.T) {
 	}
 }
 
+func TestMDRCap(t *testing.T) {
+	// Bank Indonesia QRIS rule (lisan DOKU 14 Okt 2026, efektif 1 Nov 2026): MDR 0,7%
+	// capped at Rp500 for gross Rp0-Rp100.000. Above the threshold the cap no longer applies.
+	capped := defaultPlan
+	capped.MDR.Cap = 500
+	capped.MDR.CapUpTo = 100_000
+	for _, c := range []struct {
+		name  string
+		gross int64
+		plan  Plan
+		want  int64
+	}{
+		{"below cap, untouched", 50_000, capped, 350},
+		{"just below threshold, capped", 99_999, capped, 500},
+		{"at threshold, capped", 100_000, capped, 500},
+		{"just above threshold, uncapped", 100_001, capped, 700},
+		{"far above threshold", 200_000, capped, 1400},
+		{"small payment, cap not reached", 1_000, capped, 7},
+		{"no cap, old behaviour", 100_000, defaultPlan, 700},
+		{"cap without threshold, applies everywhere", 200_000, func() Plan {
+			p := defaultPlan
+			p.MDR.Cap = 500
+			return p
+		}(), 500},
+	} {
+		b, err := Compute(c.gross, "IDR", c.plan)
+		if err != nil || b.MDRFee != c.want {
+			t.Errorf("%s: gross=%d got mdr=%d err=%v want=%d", c.name, c.gross, b.MDRFee, err, c.want)
+		}
+		if b.Gross != b.MDRFee+b.PlatformFee+b.MerchantNet {
+			t.Errorf("%s: gross != mdr + platform + net: %+v", c.name, b)
+		}
+	}
+	b, err := Compute(100_000, "IDR", capped)
+	if err != nil || b.MerchantNet != 100_000-500-1000 {
+		t.Fatalf("net with capped MDR: got %+v", b)
+	}
+}
+
 func TestInvalid(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -56,6 +95,9 @@ func TestInvalid(t *testing.T) {
 		{"too large", MaxGross + 1, "IDR", defaultPlan, ErrInvalidAmount},
 		{"bad bps", 100, "IDR", Plan{MDR: Rate{BPS: 10001, Rounding: RoundFloor}, Platform: defaultPlan.Platform}, ErrInvalidRate},
 		{"bad rounding", 100, "IDR", Plan{MDR: Rate{BPS: 1}, Platform: defaultPlan.Platform}, ErrInvalidRate},
+		{"negative cap", 100, "IDR", Plan{MDR: Rate{BPS: 70, Cap: -1, Rounding: RoundHalfUp}, Platform: defaultPlan.Platform}, ErrInvalidRate},
+		{"negative cap_up_to", 100, "IDR", Plan{MDR: Rate{BPS: 70, Cap: 500, CapUpTo: -1, Rounding: RoundHalfUp}, Platform: defaultPlan.Platform}, ErrInvalidRate},
+		{"cap_up_to without cap", 100, "IDR", Plan{MDR: Rate{BPS: 70, CapUpTo: 100_000, Rounding: RoundHalfUp}, Platform: defaultPlan.Platform}, ErrInvalidRate},
 		{"no currency", 100, "", defaultPlan, ErrInvalidRate},
 		{"fees exceed", 100, "IDR", Plan{MDR: Rate{Fixed: 80, Rounding: RoundFloor}, Platform: Rate{Fixed: 80, Rounding: RoundFloor}}, ErrFeesExceed},
 	}
@@ -75,8 +117,12 @@ func TestSumInvariantProperty(t *testing.T) {
 		if i%3 == 0 {
 			gross = rng.Int63n(100000) + 1
 		}
+		mdr := Rate{BPS: rng.Int63n(500), Cap: rng.Int63n(500), Rounding: modes[rng.Intn(3)]}
+		if mdr.Cap > 0 {
+			mdr.CapUpTo = rng.Int63n(100000)
+		}
 		p := Plan{
-			MDR:      Rate{BPS: rng.Int63n(500), Rounding: modes[rng.Intn(3)]},
+			MDR:      mdr,
 			Platform: Rate{BPS: rng.Int63n(500), Rounding: modes[rng.Intn(3)]},
 		}
 		b, err := Compute(gross, "IDR", p)

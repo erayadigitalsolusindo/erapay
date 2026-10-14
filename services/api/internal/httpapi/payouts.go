@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payout"
 )
@@ -30,6 +31,11 @@ func (d Deps) payoutErr(w http.ResponseWriter, r *http.Request, err error) bool 
 		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "not found", false)
 	case errors.Is(err, payout.ErrDisabled):
 		writeError(w, r, http.StatusServiceUnavailable, "PAYOUT_DISABLED", "payouts are not enabled in this environment", false)
+	case errors.Is(err, payout.ErrNoDisburser):
+		writeError(w, r, http.StatusServiceUnavailable, "PAYOUT_NO_DISBURSER", "no disbursement gateway is configured", false)
+	case errors.Is(err, payout.ErrNameMismatch):
+		writeError(w, r, http.StatusUnprocessableEntity, "PAYOUT_NAME_MISMATCH",
+			"the gateway reports a different account name than the registered one; the payout failed", false)
 	case errors.Is(err, payout.ErrMerchantState):
 		writeError(w, r, http.StatusForbidden, "MERCHANT_NOT_ACTIVE", "merchant is not active", false)
 	case errors.Is(err, payout.ErrAccountUnusable):
@@ -47,6 +53,15 @@ func (d Deps) payoutErr(w http.ResponseWriter, r *http.Request, err error) bool 
 	case errors.Is(err, idempotency.ErrInProgress):
 		w.Header().Set("Retry-After", "2")
 		writeError(w, r, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "a request with this Idempotency-Key is still in progress", true)
+	case gateway.IsAmbiguous(err):
+		// The payout is now 'unknown': the funds are neither gone nor released. Ops must
+		// call check-status (or the reconciliation job) — never re-execute.
+		writeError(w, r, http.StatusBadGateway, "PAYOUT_AMBIGUOUS",
+			"the gateway outcome is unknown; the payout is 'unknown' — resolve with check-status", false)
+	case gateway.IsRejected(err):
+		// A definitive rejection fails the payout (see failure_reason on it).
+		writeError(w, r, http.StatusUnprocessableEntity, "PAYOUT_REJECTED",
+			"the gateway definitively rejected the transfer; the payout failed (see failure_reason)", false)
 	default:
 		d.Log.Error("payout", "err", err)
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
@@ -266,6 +281,10 @@ func (d Deps) adminPayoutAction(action string) http.HandlerFunc {
 			p, err = d.Payouts.Approve(r.Context(), id, a)
 		case "reject":
 			p, err = d.Payouts.Reject(r.Context(), id, body.Note, a)
+		case "execute":
+			p, err = d.Payouts.Execute(r.Context(), id, a)
+		case "check-status":
+			p, err = d.Payouts.CheckStatus(r.Context(), id, a)
 		case "mark-paid":
 			p, err = d.Payouts.MarkPaid(r.Context(), id, body.BankReference, a)
 		case "mark-failed":

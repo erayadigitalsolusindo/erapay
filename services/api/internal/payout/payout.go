@@ -21,6 +21,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/audit"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/bank"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/ledger"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
@@ -40,6 +42,8 @@ var (
 	ErrSelfApproval    = errors.New("payout: the requester cannot approve their own payout")
 	ErrRefConflict     = errors.New("payout: already paid with a different bank reference")
 	ErrAccountInUse    = errors.New("payout: bank account has open payouts")
+	ErrNoDisburser     = errors.New("payout: no disbursement gateway is configured")
+	ErrNameMismatch    = errors.New("payout: the gateway's account name does not match the registered one")
 )
 
 // Config values marked OPEN in PRD payout.md are policy, not code: set them from the environment.
@@ -50,6 +54,25 @@ type Config struct {
 	MaxAmount   int64         // OPEN: maximum per payout
 	DailyLimit  int64         // OPEN: rolling 24h total of non-failed payouts per merchant
 	Cooling     time.Duration // OPEN: wait after verification before a new account can be paid
+
+	// Executor (Kirim DOKU, doku.md §6). Sender is the platform entity that remits the
+	// funds: the gateway requires it and it is identical for every payout ([?] how a
+	// business fills senderPersonalId/Type exactly is pending written confirmation).
+	Sender      Sender
+	FeeFlat     int64  // ERAPAY_PAYOUT_FEE: fallback transfer fee when the inquiry returns none
+	CashAccount string // ERAPAY_PAYOUT_CASH_ACCOUNT: cash_bank_pt (default) | cash_doku_clearing; [KD] source of funds
+	ChannelCode string // ERAPAY_PAYOUT_CHANNEL_CODE: 07 bank deposit | 11 BI-FAST; "" = gateway default
+	ServiceCode string // ERAPAY_PAYOUT_SERVICE_CODE: [?] the gateway's transfer service code, needed for check status
+}
+
+// Sender is the remitter the payouts flow requires (doku.md §6).
+type Sender struct {
+	CustomerNumber string // phone as the gateway expects it, 62/0 prefix
+	FirstName      string // e.g. "PT EraPay"
+	LastName       string
+	PersonalID     string // business remitter: NPWP ([?])
+	IDType         string // the gateway's id types (spec: KTP | PASSPORT)
+	Country        string // ISO 3166-1 alpha-2, default "ID"
 }
 
 func DefaultConfig(dryRun bool) Config {
@@ -61,11 +84,30 @@ type Service struct {
 	box  *secretbox.Box
 	cfg  Config
 	idem *idempotency.Store
+	dis  gateway.Disburser
 	now  func() time.Time
 }
 
 func NewService(db *pgxpool.Pool, box *secretbox.Box, cfg Config) *Service {
+	if cfg.Sender.Country == "" {
+		cfg.Sender.Country = "ID"
+	}
 	return &Service{db: db, box: box, cfg: cfg, idem: idempotency.NewStore(db), now: time.Now}
+}
+
+// SetDisburser wires the gateway that executes payouts (doku adapter implements
+// gateway.Disburser). Without it Execute/CheckStatus fail with ErrNoDisburser: the
+// manual MarkPaid path stays fully usable either way.
+func (s *Service) SetDisburser(d gateway.Disburser) { s.dis = d }
+
+// cashAccount returns the ledger cash account the funds leave from. cash_bank_pt is the
+// default (it matches the manual Finance flow); flip to cash_doku_clearing only when the
+// [KD] source-of-funds question is answered in writing and confirmed in the config.
+func (s *Service) cashAccount() string {
+	if s.cfg.CashAccount == ledger.CashDokuClearing {
+		return ledger.CashDokuClearing
+	}
+	return ledger.CashBankPT
 }
 
 type Actor struct{ UserID, RequestID string }
@@ -103,9 +145,11 @@ func scanBank(row pgx.Row) (BankAccount, error) {
 }
 
 // AddBankAccount registers a destination; it cannot receive payouts until Finance verifies it.
+// bank_code harus kode BI bank yang didukung Kirim DOKU (internal/bank, doku.md §6) supaya
+// transfer produksi tidak gagal di sisi gateway.
 func (s *Service) AddBankAccount(ctx context.Context, merchantID, bankCode, number, name string, a Actor) (BankAccount, error) {
-	if !bankRe.MatchString(bankCode) || !numberRe.MatchString(number) || len(name) < 2 || len(name) > 100 {
-		return BankAccount{}, fmt.Errorf("%w: bank_code, account_number (5-32 digits) and account_name are required", ErrValidation)
+	if !bankRe.MatchString(bankCode) || !bank.Valid(bankCode) || !numberRe.MatchString(number) || len(name) < 2 || len(name) > 100 {
+		return BankAccount{}, fmt.Errorf("%w: bank_code must be a supported bank code (see GET /v1/banks), account_number (5-32 digits) and account_name (2-100 chars) are required", ErrValidation)
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -188,7 +232,7 @@ func (s *Service) DisableBankAccount(ctx context.Context, merchantID, id string,
 		return err
 	}
 	var open bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM payouts WHERE bank_account_id = $1 AND status IN ('pending_approval','approved'))`, id).Scan(&open); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM payouts WHERE bank_account_id = $1 AND status IN ('pending_approval','approved','submitted','unknown'))`, id).Scan(&open); err != nil {
 		return err
 	}
 	if open {
@@ -225,16 +269,21 @@ type Payout struct {
 	BankReference *string    `json:"bank_reference"`
 	PaidAt        *time.Time `json:"paid_at"`
 	FailureReason *string    `json:"failure_reason"`
-	CreatedAt     time.Time  `json:"created_at"`
+	// Gateway ("doku" | "dry-run") marks the executor that moved the funds; nil on the
+	// manual Finance path. Fee is the transfer fee the merchant bears: it is deducted
+	// from Amount when the funds move, so the beneficiary receives Amount - Fee.
+	Gateway   string    `json:"gateway,omitempty"`
+	Fee       int64     `json:"fee_amount"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 const payoutCols = `id::text, merchant_id::text, bank_account_id::text, amount, currency, status, dry_run, requested_by::text,
-	approved_at, decision_note, bank_reference, paid_at, failure_reason, created_at`
+	approved_at, decision_note, bank_reference, paid_at, failure_reason, created_at, fee_amount, COALESCE(gateway,'')`
 
 func scanPayout(row pgx.Row) (Payout, error) {
 	var p Payout
 	err := row.Scan(&p.ID, &p.MerchantID, &p.BankAccountID, &p.Amount, &p.Currency, &p.Status, &p.DryRun, &p.RequestedBy,
-		&p.ApprovedAt, &p.DecisionNote, &p.BankReference, &p.PaidAt, &p.FailureReason, &p.CreatedAt)
+		&p.ApprovedAt, &p.DecisionNote, &p.BankReference, &p.PaidAt, &p.FailureReason, &p.CreatedAt, &p.Fee, &p.Gateway)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -302,7 +351,7 @@ func (s *Service) createTx(ctx context.Context, tx pgx.Tx, in RequestInput) (str
 	}
 	var day int64
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount),0) FROM payouts WHERE merchant_id = $1 AND currency = $2
-		AND status NOT IN ('failed','cancelled') AND created_at > now() - interval '24 hours'`, in.MerchantID, in.Currency).Scan(&day); err != nil {
+		AND status NOT IN ('failed','cancelled','returned') AND created_at > now() - interval '24 hours'`, in.MerchantID, in.Currency).Scan(&day); err != nil {
 		return "", err
 	}
 	if day+in.Amount > s.cfg.DailyLimit {
@@ -344,11 +393,20 @@ func releaseJournal(merchantID, payoutID, cur string, amt int64) ledger.Txn {
 			{Account: ledger.MerchantPayable, MerchantID: merchantID, Direction: ledger.Credit, Amount: amt}}}
 }
 
-func paidJournal(merchantID, payoutID, cur string, amt int64) ledger.Txn {
-	return ledger.Txn{DedupKey: "payout_paid:" + payoutID, SourceType: "payout_paid", SourceID: payoutID, Currency: cur,
+// paidJournal moves the funds out of the reservation when a payout is paid. The fee the
+// merchant bears is its own leg (payout_fee_payable), never mixed into the cash amount:
+// the beneficiary receives Amount - Fee exactly.
+func (s *Service) paidJournal(merchantID, payoutID, cur string, total, fee int64) ledger.Txn {
+	t := ledger.Txn{DedupKey: "payout_paid:" + payoutID, SourceType: "payout_paid", SourceID: payoutID, Currency: cur,
 		Entries: []ledger.Entry{
-			{Account: ledger.PayoutInTransit, MerchantID: merchantID, Direction: ledger.Debit, Amount: amt},
-			{Account: ledger.CashBankPT, Direction: ledger.Credit, Amount: amt}}}
+			{Account: ledger.PayoutInTransit, MerchantID: merchantID, Direction: ledger.Debit, Amount: total}}}
+	if total-fee > 0 {
+		t.Entries = append(t.Entries, ledger.Entry{Account: s.cashAccount(), Direction: ledger.Credit, Amount: total - fee})
+	}
+	if fee > 0 {
+		t.Entries = append(t.Entries, ledger.Entry{Account: ledger.PayoutFeePayable, Direction: ledger.Credit, Amount: fee})
+	}
+	return t
 }
 
 // Get is tenant-scoped.
@@ -388,7 +446,8 @@ func lock(ctx context.Context, tx pgx.Tx, id, merchantID string) (lockedPayout, 
 	err := tx.QueryRow(ctx, `SELECT `+payoutCols+`, COALESCE(approved_by::text,'') FROM payouts
 		WHERE id::text = $1 AND ($2 = '' OR merchant_id::text = $2) FOR NO KEY UPDATE`, id, merchantID).
 		Scan(&lp.ID, &lp.MerchantID, &lp.BankAccountID, &lp.Amount, &lp.Currency, &lp.Status, &lp.DryRun, &lp.RequestedBy,
-			&lp.ApprovedAt, &lp.DecisionNote, &lp.BankReference, &lp.PaidAt, &lp.FailureReason, &lp.CreatedAt, &lp.approvedBy)
+			&lp.ApprovedAt, &lp.DecisionNote, &lp.BankReference, &lp.PaidAt, &lp.FailureReason, &lp.CreatedAt, &lp.Fee, &lp.Gateway,
+			&lp.approvedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return lp, ErrNotFound
 	}
@@ -413,7 +472,7 @@ func (s *Service) end(ctx context.Context, id, merchantID string, from []string,
 		return Payout{}, ErrState
 	}
 	col := "decision_note"
-	if to == "failed" {
+	if to == "failed" || to == "returned" {
 		col = "failure_reason"
 	}
 	if _, err := tx.Exec(ctx, `UPDATE payouts SET status = $2, `+col+` = NULLIF($3,''), updated_at = now(), version = version + 1 WHERE id = $1`, id, to, note); err != nil {
@@ -458,12 +517,14 @@ func (s *Service) Reject(ctx context.Context, id, note string, a Actor) (Payout,
 	return s.end(ctx, id, "", []string{"pending_approval"}, "cancelled", note, a, "payout.reject")
 }
 
-// MarkFailed records that an approved payout's transfer did not happen; the funds return to the merchant.
+// MarkFailed records that an approved or submitted payout's transfer did not happen or was
+// definitively rejected by the gateway; the funds return to the merchant. Never call it
+// for an ambiguous (unknown) outcome: use CheckStatus to resolve those instead.
 func (s *Service) MarkFailed(ctx context.Context, id, reason string, a Actor) (Payout, error) {
 	if len(reason) < 3 || len(reason) > 500 {
 		return Payout{}, fmt.Errorf("%w: reason (3-500 chars) is required", ErrValidation)
 	}
-	return s.end(ctx, id, "", []string{"approved"}, "failed", reason, a, "payout.mark_failed")
+	return s.end(ctx, id, "", []string{"approved", "submitted", "unknown"}, "failed", reason, a, "payout.mark_failed")
 }
 
 // Approve is the checker step. It re-checks the destination and refuses the requester.
@@ -508,8 +569,11 @@ func (s *Service) Approve(ctx context.Context, id string, a Actor) (Payout, erro
 	return out, tx.Commit(ctx)
 }
 
-// MarkPaid records that Finance made the transfer. Money leaves the books exactly once: the journal's
-// dedup key and the status check both guard it, and repeating it with the same reference is a no-op.
+// MarkPaid records that the funds moved, either because Finance confirmed the transfer
+// (manual + dry-run path, or a payout that came back 'unknown' and was settled from a bank
+// statement) or because the executor's check status reported success. Money leaves the
+// books exactly once: the journal's dedup key and the status check both guard it, and
+// repeating it with the same reference is a no-op.
 func (s *Service) MarkPaid(ctx context.Context, id, bankReference string, a Actor) (Payout, error) {
 	if len(bankReference) < 3 || len(bankReference) > 128 {
 		return Payout{}, fmt.Errorf("%w: bank_reference (3-128 chars) is required", ErrValidation)
@@ -529,21 +593,24 @@ func (s *Service) MarkPaid(ctx context.Context, id, bankReference string, a Acto
 		}
 		return Payout{}, ErrRefConflict
 	}
-	if p.Status != "approved" {
+	if p.Status != "approved" && p.Status != "submitted" && p.Status != "unknown" {
 		return Payout{}, ErrState
+	}
+	if p.Fee >= p.Amount {
+		return Payout{}, fmt.Errorf("%w: fee %d leaves nothing to pay out", ErrValidation, p.Fee)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE payouts SET status = 'paid', bank_reference = $2, paid_by = $3::uuid, paid_at = now(), updated_at = now(), version = version + 1
 		WHERE id = $1`, id, bankReference, a.UserID); err != nil {
 		return Payout{}, err
 	}
-	if _, err := ledger.PostTx(ctx, tx, paidJournal(p.MerchantID, id, p.Currency, p.Amount)); err != nil {
+	if _, err := ledger.PostTx(ctx, tx, s.paidJournal(p.MerchantID, id, p.Currency, p.Amount, p.Fee)); err != nil {
 		return Payout{}, err
 	}
 	if err := notify(ctx, tx, p.Payout, "paid"); err != nil {
 		return Payout{}, err
 	}
 	if err := audit.Record(ctx, tx, audit.Entry{ActorID: a.UserID, Action: "payout.mark_paid", EntityType: "payout", EntityID: id, RequestID: a.RequestID,
-		Metadata: map[string]any{"merchant_id": p.MerchantID, "amount": p.Amount, "dry_run": p.DryRun}}); err != nil {
+		Metadata: map[string]any{"merchant_id": p.MerchantID, "amount": p.Amount, "fee": p.Fee, "dry_run": p.DryRun}}); err != nil {
 		return Payout{}, err
 	}
 	out, err := scanPayout(tx.QueryRow(ctx, `SELECT `+payoutCols+` FROM payouts WHERE id = $1`, id))

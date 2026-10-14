@@ -148,6 +148,44 @@ func TestCreateSnapshotsFeesServerSide(t *testing.T) {
 	}
 }
 
+func TestCreateWithMDRCap(t *testing.T) {
+	// The capped plan is a new version effective immediately: the checkout picks it over the
+	// uncapped v1 because of effective_from DESC. BI QRIS rule: 0.7% capped at Rp500 for
+	// gross Rp0-Rp100.000 (docs/integrations/doku.md §6); above the threshold, uncapped.
+	e := setup(t)
+	ctx := context.Background()
+	var plan string
+	if err := e.db.QueryRow(ctx, `
+		INSERT INTO pricing_plans (code, version, gateway, payment_method, mdr_bps, mdr_rounding, platform_bps, platform_rounding, mdr_cap, mdr_cap_up_to)
+		VALUES ('std', 2, 'gw1', 'QRIS', 70, 'half_up', 100, 'half_up', 500, 100000) RETURNING id::text`).Scan(&plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from)
+		VALUES ($1,$2, now() - interval '1 second')`, e.mid, plan); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		ref      string
+		amount   int64
+		mdr, net int64
+	}{
+		{"ORD-CAP-LO", 50_000, 350, 50_000 - 350 - 500},
+		{"ORD-CAP-AT", 100_000, 500, 100_000 - 500 - 1000},
+		{"ORD-CAP-OVER", 100_001, 700, 100_001 - 700 - 1000},
+	} {
+		p := e.create(t, c.ref, c.amount)
+		if p.Fee.MDRFee != c.mdr || p.Fee.MerchantNet != c.net {
+			t.Errorf("%s: got %+v want mdr=%d net=%d", c.ref, p.Fee, c.mdr, c.net)
+		}
+		if e.count(t, "SELECT plan_version FROM payments WHERE id = $1", p.ID) != 2 {
+			t.Errorf("%s: snapshot did not use the capped plan v2", c.ref)
+		}
+		if p.Fee.MDRFee+p.Fee.PlatformFee+p.Fee.MerchantNet != p.Amount {
+			t.Errorf("%s: gross != mdr + platform + net", c.ref)
+		}
+	}
+}
+
 func TestCreateValidation(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
