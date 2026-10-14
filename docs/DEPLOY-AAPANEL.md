@@ -76,6 +76,7 @@ set -a; . ./erapay.env; set +a
 ERAPAY_BOOTSTRAP_EMAIL=... ERAPAY_BOOTSTRAP_PASSWORD='...' ./bin/erapay-bootstrap platform-admin
 ```
 Kata sandi minimal 12 karakter. Akun Finance (review settlement, payout, refund, dan antrean pendaftaran merchant; tidak bisa menyetujui merchant) dibuat dengan cara yang sama: `./bin/erapay-bootstrap finance`.
+**Panel platform DEWA:** DEWA (Platform Admin) dibuat lewat `/platform/setup` di web dengan `ERAPAY_PLATFORM_SETUP_TOKEN` (≥ 32 karakter, sekali pakai: setup menolak setelah DEWA pertama ada). Lihat `docs/prd/platform-panel.md`.
 
 **Pendaftaran merchant mandiri** (halaman `/register`): merchant baru berstatus `submitted`. Ia bisa login dan melihat dashboard, tetapi pembayaran dan payout ditolak sampai disetujui. Admin (`super_admin`) membuka **Review merchant** (`/dashboard/finance/merchants`), mengisi MDR dan fee platform (basis poin), lalu menyetujui; itu membuat plan harga QRIS dan mengaktifkan merchant. Persetujuan **belum** mengaktifkan pembayaran: akun gateway (`merchant_gateway_accounts`, DOKU) tetap harus diaktifkan terpisah, sama seperti merchant buatan `bootstrap merchant`. 
 

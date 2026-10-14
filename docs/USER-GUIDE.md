@@ -387,10 +387,11 @@ Fitur DEWA memungkinkan super admin++ mengatur hak akses tanpa membuat migrasi b
 
 ### 13.1 Buka halaman
 
-Masuk sebagai DEWA, lalu buka:
-`/dashboard/admin/access`
+Masuk sebagai DEWA, lalu buka panel khusus platform:
+`/platform/login`
 
-Menu sidebar: **Hak akses**.
+Setelah login, buka **Hak akses** di `/platform/access`. Panel platform (auth/audit
+terpisah dari dashboard, 2FA wajib) hanya bisa diakses oleh role `dewa`.
 
 ### 13.2 Tab Role
 
@@ -562,7 +563,7 @@ gejala: response 202 status unknown
 ### DEWA
 
 1. Gunakan role `dewa`.
-2. Buka `/dashboard/admin/access`.
+2. Login di `/platform/login`, kelola hak akses di `/platform/access`.
 3. Buat role sesuai kebutuhan.
 4. Atur permission dan menu.
 5. Assign user.

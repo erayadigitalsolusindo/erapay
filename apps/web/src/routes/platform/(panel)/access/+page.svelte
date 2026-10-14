@@ -20,7 +20,7 @@
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<div>
 			<h1 class="text-xl font-bold">Hak akses (DEWA)</h1>
-			<p class="muted text-xs">Kelola role, izin, menu, dan user secara dinamis.</p>
+			<p class="muted text-xs">Kelola role, izin, menu, dan user secara dinamis dari panel platform.</p>
 		</div>
 		<nav class="flex flex-wrap gap-1.5" aria-label="Tab hak akses">
 			{#each ([['roles', 'Role'], ['perms', 'Matriks izin'], ['menus', 'Akses menu'], ['users', 'User']] as const) as [key, label] (key)}
@@ -36,6 +36,7 @@
 		</nav>
 	</div>
 
+	{#if data.error}<p class="mb-2 text-xs font-semibold text-red-700" role="alert">{data.error}</p>{/if}
 	{#if form?.message}<p class="mb-2 text-xs font-semibold text-red-700" role="alert">{form.message}</p>{/if}
 	{#if form?.done}<p class="mb-2 text-xs font-semibold text-emerald-700" role="status">Perubahan tersimpan.</p>{/if}
 

@@ -83,14 +83,6 @@ export const nav: NavItem[] = [
 		desc: 'nav.fMerchants.desc',
 		permission: 'merchant:review',
 		platform: true
-	},
-	{
-		href: '/dashboard/admin/access',
-		icon: '<path d="M12 2 3 7v10l9 5 9-5V7Z"/><path d="M12 8v8M8.5 10 12 8l3.5 2"/>',
-		label: 'nav.access',
-		desc: 'nav.access.desc',
-		permission: 'rbac:manage',
-		platform: true
 	}
 ];
 
