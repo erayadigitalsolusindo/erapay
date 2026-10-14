@@ -12,11 +12,13 @@ export type AdminPayout = {
 	bank_reference: string | null;
 	failure_reason: string | null;
 	decision_note: string | null;
+	gateway?: string;
+	fee_amount?: number;
 	created_at: string;
 };
 export type PendingAccount = { id: string; merchant_id: string; bank_code: string; account_masked: string; account_name: string; created_at: string };
 
-const STATUSES = ['pending_approval', 'approved', 'paid', 'failed', 'cancelled'];
+const STATUSES = ['pending_approval', 'approved', 'submitted', 'unknown', 'paid', 'failed', 'returned', 'cancelled'];
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 	const token = guard(locals, cookies, 'payout:review', 'platform');
@@ -52,6 +54,8 @@ export const actions: Actions = {
 	reject: act('payout:approve', (id) => `/v1/admin/payouts/${id}/reject`, (f) => ({ note: str(f, 'note') })),
 	markPaid: act('payout:execute', (id) => `/v1/admin/payouts/${id}/mark-paid`, (f) => ({ bank_reference: str(f, 'bank_reference') })),
 	markFailed: act('payout:execute', (id) => `/v1/admin/payouts/${id}/mark-failed`, (f) => ({ reason: str(f, 'reason') })),
+	execute: act('payout:execute', (id) => `/v1/admin/payouts/${id}/execute`),
+	checkStatus: act('payout:execute', (id) => `/v1/admin/payouts/${id}/check-status`),
 	reveal: async ({ request, cookies, fetch, locals }) => {
 		const token = guard(locals, cookies, 'payout:execute', 'platform');
 		const id = str(await request.formData(), 'id');

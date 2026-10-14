@@ -8,7 +8,7 @@
 	const i18n = getI18n();
 	const { t } = i18n;
 	const fmt = (iso: string) => new Date(iso).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'short' });
-	const filters = ['', 'pending_approval', 'approved', 'paid', 'failed', 'cancelled'] as const;
+	const filters = ['', 'pending_approval', 'approved', 'submitted', 'unknown', 'paid', 'failed', 'returned', 'cancelled'] as const;
 </script>
 
 {#if form?.message}<p class="mb-4 text-xs font-semibold text-red-700" role="alert">{form.message}</p>{/if}
@@ -92,6 +92,7 @@
 							<td>
 								<StateBadge kind="po" value={p.status} />
 								{#if p.bank_reference}<div class="muted mt-1 text-[10px]">{t('po.ref')}: {p.bank_reference}</div>{/if}
+								{#if p.gateway}<div class="muted mt-1 text-[10px]">{t('fin.gateway')}: {p.gateway}{#if p.fee_amount} · {t('fin.fee')}: {formatIDR(p.fee_amount)}{/if}</div>{/if}
 								{#if p.failure_reason ?? p.decision_note}<div class="muted mt-1 text-[10px]">{p.failure_reason ?? p.decision_note}</div>{/if}
 							</td>
 							<td>
@@ -113,6 +114,16 @@
 									{/if}
 								{:else if p.status === 'approved' && data.canExecute}
 									<div class="flex flex-wrap items-center gap-2">
+										<form
+											method="POST"
+											action="?/execute"
+											use:enhance={({ cancel }) => {
+												if (!confirm(t('fin.executeConfirm'))) cancel();
+											}}
+										>
+											<input type="hidden" name="id" value={p.id} />
+											<button class="btn btn-red" type="submit" title={t('fin.executeHint')}>{t('fin.execute')}</button>
+										</form>
 										<form method="POST" action="?/reveal" use:enhance>
 											<input type="hidden" name="id" value={p.id} />
 											<button class="btn btn-light" type="submit">{t('fin.reveal')}</button>
@@ -120,12 +131,19 @@
 										<form method="POST" action="?/markPaid" class="flex items-center gap-2" use:enhance>
 											<input type="hidden" name="id" value={p.id} />
 											<input class="inp w-40 py-2" name="bank_reference" placeholder={t('fin.bankRef')} minlength="3" maxlength="128" required aria-label={t('fin.bankRef')} />
-											<button class="btn btn-red" type="submit">{t('fin.markPaid')}</button>
+											<button class="btn btn-light" type="submit">{t('fin.markPaid')}</button>
 										</form>
 										<form method="POST" action="?/markFailed" class="flex items-center gap-2" use:enhance>
 											<input type="hidden" name="id" value={p.id} />
 											<input class="inp w-40 py-2" name="reason" placeholder={t('fin.failReason')} minlength="3" maxlength="500" required aria-label={t('fin.failReason')} />
 											<button class="btn btn-danger" type="submit">{t('fin.markFailed')}</button>
+										</form>
+									</div>
+								{:else if (p.status === 'submitted' || p.status === 'unknown') && data.canExecute}
+									<div class="flex flex-wrap items-center gap-2">
+										<form method="POST" action="?/checkStatus" use:enhance>
+											<input type="hidden" name="id" value={p.id} />
+											<button class="btn btn-light" type="submit">{t('fin.checkStatus')}</button>
 										</form>
 									</div>
 								{/if}
