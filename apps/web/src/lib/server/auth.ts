@@ -67,6 +67,18 @@ export type RegisterInput = {
 	phone: string;
 	password: string;
 	accept_terms: boolean;
+	// Data diri untuk verifikasi (gaya DOKU): NIK, tempat/tanggal lahir, jenis kelamin, alamat,
+	// NPWP pemilik (opsional), serta NPWP badan + NIB untuk akun usaha. Validasi sepenuhnya di Go.
+	identity: {
+		id_number: string;
+		place_of_birth: string;
+		date_of_birth: string;
+		gender: 'male' | 'female';
+		address: string;
+		npwp?: string;
+		business_npwp?: string;
+		business_nib?: string;
+	};
 };
 type Code = 'rate_limited' | 'invalid' | 'unavailable';
 export type RegisterResult = { ok: true } | { ok: false; code: Code; message?: string };

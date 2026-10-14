@@ -15,6 +15,7 @@ export type AdminMerchant = {
 	review_note: string | null;
 	reviewed_at: string | null;
 	created_at: string;
+	identity_complete: boolean;
 };
 
 const STATUSES = ['submitted', 'under_review', 'action_required', 'approved', 'rejected', 'suspended'];

@@ -5,7 +5,7 @@
 		id: string;
 		name: string;
 		label: string;
-		icon: 'mail' | 'lock' | 'user' | 'phone' | 'store';
+		icon: 'mail' | 'lock' | 'user' | 'phone' | 'store' | 'card' | 'pin';
 		type?: string;
 		value?: string;
 		placeholder?: string;
@@ -14,6 +14,7 @@
 		required?: boolean;
 		compact?: boolean;
 		prefix?: string;
+		inputmode?: 'numeric' | 'tel' | 'text' | 'email' | 'decimal';
 		trailing?: Snippet;
 		below?: Snippet;
 		oninput?: (e: Event) => void;
@@ -21,7 +22,7 @@
 
 	let {
 		id, name, label, icon, type = 'text', value = $bindable(''), placeholder, autocomplete,
-		error, required = true, compact = false, prefix, trailing, below, oninput
+		error, required = true, compact = false, prefix, inputmode, trailing, below, oninput
 	}: Props = $props();
 
 	const PATHS: Record<string, string> = {
@@ -29,7 +30,9 @@
 		lock: '<rect x="4" y="10" width="16" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
 		user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
 		phone: '<rect x="7" y="2" width="10" height="20" rx="3"/><path d="M11 18h2"/>',
-		store: '<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9v11h16V9"/><path d="M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9"/>'
+		store: '<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9v11h16V9"/><path d="M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9"/>',
+		card: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/>',
+		pin: '<path d="M12 21s7-6.4 7-11a7 7 0 1 0-14 0c0 4.6 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/>'
 	};
 </script>
 
@@ -44,6 +47,7 @@
 		{/if}
 		<input
 			{id} {name} {type} {placeholder} {autocomplete} {required} {oninput}
+			inputmode={inputmode ?? undefined}
 			bind:value
 			aria-invalid={error ? 'true' : undefined}
 			aria-describedby={error ? `${id}-err` : undefined}

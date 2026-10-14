@@ -504,6 +504,8 @@ func (d Deps) mountV1(r chi.Router) {
 				r.With(requirePerm("merchant:read")).Get("/merchant/profile", d.merchantProfile)
 				r.With(requirePerm("outlet:read")).Get("/merchant/outlets", d.merchantOutlets)
 				if d.Onboarding != nil {
+					r.With(requirePerm("merchant:read")).Get("/merchant/identity", d.merchantIdentity)
+					r.With(requirePerm("merchant:write")).Post("/merchant/identity", d.merchantSetIdentity)
 					r.With(requirePerm("merchant:write")).Post("/merchant/resubmit", d.merchantResubmit)
 				}
 				if d.APIKeys != nil {

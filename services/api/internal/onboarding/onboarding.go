@@ -21,6 +21,7 @@ import (
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/audit"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/secretbox"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/throttle"
 )
 
@@ -34,6 +35,9 @@ var (
 	ErrEmailUnverified          = errors.New("owner email is not verified")
 	ErrEmailDeliveryUnavailable = errors.New("owner email delivery is not configured")
 	ErrARUSMerchantAmbiguous    = errors.New("multiple existing merchants match this ARUS tenant")
+	// ErrIdentityIncomplete: approving means the reviewers have verified the merchant's "data diri"
+	// against what was submitted, so a complete identity is a precondition (DOKU-style, 14 Okt 2026).
+	ErrIdentityIncomplete = errors.New("merchant identity data is not complete")
 )
 
 // ValidationError carries a message that is safe to show to the caller.
@@ -69,7 +73,10 @@ type Config struct {
 	// until the operator opts in (docs/integrations/doku.md §6).
 	MDRCap     int64
 	MDRCapUpTo int64
-	Log        *slog.Logger
+	// Box seals the owner's NIK / NPWP at rest (PRD §0 #12, data.md: PII dienkripsi). Without it,
+	// sign-up stays off rather than storing strong identifiers in cleartext.
+	Box *secretbox.Box
+	Log *slog.Logger
 }
 
 type Service struct {
@@ -88,8 +95,9 @@ func NewService(db *pgxpool.Pool, n Notifier, cfg Config) *Service {
 	return &Service{db: db, notify: n, cfg: cfg}
 }
 
-// CanRegister reports whether sign-up is available (needs a way to send the verification email).
-func (s *Service) CanRegister() bool { return s.notify != nil }
+// CanRegister reports whether sign-up is available: it needs a way to send the verification email
+// and a key to seal the identity data at rest.
+func (s *Service) CanRegister() bool { return s.notify != nil && s.cfg.Box != nil }
 
 type RegisterInput struct {
 	AccountType  string // "individual" or "business"
@@ -99,6 +107,7 @@ type RegisterInput struct {
 	Phone        string // national number, with or without +62 / 0
 	Password     string
 	AcceptTerms  bool
+	Identity     *IdentityInput // data diri for verification (DOKU-style); required
 	IP           string
 	RequestID    string
 }
@@ -111,6 +120,121 @@ type Registered struct {
 }
 
 var phoneRe = regexp.MustCompile(`^8\d{8,11}$`)
+var (
+	// NIK is 16 digits (KTP); NPWP 15 (personal) or 16 (badan usaha) digits; NIB is 13 digits.
+	nikRe  = regexp.MustCompile(`^\d{16}$`)
+	npwpRe = regexp.MustCompile(`^\d{15,16}$`)
+	nibRe  = regexp.MustCompile(`^\d{13}$`)
+)
+
+// IdentityInput is the "data diri" a merchant submits for verification, DOKU-style (decision
+// 14 Okt 2026). NIK is required for every account; business accounts additionally require the
+// company NPWP and NIB. The owner's own NPWP is optional.
+type IdentityInput struct {
+	IDNumber     string `json:"id_number"` // NIK, 16 digits
+	PlaceOfBirth string `json:"place_of_birth"`
+	DateOfBirth  string `json:"date_of_birth"` // "2006-01-02"
+	Gender       string `json:"gender"`        // "male" or "female"
+	Address      string `json:"address"`
+	NPWP         string `json:"npwp"`          // optional
+	BusinessNPWP string `json:"business_npwp"` // required for business
+	BusinessNIB  string `json:"business_nib"`  // required for business
+}
+
+// identity is the normalized form: digits-only numbers, trimmed text, parsed date.
+type identity struct {
+	idNumber     string
+	placeOfBirth string
+	dob          time.Time
+	gender       string
+	address      string
+	npwp         string
+	businessNPWP string
+	businessNIB  string
+}
+
+func digitsOnly(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, s)
+}
+
+// ageYears is the age at `now`; dates only, so it needs no time zone.
+func ageYears(dob, now time.Time) int {
+	age := now.Year() - dob.Year()
+	if now.Month() < dob.Month() || (now.Month() == dob.Month() && now.Day() < dob.Day()) {
+		age--
+	}
+	return age
+}
+
+// normalizeIdentity validates the submitted data diri. accountType decides which business fields
+// are required; it comes from the merchant row (register input or the DB), never from the caller.
+func normalizeIdentity(accountType *string, raw *IdentityInput) (identity, error) {
+	var out identity
+	if raw == nil {
+		return out, invalid("identity is required")
+	}
+	out.idNumber = digitsOnly(raw.IDNumber)
+	if !nikRe.MatchString(out.idNumber) {
+		return out, invalid("id_number must be 16 digits")
+	}
+	out.placeOfBirth = strings.TrimSpace(raw.PlaceOfBirth)
+	if n := utf8.RuneCountInString(out.placeOfBirth); n < 2 || n > 100 {
+		return out, invalid("place_of_birth must be 2-100 characters")
+	}
+	dob, err := time.Parse("2006-01-02", strings.TrimSpace(raw.DateOfBirth))
+	if err != nil {
+		return out, invalid("date_of_birth must be a valid date in YYYY-MM-DD form")
+	}
+	// A KTP is only issued from age 17; 120 is the plausibility ceiling.
+	if age := ageYears(dob, time.Now()); age < 17 || age > 120 {
+		return out, invalid("date_of_birth must be between 17 and 120 years of age")
+	}
+	out.dob = dob
+	out.gender = strings.ToLower(strings.TrimSpace(raw.Gender))
+	if out.gender != "male" && out.gender != "female" {
+		return out, invalid("gender must be male or female")
+	}
+	out.address = strings.TrimSpace(raw.Address)
+	if n := utf8.RuneCountInString(out.address); n < 5 || n > 255 {
+		return out, invalid("address must be 5-255 characters")
+	}
+	out.npwp = digitsOnly(raw.NPWP)
+	if out.npwp != "" && !npwpRe.MatchString(out.npwp) {
+		return out, invalid("npwp must be 15 or 16 digits")
+	}
+	business := accountType != nil && *accountType == "business"
+	if business {
+		out.businessNPWP = digitsOnly(raw.BusinessNPWP)
+		if !npwpRe.MatchString(out.businessNPWP) {
+			return out, invalid("business_npwp is required for a business account and must be 15 or 16 digits")
+		}
+		out.businessNIB = digitsOnly(raw.BusinessNIB)
+		if !nibRe.MatchString(out.businessNIB) {
+			return out, invalid("business_nib is required for a business account and must be 13 digits")
+		}
+	} else if strings.TrimSpace(raw.BusinessNPWP) != "" || strings.TrimSpace(raw.BusinessNIB) != "" {
+		return out, invalid("business_npwp and business_nib are only for business accounts")
+	}
+	return out, nil
+}
+
+// sealNumber seals a strong identifier (NIK, NPWP) for storage and returns the last4 for the masked
+// view. An empty value seals nothing; the column stays NULL.
+func (s *Service) sealNumber(value, aad string) (sealed []byte, last4 string, err error) {
+	if value == "" {
+		return nil, "", nil
+	}
+	sealed, err = s.cfg.Box.Seal([]byte(value), []byte(aad))
+	if err != nil {
+		return nil, "", err
+	}
+	return sealed, value[len(value)-4:], nil
+}
 
 // normalizePhone turns "0812 3456 7890", "+62 812-3456-7890" and "81234567890" into "+6281234567890".
 func normalizePhone(raw string) (string, error) {
@@ -180,7 +304,15 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Registered, e
 	if s.notify == nil {
 		return Registered{}, errors.New("onboarding: sign-up is not configured")
 	}
+	if s.cfg.Box == nil {
+		return Registered{}, errors.New("onboarding: encryption key is not configured")
+	}
 	if err := in.normalize(); err != nil {
+		return Registered{}, err
+	}
+	at := in.AccountType
+	ident, err := normalizeIdentity(&at, in.Identity)
+	if err != nil {
 		return Registered{}, err
 	}
 	// Throttle before the (deliberately expensive) password hash. Failed and duplicate attempts count too.
@@ -214,10 +346,31 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Registered, e
 		}
 		return Registered{}, err
 	}
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO merchants (legal_name, display_name, onboarding_status, account_type, owner_name, contact_phone)
-		VALUES ($1,$1,'submitted',$2,$3,$4) RETURNING id::text`,
-		in.BusinessName, in.AccountType, in.OwnerName, in.Phone).Scan(&mid); err != nil {
+	// The merchant id is generated first so the sealed NIK/NPWP can be bound to its row
+	// (the secretbox AAD), exactly like a bank account number.
+	if err := tx.QueryRow(ctx, `SELECT gen_random_uuid()::text`).Scan(&mid); err != nil {
+		return Registered{}, err
+	}
+	idEnc, idLast4, err := s.sealNumber(ident.idNumber, mid)
+	if err != nil {
+		return Registered{}, err
+	}
+	npwpEnc, npwpLast4, err := s.sealNumber(ident.npwp, mid)
+	if err != nil {
+		return Registered{}, err
+	}
+	bizEnc, bizLast4, err := s.sealNumber(ident.businessNPWP, mid)
+	if err != nil {
+		return Registered{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO merchants (id, legal_name, display_name, onboarding_status, account_type, owner_name, contact_phone,
+			owner_id_enc, owner_id_last4, owner_place_of_birth, owner_date_of_birth, owner_gender, owner_address,
+			owner_npwp_enc, owner_npwp_last4, business_npwp_enc, business_npwp_last4, business_nib)
+		VALUES ($1,$2,$2,'submitted',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		mid, in.BusinessName, in.AccountType, in.OwnerName, in.Phone,
+		idEnc, idLast4, ident.placeOfBirth, ident.dob, ident.gender, ident.address,
+		npwpEnc, npwpLast4, bizEnc, bizLast4, ident.businessNIB); err != nil {
 		return Registered{}, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO merchant_outlets (merchant_id, name) VALUES ($1,'Outlet Utama')`, mid); err != nil {
@@ -255,6 +408,32 @@ type Merchant struct {
 	ReviewNote         *string    `json:"review_note"`
 	ReviewedAt         *time.Time `json:"reviewed_at"`
 	CreatedAt          time.Time  `json:"created_at"`
+	IdentityComplete   bool       `json:"identity_complete"`
+	Identity           *Identity  `json:"identity"`
+	// Sealed NIK/NPWP, opened only by GetForReview for the reviewer detail view. Never serialized.
+	idEnc   []byte
+	npwpEnc []byte
+	bizEnc  []byte
+}
+
+// Identity is the view of the merchant's "data diri". The masked fields (id_masked, npwp_masked,
+// business_npwp_masked) are what every audience sees; id_number / npwp / business_npwp are filled
+// only by GetForReview, the reviewer detail view (merchant:review), so reviewers can check what was
+// submitted. Place/date of birth, gender, address and NIB are cleartext columns: manual review has
+// to read them (PRD data.md: review masih manual dari data isian).
+type Identity struct {
+	IDMasked           string `json:"id_masked,omitempty"`
+	IDNumber           string `json:"id_number,omitempty"`
+	PlaceOfBirth       string `json:"place_of_birth,omitempty"`
+	DateOfBirth        string `json:"date_of_birth,omitempty"`
+	Gender             string `json:"gender,omitempty"`
+	Address            string `json:"address,omitempty"`
+	NPWPMasked         string `json:"npwp_masked,omitempty"`
+	NPWP               string `json:"npwp,omitempty"`
+	BusinessNPWPMasked string `json:"business_npwp_masked,omitempty"`
+	BusinessNPWP       string `json:"business_npwp,omitempty"`
+	BusinessNIB        string `json:"business_nib,omitempty"`
+	Complete           bool   `json:"complete"`
 }
 
 const merchantCols = `m.id::text, m.legal_name, m.display_name, m.account_type, m.owner_name,
@@ -263,13 +442,73 @@ const merchantCols = `m.id::text, m.legal_name, m.display_name, m.account_type, 
 	  WHERE mu.merchant_id = m.id ORDER BY u.created_at LIMIT 1),
 	COALESCE((SELECT bool_or(u.email_verified_at IS NOT NULL) FROM merchant_users mu JOIN users u ON u.id = mu.user_id
 	   JOIN roles r ON r.id = mu.role_id AND r.code = 'merchant_owner' WHERE mu.merchant_id = m.id), false),
-	m.contact_phone, m.onboarding_status, m.review_note, m.reviewed_at, m.created_at`
+	m.contact_phone, m.onboarding_status, m.review_note, m.reviewed_at, m.created_at,
+	m.owner_place_of_birth, m.owner_date_of_birth, m.owner_gender, m.owner_address,
+	m.owner_id_enc, m.owner_id_last4, m.owner_npwp_enc, m.owner_npwp_last4,
+	m.business_npwp_enc, m.business_npwp_last4, m.business_nib`
 
 func scanMerchant(row pgx.Row) (Merchant, error) {
 	var m Merchant
+	var place, gender, address, nib *string
+	var dob *time.Time
+	var idLast4, npwpLast4, bizLast4 *string
 	err := row.Scan(&m.ID, &m.LegalName, &m.DisplayName, &m.AccountType, &m.OwnerName, &m.OwnerEmail, &m.OwnerEmailVerified,
-		&m.ContactPhone, &m.Status, &m.ReviewNote, &m.ReviewedAt, &m.CreatedAt)
+		&m.ContactPhone, &m.Status, &m.ReviewNote, &m.ReviewedAt, &m.CreatedAt,
+		&place, &dob, &gender, &address, &m.idEnc, &idLast4, &m.npwpEnc, &npwpLast4, &m.bizEnc, &bizLast4, &nib)
+	m.Identity = m.identityView(place, dob, gender, address, idLast4, npwpLast4, bizLast4, nib)
+	m.Identity.Complete = m.complete()
+	m.IdentityComplete = m.Identity.Complete
 	return m, err
+}
+
+// complete reports whether the data diri is sufficient for approval (business accounts also need
+// the company NPWP and NIB). Approve re-checks the same rule from the database itself.
+func (m Merchant) complete() bool {
+	if m.Identity == nil {
+		return false
+	}
+	if m.idEnc == nil || m.Identity.PlaceOfBirth == "" || m.Identity.DateOfBirth == "" ||
+		m.Identity.Gender == "" || m.Identity.Address == "" {
+		return false
+	}
+	if m.AccountType != nil && *m.AccountType == "business" {
+		return m.bizEnc != nil && m.Identity.BusinessNIB != ""
+	}
+	return true
+}
+
+// identityView builds the masked view from the stored columns. Plaintext fields stay empty here;
+// GetForReview opens the sealed values into them.
+func (m Merchant) identityView(place *string, dob *time.Time, gender, address, idLast4, npwpLast4, bizLast4, nib *string) *Identity {
+	v := &Identity{}
+	if place != nil {
+		v.PlaceOfBirth = *place
+	}
+	if dob != nil {
+		v.DateOfBirth = dob.Format("2006-01-02")
+	}
+	if gender != nil {
+		v.Gender = *gender
+	}
+	if address != nil {
+		v.Address = *address
+	}
+	if nib != nil {
+		v.BusinessNIB = *nib
+	}
+	// An empty last4 means nothing was stored for that identifier ("" is written when the
+	// value is absent), so no mask must be shown for it: "••••" with no digits would read
+	// as an identifier that exists.
+	if idLast4 != nil && *idLast4 != "" {
+		v.IDMasked = "••••" + *idLast4
+	}
+	if npwpLast4 != nil && *npwpLast4 != "" {
+		v.NPWPMasked = "••••" + *npwpLast4
+	}
+	if bizLast4 != nil && *bizLast4 != "" {
+		v.BusinessNPWPMasked = "••••" + *bizLast4
+	}
+	return v
 }
 
 // List returns merchants in one status. The pending queue is oldest-first; other lists newest-first.
@@ -304,6 +543,32 @@ func (s *Service) Get(ctx context.Context, id string) (Merchant, error) {
 		return Merchant{}, ErrNotFound
 	}
 	return m, err
+}
+
+// GetForReview is the reviewer detail view: it additionally opens the sealed NIK/NPWP so Finance/Ops
+// can check the submitted data diri. Everything else (list, the merchant's own view) sees masks only.
+func (s *Service) GetForReview(ctx context.Context, id string) (Merchant, error) {
+	m, err := s.Get(ctx, id)
+	if err != nil {
+		return m, err
+	}
+	if s.cfg.Box == nil {
+		return m, invalid("identity data cannot be read: encryption key is not configured")
+	}
+	if v, err := s.cfg.Box.Open(m.idEnc, []byte(m.ID)); err == nil {
+		m.Identity.IDNumber = string(v)
+	}
+	if m.npwpEnc != nil {
+		if v, err := s.cfg.Box.Open(m.npwpEnc, []byte(m.ID)); err == nil {
+			m.Identity.NPWP = string(v)
+		}
+	}
+	if m.bizEnc != nil {
+		if v, err := s.cfg.Box.Open(m.bizEnc, []byte(m.ID)); err == nil {
+			m.Identity.BusinessNPWP = string(v)
+		}
+	}
+	return m, nil
 }
 
 type ApproveInput struct {
@@ -343,6 +608,19 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 	}
 	if !verified {
 		return Merchant{}, ErrEmailUnverified
+	}
+	// The data diri is verified against what was submitted, so it must be complete first. The rule
+	// is read from the database, not the request: business accounts additionally need NPWP + NIB.
+	var complete bool
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(
+		owner_id_enc IS NOT NULL AND owner_place_of_birth IS NOT NULL AND owner_date_of_birth IS NOT NULL
+		AND owner_gender IS NOT NULL AND owner_address IS NOT NULL
+		AND (account_type IS DISTINCT FROM 'business' OR (business_npwp_enc IS NOT NULL AND business_nib IS NOT NULL))
+	, false) FROM merchants WHERE id = $1`, in.MerchantID).Scan(&complete); err != nil {
+		return Merchant{}, err
+	}
+	if !complete {
+		return Merchant{}, ErrIdentityIncomplete
 	}
 	var planID string
 	if err := tx.QueryRow(ctx, `INSERT INTO pricing_plans
@@ -512,6 +790,70 @@ func (s *Service) Resubmit(ctx context.Context, in ResubmitInput) (Merchant, err
 	}
 	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant.resubmitted", EntityType: "merchant",
 		EntityID: in.MerchantID, RequestID: in.RequestID}); err != nil {
+		return Merchant{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Merchant{}, err
+	}
+	return s.Get(ctx, in.MerchantID)
+}
+
+type SetIdentityInput struct {
+	MerchantID string // always from the session, never from the request
+	ActorID    string
+	Identity   *IdentityInput
+	RequestID  string
+}
+
+// SetIdentity lets the merchant complete or correct the data diri used for verification: at
+// sign-up (already filled), later through the Status akun menu, or after a change request. Once a
+// merchant is decided (approved / rejected / suspended) the data is locked, exactly like resubmit.
+func (s *Service) SetIdentity(ctx context.Context, in SetIdentityInput) (Merchant, error) {
+	if s.cfg.Box == nil {
+		return Merchant{}, errors.New("onboarding: encryption key is not configured")
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Merchant{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockIn(ctx, tx, in.MerchantID, reviewable); err != nil {
+		return Merchant{}, err
+	}
+	// The rules for required fields follow the merchant's own account type, never the request.
+	var accountType *string
+	if err := tx.QueryRow(ctx, `SELECT account_type FROM merchants WHERE id = $1`, in.MerchantID).Scan(&accountType); err != nil {
+		return Merchant{}, err
+	}
+	ident, err := normalizeIdentity(accountType, in.Identity)
+	if err != nil {
+		return Merchant{}, err
+	}
+	idEnc, idLast4, err := s.sealNumber(ident.idNumber, in.MerchantID)
+	if err != nil {
+		return Merchant{}, err
+	}
+	npwpEnc, npwpLast4, err := s.sealNumber(ident.npwp, in.MerchantID)
+	if err != nil {
+		return Merchant{}, err
+	}
+	bizEnc, bizLast4, err := s.sealNumber(ident.businessNPWP, in.MerchantID)
+	if err != nil {
+		return Merchant{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE merchants SET
+		owner_id_enc=$2, owner_id_last4=$3, owner_place_of_birth=$4, owner_date_of_birth=$5,
+		owner_gender=$6, owner_address=$7, owner_npwp_enc=$8, owner_npwp_last4=$9,
+		business_npwp_enc=$10, business_npwp_last4=$11, business_nib=$12,
+		updated_at=now(), version=version+1 WHERE id=$1`,
+		in.MerchantID, idEnc, idLast4, ident.placeOfBirth, ident.dob, ident.gender, ident.address,
+		npwpEnc, npwpLast4, bizEnc, bizLast4, ident.businessNIB); err != nil {
+		return Merchant{}, err
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant.identity_updated", EntityType: "merchant",
+		EntityID: in.MerchantID, RequestID: in.RequestID,
+		// Never the plaintext: only the completeness and the masked tail, like bank account events.
+		Metadata: map[string]any{"id_last4": idLast4, "complete": true}}); err != nil {
 		return Merchant{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

@@ -330,7 +330,7 @@ func TestRegisterLimitIsConfigurableHTTP(t *testing.T) {
 	for limit, want := range map[int]int{2: 2, 7: 7} {
 		w.db.Exec(t.Context(), `DELETE FROM register_attempts`) //nolint:errcheck
 		srv := httptest.NewServer(NewRouter(Deps{Log: log, DB: fakePinger{}, Redis: fakePinger{}, Auth: w.svc,
-			Onboarding: onboarding.NewService(w.db, w.mailNotifier(), onboarding.Config{RegisterPerIP: limit, Log: log})}))
+			Onboarding: onboarding.NewService(w.db, w.mailNotifier(), onboarding.Config{RegisterPerIP: limit, Box: testBox(t), Log: log})}))
 		ok := 0
 		for i := range 10 {
 			r, err := http.Post(srv.URL+"/v1/auth/register", "application/json",

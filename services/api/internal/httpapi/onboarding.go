@@ -23,6 +23,8 @@ func (d Deps) onboardingErr(w http.ResponseWriter, r *http.Request, err error) b
 		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "not found", false)
 	case errors.Is(err, onboarding.ErrEmailUnverified):
 		writeError(w, r, http.StatusConflict, "EMAIL_NOT_VERIFIED", "the owner has not verified their email yet", false)
+	case errors.Is(err, onboarding.ErrIdentityIncomplete):
+		writeError(w, r, http.StatusConflict, "IDENTITY_INCOMPLETE", "the merchant has not completed its identity data yet", false)
 	case errors.Is(err, onboarding.ErrEmailDeliveryUnavailable):
 		writeError(w, r, http.StatusServiceUnavailable, "EMAIL_DELIVERY_UNAVAILABLE", "owner email delivery is not configured", false)
 	case errors.Is(err, onboarding.ErrARUSMerchantAmbiguous):
@@ -40,13 +42,14 @@ func (d Deps) onboardingErr(w http.ResponseWriter, r *http.Request, err error) b
 // 'submitted' and cannot take payments until its owner verifies their email and a platform admin approves it.
 func (d Deps) register(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		AccountType  string `json:"account_type"`
-		Name         string `json:"name"`
-		BusinessName string `json:"business_name"`
-		Email        string `json:"email"`
-		Phone        string `json:"phone"`
-		Password     string `json:"password"`
-		AcceptTerms  bool   `json:"accept_terms"`
+		AccountType  string                    `json:"account_type"`
+		Name         string                    `json:"name"`
+		BusinessName string                    `json:"business_name"`
+		Email        string                    `json:"email"`
+		Phone        string                    `json:"phone"`
+		Password     string                    `json:"password"`
+		AcceptTerms  bool                      `json:"accept_terms"`
+		Identity     *onboarding.IdentityInput `json:"identity"`
 	}
 	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
 		return
@@ -54,7 +57,8 @@ func (d Deps) register(w http.ResponseWriter, r *http.Request) {
 	res, err := d.Onboarding.Register(r.Context(), onboarding.RegisterInput{
 		AccountType: body.AccountType, OwnerName: body.Name, BusinessName: body.BusinessName,
 		Email: body.Email, Phone: body.Phone, Password: body.Password, AcceptTerms: body.AcceptTerms,
-		IP: d.clientIP(r), RequestID: middleware.GetReqID(r.Context()),
+		Identity: body.Identity,
+		IP:       d.clientIP(r), RequestID: middleware.GetReqID(r.Context()),
 	})
 	if !d.onboardingErr(w, r, err) {
 		return
@@ -99,7 +103,9 @@ func (d Deps) adminGetMerchant(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	m, err := d.Onboarding.Get(r.Context(), id)
+	// The reviewer detail view opens the sealed NIK/NPWP so the data diri can actually be checked;
+	// every other view (list, the merchant's own) sees masks only.
+	m, err := d.Onboarding.GetForReview(r.Context(), id)
 	if !d.onboardingErr(w, r, err) {
 		return
 	}
@@ -182,6 +188,35 @@ func (d Deps) adminReviewAction(action string) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, m)
 	}
+}
+
+// merchantIdentity is the merchant's own view of the data diri it submitted: masked NIK/NPWP,
+// the other fields as entered, and whether the set is complete enough for approval.
+func (d Deps) merchantIdentity(w http.ResponseWriter, r *http.Request) {
+	m, err := d.Onboarding.Get(r.Context(), PrincipalFrom(r.Context()).MerchantID)
+	if !d.onboardingErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, m.Identity)
+}
+
+// merchantSetIdentity completes or corrects the data diri during verification. The merchant comes
+// from the session only; every rule lives in Go.
+func (d Deps) merchantSetIdentity(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Identity *onboarding.IdentityInput `json:"identity"`
+	}
+	if _, ok := decodeStrict(w, r, 8<<10, &body); !ok {
+		return
+	}
+	p := PrincipalFrom(r.Context())
+	m, err := d.Onboarding.SetIdentity(r.Context(), onboarding.SetIdentityInput{
+		MerchantID: p.MerchantID, ActorID: p.UserID, Identity: body.Identity,
+		RequestID: middleware.GetReqID(r.Context())})
+	if !d.onboardingErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, m.Identity)
 }
 
 // merchantResubmit answers a change request. The merchant comes from the session only.

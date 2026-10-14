@@ -49,6 +49,7 @@
 								<div>{m.owner_name ?? '—'}</div>
 								<div class="muted text-[10px]">{m.owner_email ?? ''}{m.contact_phone ? ` · ${m.contact_phone}` : ''}</div>
 								<div class="mt-1 text-[10px] font-semibold {m.owner_email_verified ? 'text-emerald-700' : 'text-amber-700'}">{m.owner_email_verified ? t('onb.emailOk') : t('onb.emailNo')}</div>
+								<div class="mt-0.5 text-[10px] font-semibold {m.identity_complete ? 'text-emerald-700' : 'text-amber-700'}">{m.identity_complete ? t('onb.identityOk') : t('onb.identityNo')}</div>
 							</td>
 							<td>
 								<StateBadge kind="onb" value={m.status} />
@@ -56,6 +57,7 @@
 								{#if m.reviewed_at}<div class="muted mt-1 text-[10px]">{fmt(m.reviewed_at)}</div>{/if}
 							</td>
 							<td>
+								<div class="mb-2"><a class="text-[11px] font-bold text-merah hover:underline" href={`/dashboard/finance/merchants/${encodeURIComponent(m.id)}`}>{t('onb.detail')}</a></div>
 								{#if data.canReview && ['submitted', 'under_review'].includes(m.status)}
 									<div class="mb-3 flex flex-wrap items-center gap-2">
 										{#if m.status === 'submitted'}

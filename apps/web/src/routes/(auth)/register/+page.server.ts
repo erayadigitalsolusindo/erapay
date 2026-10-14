@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { register } from '../../../lib/server/auth';
+import { register, type RegisterInput } from '../../../lib/server/auth';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
@@ -26,6 +26,20 @@ export const actions: Actions = {
 		const password = String(f.get('password') ?? '');
 		if (password !== String(f.get('password_confirm') ?? '')) return fail(400, { ...keep, error: 'Kata sandi tidak sama.' });
 
+		// Data diri (verifikasi): NIK dan NPWP boleh memakai titik/spasi; Go menormalisasinya.
+		const identity: Record<string, string> = {
+			id_number: s('nik'),
+			place_of_birth: s('pob'),
+			date_of_birth: s('dob'),
+			gender: s('gender'),
+			address: s('address')
+		};
+		if (s('npwp')) identity.npwp = s('npwp');
+		if (s('jenis') === 'usaha') {
+			if (s('biz_npwp')) identity.business_npwp = s('biz_npwp');
+			if (s('nib')) identity.business_nib = s('nib');
+		}
+
 		const r = await register(fetch, getClientAddress(), {
 			account_type: s('jenis') === 'usaha' ? 'business' : 'individual',
 			name,
@@ -33,7 +47,8 @@ export const actions: Actions = {
 			email,
 			phone: s('phone'),
 			password,
-			accept_terms: f.get('agree') === 'on'
+			accept_terms: f.get('agree') === 'on',
+			identity: identity as RegisterInput['identity']
 		});
 		if (!r.ok) {
 			// Pesan validasi dari Go (bahasa Inggris, aman ditampilkan) ikut disertakan agar pengguna tahu bagian mana.
