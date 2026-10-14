@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/audit"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/bank"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/ledger"
@@ -144,9 +145,11 @@ func scanBank(row pgx.Row) (BankAccount, error) {
 }
 
 // AddBankAccount registers a destination; it cannot receive payouts until Finance verifies it.
+// bank_code harus kode BI bank yang didukung Kirim DOKU (internal/bank, doku.md §6) supaya
+// transfer produksi tidak gagal di sisi gateway.
 func (s *Service) AddBankAccount(ctx context.Context, merchantID, bankCode, number, name string, a Actor) (BankAccount, error) {
-	if !bankRe.MatchString(bankCode) || !numberRe.MatchString(number) || len(name) < 2 || len(name) > 100 {
-		return BankAccount{}, fmt.Errorf("%w: bank_code, account_number (5-32 digits) and account_name are required", ErrValidation)
+	if !bankRe.MatchString(bankCode) || !bank.Valid(bankCode) || !numberRe.MatchString(number) || len(name) < 2 || len(name) > 100 {
+		return BankAccount{}, fmt.Errorf("%w: bank_code must be a supported bank code (see GET /v1/banks), account_number (5-32 digits) and account_name (2-100 chars) are required", ErrValidation)
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {

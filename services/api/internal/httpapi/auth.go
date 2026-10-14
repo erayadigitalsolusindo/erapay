@@ -445,6 +445,7 @@ func (d Deps) mountV1(r chi.Router) {
 		r.Group(func(r chi.Router) {
 			r.Use(d.requireAuth)
 			r.Get("/menus", d.listMenus)
+			r.Get("/banks", d.listBanks) // daftar bank Kirim DOKU untuk form rekening
 			r.Post("/auth/logout", d.logout)
 			r.Get("/auth/me", d.me)
 			// MFA endpoints (platform admin only, gated by role in handlers)

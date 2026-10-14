@@ -227,8 +227,8 @@ const id = {
 
 	'bank.title': 'Rekening tujuan',
 	'bank.note': 'Rekening baru harus diverifikasi tim Finance dan melewati masa tunggu sebelum dapat dipakai. Nomor rekening tidak ditampilkan penuh.',
-	'bank.code': 'Kode bank',
-	'bank.codePh': 'mis. BCA',
+	'bank.code': 'Bank',
+	'bank.pick': 'Pilih bank…',
 	'bank.number': 'Nomor rekening',
 	'bank.name': 'Nama pemilik rekening',
 	'bank.add': 'Tambah rekening',
@@ -677,8 +677,8 @@ const en: Record<keyof typeof id, string> = {
 
 	'bank.title': 'Destination accounts',
 	'bank.note': 'A new account must be verified by the Finance team and pass a waiting period before it can be used. Account numbers are never shown in full.',
-	'bank.code': 'Bank code',
-	'bank.codePh': 'e.g. BCA',
+	'bank.code': 'Bank',
+	'bank.pick': 'Select bank…',
 	'bank.number': 'Account number',
 	'bank.name': 'Account holder name',
 	'bank.add': 'Add account',

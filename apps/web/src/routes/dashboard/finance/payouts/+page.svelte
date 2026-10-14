@@ -9,6 +9,8 @@
 	const { t } = i18n;
 	const fmt = (iso: string) => new Date(iso).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'short' });
 	const filters = ['', 'pending_approval', 'approved', 'submitted', 'unknown', 'paid', 'failed', 'returned', 'cancelled'] as const;
+	const bankName = $derived(new Map(data.banks.map((b) => [b.code, b.name])));
+	const bankLabel = (code: string) => bankName.get(code) ?? code;
 </script>
 
 {#if form?.message}<p class="mb-4 text-xs font-semibold text-red-700" role="alert">{form.message}</p>{/if}
@@ -17,7 +19,7 @@
 		<h2 class="text-sm font-bold">{t('fin.dest')}</h2>
 		<p class="muted text-xs">{t('fin.destNote')}</p>
 		<dl class="grid grid-cols-[auto_1fr] gap-x-5 gap-y-1 text-xs">
-			<dt class="muted">{t('bank.code')}</dt><dd class="font-bold">{form.dest.bank_code}</dd>
+			<dt class="muted">{t('bank.code')}</dt><dd class="font-bold">{bankLabel(form.dest.bank_code)}</dd>
 			<dt class="muted">{t('bank.number')}</dt><dd class="font-bold select-all"><code>{form.dest.account_number}</code></dd>
 			<dt class="muted">{t('bank.name')}</dt><dd class="font-bold">{form.dest.account_name}</dd>
 		</dl>
@@ -42,7 +44,7 @@
 						<tr>
 							<td class="muted">{fmt(a.created_at)}</td>
 							<td><code>{a.merchant_id.slice(0, 8)}</code></td>
-							<td>{a.bank_code}</td>
+							<td>{bankLabel(a.bank_code)}</td>
 							<td>{a.account_masked}</td>
 							<td class="font-bold">{a.account_name}</td>
 							<td>

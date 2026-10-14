@@ -17,7 +17,7 @@ func TestPayoutExecutorHTTP(t *testing.T) {
 	w := setup(t)
 	owner, fin := w.client(t, "owner@a.test"), w.client(t, "finance@erapay.test")
 
-	r := w.do(t, owner, "POST", "/v1/bank-accounts", `{"bank_code":"BCA","account_number":"1234567890","account_name":"PT Merchant A"}`, nil)
+	r := w.do(t, owner, "POST", "/v1/bank-accounts", `{"bank_code":"014","account_number":"1234567890","account_name":"PT Merchant A"}`, nil)
 	acctID := decode(t, r)["id"].(string)
 	if r.StatusCode != 201 {
 		t.Fatalf("add account: %d", r.StatusCode)
@@ -79,7 +79,7 @@ func TestPayoutFlowHTTP(t *testing.T) {
 	anon := &http.Client{}
 
 	// Owner registers a destination; the full number never comes back.
-	r := w.do(t, owner, "POST", "/v1/bank-accounts", `{"bank_code":"BCA","account_number":"1234567890","account_name":"PT Merchant A"}`, nil)
+	r := w.do(t, owner, "POST", "/v1/bank-accounts", `{"bank_code":"014","account_number":"1234567890","account_name":"PT Merchant A"}`, nil)
 	acct := decode(t, r)
 	if r.StatusCode != 201 || acct["status"] != "pending_verification" || acct["account_masked"] != "••••7890" || strings.Contains(fmt.Sprint(acct), "1234567890") {
 		t.Fatalf("add account: %d %v", r.StatusCode, acct)
