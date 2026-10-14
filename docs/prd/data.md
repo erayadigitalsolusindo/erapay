@@ -10,4 +10,6 @@ Baca juga: `../PRD.md`, `pricing.md`, `ledger.md`.
 
 **Aturan:** `created_at`/`updated_at`/`version` bila relevan; unique: gateway txn ID (per gateway), idempotency key (per scope operasi); index: merchant_id, created_at, status, gateway, gateway_reference + kombinasi filter utama; dokumen KYC mentah dihindari (jika wajib: object storage privat, enkripsi, akses terbatas, retention); PII/rekening dienkripsi/masked.
 
+**Data diri merchant (14 Okt 2026, lihat `merchant.md`):** NIK/NPWP pemilik + NPWP badan usaha disimpan terenkripsi di `merchants` (`owner_id_enc`/`owner_npwp_enc`/`business_npwp_enc`, AES-256-GCM, AAD = id baris, pola seperti `merchant_bank_accounts.account_enc`) + `*_last4` untuk view masked (`••••1234`). Tempat/tanggal lahir, jenis kelamin, alamat, NIB adalah kolom teks biasa karena review manual harus membacanya. Plaintext NIK/NPWP hanya dibuka oleh `onboarding.GetForReview` (detail reviewer, izin `merchant:review`); `merchant_users`, daftar, dan view merchant sendiri hanya melihat masked.
+
 **State machine payment (usulan):** `created→pending→{succeeded|failed|expired|cancelled}`; `pending→unknown→{pending|succeeded|failed|expired}`. Transisi final mengikuti mapping resmi gateway; `unknown` bukan final.

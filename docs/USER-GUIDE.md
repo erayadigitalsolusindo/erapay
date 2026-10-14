@@ -55,14 +55,16 @@ Aturan penting:
 1. Buka halaman pendaftaran EraPay.
 2. Pilih jenis akun: `individual` atau `business`.
 3. Isi nama, nama usaha, email, nomor HP, dan password.
-4. Setujui syarat & ketentuan.
-5. EraPay mengirim tautan verifikasi email.
+4. Isi **data diri (verifikasi)** sesuai KTP: NIK, tempat lahir, tanggal lahir, jenis kelamin, alamat; NPWP pemilik opsional. Akun `business` wajib melampirkan NPWP badan usaha dan NIB. NIK dan NPWP disimpan **terenkripsi** (AES-256-GCM); hanya reviewer EraPay yang melihat nilai lengkapnya.
+5. Setujui syarat & ketentuan.
+6. EraPay mengirim tautan verifikasi email.
 
 Pendaftaran **tidak langsung aktif**. Merchant harus:
 1. verifikasi email,
-2. menunggu review platform,
-3. disetujui Super Admin,
-4. hanya setelah itu pembayaran/payout bisa aktif.
+2. memiliki **data diri lengkap** — approval ditolak (`IDENTITY_INCOMPLETE`) sampai lengkap; pelengkapan/perbaikan dilakukan di menu **Status akun**,
+3. menunggu review platform,
+4. disetujui Super Admin,
+5. hanya setelah itu pembayaran/payout bisa aktif.
 
 ### 3.2 Login
 
@@ -83,7 +85,8 @@ Di dashboard, Merchant Owner:
 - menambah/melihat outlet,
 - menambahkan user dan peran kasir/integrator,
 - memantau status verifikasi email,
-- memantau status approval merchant.
+- memantau status approval merchant,
+- **melengkapi/memeriksa data diri (verifikasi)**: NIK/NPWP tampil ter-masking (`••••1234`); data dapat diperbarui selama status masih `submitted`/`under_review`/`action_required`, dan terkunci setelah diputuskan.
 
 Status merchant:
 - `draft`: belum dikirim.
@@ -108,7 +111,7 @@ Menu umum merchant:
 - **Saldo & Payout**: saldo, rekening tujuan, dan payout.
 - **Refund**: mengajukan dan memantau refund.
 - **Webhook**: endpoint notifikasi dan riwayat pengiriman.
-- **Status akun**: verifikasi email dan status approval.
+- **Status akun**: verifikasi email, data diri (verifikasi), dan status approval.
 
 ### 4.2 Platform
 
@@ -116,7 +119,7 @@ Menu platform:
 - **Settlement**: melihat pembayaran menunggu settlement dan mencatat batch settlement.
 - **Review payout**: verifikasi rekening bank, approve payout, tandai transfer.
 - **Review refund**: approve/reject/eksekusi refund.
-- **Review merchant**: approve/reject merchant.
+- **Review merchant**: lihat data diri lengkap (halaman detail merchant), approve/reject merchant. Approval ditolak otomatis bila email pemilik belum diverifikasi atau data diri belum lengkap.
 - **Hak akses**: khusus DEWA.
 
 ### 4.3 Sidebar dinamis

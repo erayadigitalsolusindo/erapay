@@ -4,14 +4,61 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 )
 
+func identityJSON(business bool) string {
+	biz := ""
+	if business {
+		biz = `,"business_npwp":"1234567890123456","business_nib":"0123456789012"`
+	}
+	return `,"identity":{"id_number":"3175070101901234","place_of_birth":"Jakarta","date_of_birth":"1990-05-20","gender":"male","address":"Jl. Merdeka No. 10, Jakarta Pusat","npwp":"123456789012345"` + biz + `}`
+}
+
+// identityJSONWith builds an identity object from defaults plus overrides; an override of "" drops
+// the field, so a case can test a missing (not merely wrong) value.
+func identityJSONWith(business bool, overrides map[string]string) string {
+	m := map[string]string{
+		"id_number":      "3175070101901234",
+		"place_of_birth": "Jakarta",
+		"date_of_birth":  "1990-05-20",
+		"gender":         "male",
+		"address":        "Jl. Merdeka No. 10, Jakarta Pusat",
+	}
+	if business {
+		m["business_npwp"] = "1234567890123456"
+		m["business_nib"] = "0123456789012"
+	}
+	for k, v := range overrides {
+		if v == "" {
+			delete(m, k)
+			continue
+		}
+		m[k] = v
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%q:%q", k, m[k]))
+	}
+	return `,"identity":{` + strings.Join(parts, ",") + `}`
+}
+
+func signupJSON(accountType, email, identity string) string {
+	return fmt.Sprintf(`{"account_type":"%s","name":"Budi Santoso","business_name":"Toko Budi","email":"%s",`+
+		`"phone":"0812 3456 7890","password":"abc12345xyz9","accept_terms":true%s}`, accountType, email, identity)
+}
+
 func regBody(email string) string {
 	return `{"account_type":"business","name":"Budi Santoso","business_name":"Toko Budi","email":"` + email +
-		`","phone":"0812 3456 7890","password":"abc12345xyz9","accept_terms":true}`
+		`","phone":"0812 3456 7890","password":"abc12345xyz9","accept_terms":true` + identityJSON(true) + `}`
 }
 
 func errCode(t *testing.T, r *http.Response) string {
@@ -240,16 +287,24 @@ func TestApproveConcurrentHTTP(t *testing.T) {
 func TestRegisterValidationAndDuplicatesHTTP(t *testing.T) {
 	w := setup(t)
 	c := &http.Client{}
+	// Every body carries a valid identity so each failure is about the field it names; the
+	// identity rules themselves are covered by TestRegisterIdentityValidationHTTP.
+	ind := identityJSON(false)
+	biz := identityJSON(true)
+	// base returns the JSON without the outer closing brace, so a case can inject an extra field.
+	base := func(iden, more, pw string) string {
+		return `{"account_type":` + more + `"name":"Budi Santoso","email":"a@b.test","phone":"81234567890","password":"` + pw + `","accept_terms":true` + iden
+	}
 	bad := map[string]string{
-		"11 chars":         `{"account_type":"individual","name":"Budi Santoso","email":"a@b.test","phone":"81234567890","password":"abcdefghijk","accept_terms":true}`,
-		"short password":   `{"account_type":"individual","name":"Budi Santoso","email":"a@b.test","phone":"81234567890","password":"abc123","accept_terms":true}`,
-		"bad email":        `{"account_type":"individual","name":"Budi Santoso","email":"bukan-email","phone":"81234567890","password":"abc123456789","accept_terms":true}`,
-		"display name":     `{"account_type":"individual","name":"Budi Santoso","email":"Budi <a@b.test>","phone":"81234567890","password":"abc123456789","accept_terms":true}`,
-		"bad phone":        `{"account_type":"individual","name":"Budi Santoso","email":"a@b.test","phone":"12345","password":"abc123456789","accept_terms":true}`,
-		"terms":            `{"account_type":"individual","name":"Budi Santoso","email":"a@b.test","phone":"81234567890","password":"abc123456789","accept_terms":false}`,
-		"business no name": `{"account_type":"business","name":"Budi Santoso","email":"a@b.test","phone":"81234567890","password":"abc123456789","accept_terms":true}`,
-		"bad type":         `{"account_type":"admin","name":"Budi Santoso","email":"a@b.test","phone":"81234567890","password":"abc123456789","accept_terms":true}`,
-		"unknown field":    `{"account_type":"individual","name":"Budi Santoso","email":"a@b.test","phone":"81234567890","password":"abc123456789","accept_terms":true,"merchant_id":"` + w.midA + `","status":"approved"}`,
+		"11 chars":         base(ind, `"individual",`, "abcdefghijk") + `}`,
+		"short password":   base(ind, `"individual",`, "abc123") + `}`,
+		"bad email":        strings.Replace(base(ind, `"individual",`, "abc123456789"), `"a@b.test"`, `"bukan-email"`, 1) + `}`,
+		"display name":     strings.Replace(base(ind, `"individual",`, "abc123456789"), `"a@b.test"`, `"Budi <a@b.test>"`, 1) + `}`,
+		"bad phone":        strings.Replace(base(ind, `"individual",`, "abc123456789"), `"81234567890"`, `"12345"`, 1) + `}`,
+		"terms":            strings.Replace(base(ind, `"individual",`, "abc123456789"), `"accept_terms":true`, `"accept_terms":false`, 1) + `}`,
+		"business no name": base(biz, `"business","business_name":"T",`, "abc123456789") + `}`,
+		"bad type":         base(ind, `"admin",`, "abc123456789") + `}`,
+		"unknown field":    base(ind, `"individual",`, "abc123456789") + `,"merchant_id":"` + w.midA + `","status":"approved"}`,
 	}
 	for name, b := range bad {
 		if r := w.do(t, c, "POST", "/v1/auth/register", b, nil); r.StatusCode != 400 {
@@ -264,7 +319,7 @@ func TestRegisterValidationAndDuplicatesHTTP(t *testing.T) {
 
 	// Individual: the owner's name doubles as the merchant name.
 	r := w.do(t, c, "POST", "/v1/auth/register",
-		`{"account_type":"individual","name":"Siti Aminah","email":"siti@toko.test","phone":"+62 812-3456-7890","password":"abc123456789","accept_terms":true}`, nil)
+		`{"account_type":"individual","name":"Siti Aminah","email":"siti@toko.test","phone":"+62 812-3456-7890","password":"abc123456789","accept_terms":true`+ind+`}`, nil)
 	if r.StatusCode != 202 {
 		t.Fatalf("individual: %d", r.StatusCode)
 	}
@@ -375,5 +430,133 @@ func TestMerchantReviewAccessControlHTTP(t *testing.T) {
 	}
 	if r := w.do(t, root, "GET", "/v1/admin/merchants/00000000-0000-0000-0000-000000000000", "", nil); r.StatusCode != 404 {
 		t.Fatalf("unknown id: %d", r.StatusCode)
+	}
+}
+
+// The data diri is collected at sign-up (DOKU-style, 14 Okt 2026). Every rule lives in Go; an
+// rejected sign-up leaves nothing behind.
+func TestRegisterIdentityValidationHTTP(t *testing.T) {
+	w := setup(t)
+	c := &http.Client{}
+	cases := map[string]string{
+		"no identity":              signupJSON("business", "a@toko.test", ""),
+		"short nik":                signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"id_number": "317507010190123"})),
+		"bad dob":                  signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"date_of_birth": "20-05-1990"})),
+		"underage":                 signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"date_of_birth": "2020-01-01"})),
+		"gender":                   signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"gender": "lainnya"})),
+		"short address":            signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"address": "Jl."})),
+		"bad npwp":                 signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"npwp": "123"})),
+		"business missing npwp":    signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"business_npwp": ""})),
+		"business missing nib":     signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"business_nib": ""})),
+		"business bad nib":         signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"business_nib": "123"})),
+		"business fields on indiv": signupJSON("individual", "a@toko.test", identityJSONWith(false, map[string]string{"business_nib": "0123456789012"})),
+	}
+	for name, b := range cases {
+		if r := w.do(t, c, "POST", "/v1/auth/register", b, nil); r.StatusCode != 400 {
+			t.Fatalf("%s: %d", name, r.StatusCode)
+		}
+	}
+	var users int
+	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM users WHERE email = 'a@toko.test'`).Scan(&users)
+	if users != 0 {
+		t.Fatal("rejected input created a user")
+	}
+	// Dots and spacing in the NIK and NPWP are normalized away; individual without NPWP is fine too.
+	nikDots := signupJSON("business", "a@toko.test", `,"identity":{"id_number":"3175.0701.0190.1234","place_of_birth":"Jakarta","date_of_birth":"1990-05-20","gender":"male","address":"Jl. Merdeka No. 10","business_npwp":"12.345.678.9-012.345","business_nib":"0123456789012"}`)
+	if r := w.do(t, c, "POST", "/v1/auth/register", nikDots, nil); r.StatusCode != 202 {
+		t.Fatalf("dots in nik: %d", r.StatusCode)
+	}
+	r := w.do(t, c, "POST", "/v1/auth/register", signupJSON("individual", "b@toko.test", identityJSONWith(false, nil)), nil)
+	if r.StatusCode != 202 {
+		t.Fatalf("individual without npwp: %d", r.StatusCode)
+	}
+	// An absent optional identifier must not render a mask with no digits ("••••"),
+	// which would read as a number that exists.
+	if view := decode(t, w.do(t, signedUp(t, w, "b@toko.test"), "GET", "/v1/merchant/identity", "", nil)); view["npwp_masked"] != nil || view["business_npwp_masked"] != nil {
+		t.Fatalf("absent identifiers must not be masked: %v", view)
+	}
+	var sealed []byte
+	err := w.db.QueryRow(t.Context(), `SELECT owner_id_enc FROM merchants WHERE legal_name = 'Toko Budi'`).Scan(&sealed)
+	if err != nil || sealed == nil || string(sealed) == "3175070101901234" {
+		t.Fatalf("NIK must be sealed at rest, got %v err %v", sealed, err)
+	}
+}
+
+// Approval cannot happen until the data diri is complete. A merchant that signed up without it
+// (pre-existing row, ARUS-provisioned) completes it from its own session; the reviewer detail view
+// is the only place the plaintext NIK/NPWP appear.
+func TestIdentityGateAndCompletionHTTP(t *testing.T) {
+	w := setup(t)
+	mid := register(t, w, "lengkap@toko.test")
+	verifyOwner(t, w, "lengkap@toko.test")
+	root := w.client(t, "root@erapay.test")
+	owner := signedUp(t, w, "lengkap@toko.test")
+	// Wipe the identity: the state a pre-feature or ARUS-provisioned merchant is in.
+	if _, err := w.db.Exec(t.Context(), `UPDATE merchants SET
+		owner_id_enc=NULL, owner_id_last4=NULL, owner_place_of_birth=NULL, owner_date_of_birth=NULL,
+		owner_gender=NULL, owner_address=NULL, owner_npwp_enc=NULL, owner_npwp_last4=NULL,
+		business_npwp_enc=NULL, business_npwp_last4=NULL, business_nib=NULL WHERE id = $1`, mid); err != nil {
+		t.Fatal(err)
+	}
+	// The queue flags the missing data; approval is refused until the merchant completes it.
+	list := decode(t, w.do(t, root, "GET", "/v1/admin/merchants", "", nil))["data"].([]any)
+	if list[0].(map[string]any)["identity_complete"] != false {
+		t.Fatalf("queue should flag the missing identity: %v", list[0])
+	}
+	if r := w.do(t, root, "POST", "/v1/admin/merchants/"+mid+"/approve", `{"mdr_bps":70,"platform_bps":100}`, nil); r.StatusCode != 409 || errCode(t, r) != "IDENTITY_INCOMPLETE" {
+		t.Fatalf("approve before identity: %d %s", r.StatusCode, errCode(t, r))
+	}
+	// The merchant's own view is masked and shows what is missing.
+	got := decode(t, w.do(t, owner, "GET", "/v1/merchant/identity", "", nil))
+	if got["complete"] != false || got["id_masked"] != nil || got["id_number"] != nil || got["place_of_birth"] != nil {
+		t.Fatalf("empty identity view: %v", got)
+	}
+	// Access control first: only the merchant's own session may write it.
+	if r := w.do(t, &http.Client{}, "POST", "/v1/merchant/identity", `{"identity":{}}`, nil); r.StatusCode != 401 {
+		t.Fatalf("anon identity: %d", r.StatusCode)
+	}
+	if r := w.do(t, w.client(t, "cashier@a.test"), "POST", "/v1/merchant/identity", `{"identity":{}}`, nil); r.StatusCode != 403 {
+		t.Fatalf("cashier identity: %d", r.StatusCode)
+	}
+	if r := w.do(t, owner, "POST", "/v1/merchant/identity", `{"identity":{},"merchant_id":"`+w.midA+`"}`, nil); r.StatusCode != 400 {
+		t.Fatalf("tenant in body must be refused: %d", r.StatusCode)
+	}
+	// Completion validates as strictly as sign-up did.
+	bad := map[string]string{
+		"short nik": `{"identity":{"id_number":"123","place_of_birth":"Jakarta","date_of_birth":"1990-05-20","gender":"male","address":"Jl. Merdeka No. 10","business_npwp":"1234567890123456","business_nib":"0123456789012"}}`,
+		"no nib":    `{"identity":{"id_number":"3175070101901234","place_of_birth":"Jakarta","date_of_birth":"1990-05-20","gender":"male","address":"Jl. Merdeka No. 10","business_npwp":"1234567890123456"}}`,
+	}
+	for name, b := range bad {
+		if r := w.do(t, owner, "POST", "/v1/merchant/identity", b, nil); r.StatusCode != 400 {
+			t.Fatalf("%s: %d", name, r.StatusCode)
+		}
+	}
+	r := w.do(t, owner, "POST", "/v1/merchant/identity",
+		`{"identity":{"id_number":"3175070101901234","place_of_birth":"Bandung","date_of_birth":"1985-11-30","gender":"female","address":"Jl. Asia Afrika No. 8","npwp":"987654321098765","business_npwp":"1234567890123456","business_nib":"0123456789012"}}`, nil)
+	got = decode(t, r)
+	if r.StatusCode != 200 || got["complete"] != true || got["id_masked"] != "••••1234" || got["place_of_birth"] != "Bandung" || got["id_number"] != nil {
+		t.Fatalf("completion: %d %v", r.StatusCode, got)
+	}
+	// Sealed at rest, bound to the row, and audited without the plaintext.
+	var sealed []byte
+	if err := w.db.QueryRow(t.Context(), `SELECT owner_id_enc FROM merchants WHERE id = $1`, mid).Scan(&sealed); err != nil || string(sealed) == "3175070101901234" {
+		t.Fatalf("NIK sealed at rest: %v %v", sealed, err)
+	}
+	var audits int
+	if err := w.db.QueryRow(t.Context(), `SELECT count(*) FROM audit_logs WHERE entity_id = $1 AND action = 'merchant.identity_updated'`, mid).Scan(&audits); err != nil || audits != 1 {
+		t.Fatalf("identity audits: %d %v", audits, err)
+	}
+	// Approval works now, and the reviewer detail view is where the plaintext data diri appears.
+	if r := w.do(t, root, "POST", "/v1/admin/merchants/"+mid+"/approve", `{"mdr_bps":70,"platform_bps":100}`, nil); r.StatusCode != 200 || errCode(t, r) != "" {
+		t.Fatalf("approve after identity: %d %s", r.StatusCode, errCode(t, r))
+	}
+	det := decode(t, w.do(t, root, "GET", "/v1/admin/merchants/"+mid, "", nil))
+	idm, _ := det["identity"].(map[string]any)
+	if idm == nil || idm["id_number"] != "3175070101901234" || idm["npwp"] != "987654321098765" || idm["business_npwp"] != "1234567890123456" || idm["business_nib"] != "0123456789012" {
+		t.Fatalf("reviewer detail: %v", idm)
+	}
+	// The identity is locked once the merchant is decided: every review endpoint refuses it afterwards.
+	if r := w.do(t, owner, "POST", "/v1/merchant/identity", `{"identity":{"id_number":"3175070101901234","place_of_birth":"Jakarta","date_of_birth":"1990-05-20","gender":"male","address":"Jl. Merdeka No. 10","business_npwp":"1234567890123456","business_nib":"0123456789012"}}`, nil); r.StatusCode != 409 {
+		t.Fatalf("identity locked after approval: %d", r.StatusCode)
 	}
 }

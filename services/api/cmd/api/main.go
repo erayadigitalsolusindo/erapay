@@ -79,8 +79,9 @@ func run(log *slog.Logger) error {
 
 	var out *outbound.Service
 	var payouts *payout.Service
+	var box *secretbox.Box
 	if len(cfg.EncryptionKey) > 0 {
-		box, err := secretbox.New(cfg.EncryptionKey)
+		box, err = secretbox.New(cfg.EncryptionKey)
 		if err != nil {
 			return err
 		}
@@ -101,7 +102,7 @@ func run(log *slog.Logger) error {
 			log.Warn("payouts are disabled in production until ERAPAY_PAYOUT_LIVE=1 (go/no-go)")
 		}
 	} else {
-		log.Warn("ERAPAY_ENCRYPTION_KEY not set: outbound merchant webhooks, bank accounts and payouts are disabled")
+		log.Warn("ERAPAY_ENCRYPTION_KEY not set: outbound merchant webhooks, bank accounts, payouts and self sign-up are disabled")
 	}
 
 	var hooks *webhook.Store
@@ -133,11 +134,14 @@ func run(log *slog.Logger) error {
 		defer acct.Wait() // let queued emails finish on shutdown
 		notifier = acct
 	}
+	if notifier != nil && box == nil {
+		log.Warn("ERAPAY_ENCRYPTION_KEY not set: self sign-up stays off because the identity data (NIK, NPWP) cannot be sealed at rest")
+	}
 
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onboarding.NewService(pool, notifier, onboarding.Config{RegisterPerIP: cfg.RegisterPerIPHour, MDRCap: cfg.MDRCap, MDRCapUpTo: cfg.MDRCapUpTo, Log: log}), Account: acct,
+			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onboarding.NewService(pool, notifier, onboarding.Config{RegisterPerIP: cfg.RegisterPerIPHour, MDRCap: cfg.MDRCap, MDRCapUpTo: cfg.MDRCapUpTo, Box: box, Log: log}), Account: acct,
 			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,

@@ -82,7 +82,7 @@ func setup(t *testing.T) *world {
 		Outbound:    outbound.NewService(db, testBox(t), log),
 		Settlement:  settlement.NewService(db),
 		Refunds:     refund.NewService(db),
-		Onboarding:  onboarding.NewService(db, acct, onboarding.Config{Log: log}),
+		Onboarding:  onboarding.NewService(db, acct, onboarding.Config{Box: testBox(t), Log: log}),
 		Account:     acct,
 		Payouts:     payouts,
 	}))
