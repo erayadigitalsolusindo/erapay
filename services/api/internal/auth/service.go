@@ -23,7 +23,12 @@ var (
 	ErrMerchantRequired   = errors.New("merchant_id required: user belongs to several merchants")
 	ErrUnauthenticated    = errors.New("unauthenticated")
 	ErrForbidden          = errors.New("forbidden")
+	ErrInvalidInput       = errors.New("invalid input")
 )
+
+// ErrPlatformSetupDone is returned when a DEWA already exists and the bootstrap
+// endpoint is called again. Bootstrap is a one-time, irreversible step.
+var ErrPlatformSetupDone = errors.New("platform setup already done")
 
 // RateLimitedError carries how long the caller must wait. errors.Is(err, ErrRateLimited) holds.
 type RateLimitedError struct{ RetryAfter time.Duration }
@@ -124,6 +129,74 @@ func (s *Service) CreateUser(ctx context.Context, email, password string) (strin
 		`INSERT INTO users (email, password_hash) VALUES ($1,$2) RETURNING id::text`,
 		normEmail(email), h).Scan(&id)
 	return id, err
+}
+
+// PlatformAdminExists reports whether a DEWA (platform RBAC manager) already
+// exists. The panel exposes /platform/setup until this becomes true.
+func (s *Service) PlatformAdminExists(ctx context.Context) (bool, error) {
+	var exists bool
+	err := s.db.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE r.code = 'dewa')`,
+	).Scan(&exists)
+	return exists, err
+}
+
+// CreatePlatformAdmin is the one-time bootstrap that creates the first DEWA.
+// The operator vouches for the address by presenting ERAPAY_PLATFORM_SETUP_TOKEN,
+// so the email is considered verified. It is atomic and guarded by an advisory
+// lock, so two parallel requests cannot both succeed.
+func (s *Service) CreatePlatformAdmin(ctx context.Context, email, password, requestID string) (string, error) {
+	if err := ValidateNewPassword(password); err != nil {
+		return "", err
+	}
+	email = normEmail(email)
+	if email == "" || !strings.Contains(email, "@") {
+		return "", ErrInvalidInput
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('platform:setup', 0))`); err != nil {
+		return "", err
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE r.code = 'dewa')`,
+	).Scan(&exists); err != nil {
+		return "", err
+	}
+	if exists {
+		return "", ErrPlatformSetupDone
+	}
+	h, err := HashPassword(password)
+	if err != nil {
+		return "", err
+	}
+	var uid string
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, email_verified_at) VALUES ($1,$2,now()) RETURNING id::text`,
+		email, h).Scan(&uid); err != nil {
+		return "", err
+	}
+	// Role dewa comes from migration 0016; fail loudly if it is ever missing.
+	var rid string
+	if err := tx.QueryRow(ctx, `SELECT id::text FROM roles WHERE code = 'dewa' AND scope = 'platform'`).Scan(&rid); err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO user_roles (user_id, role_id) VALUES ($1,$2)`, uid, rid); err != nil {
+		return "", err
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: uid, Action: "bootstrap.platform_dewa",
+		EntityType: "user", EntityID: uid, RequestID: requestID}); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return uid, nil
 }
 
 // Login verifies credentials and opens a session. It returns the opaque session

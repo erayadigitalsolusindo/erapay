@@ -38,6 +38,7 @@ type Config struct {
 	WebURL                                           string // ERAPAY_WEB_URL: public base URL of the dashboard, used in email links
 	RegisterPerIPHour                                int    // ERAPAY_REGISTER_PER_IP_HOUR: sign-up attempts per IP per hour
 	ARUSProvisionToken                               string // ERAPAY_ARUS_PROVISION_TOKEN: server-to-server tenant provisioning secret
+	PlatformSetupToken                               string // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars): bootstrap first DEWA at /platform/setup
 }
 
 func Load() (Config, error) {
@@ -49,6 +50,7 @@ func Load() (Config, error) {
 
 		WebhookCapture:     os.Getenv("ERAPAY_WEBHOOK_CAPTURE") == "1",
 		ARUSProvisionToken: strings.TrimSpace(os.Getenv("ERAPAY_ARUS_PROVISION_TOKEN")),
+		PlatformSetupToken: strings.TrimSpace(os.Getenv("ERAPAY_PLATFORM_SETUP_TOKEN")),
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("ERAPAY_DATABASE_URL is required")
@@ -58,6 +60,9 @@ func Load() (Config, error) {
 	}
 	if c.ARUSProvisionToken != "" && len(c.ARUSProvisionToken) < 32 {
 		return c, errors.New("ERAPAY_ARUS_PROVISION_TOKEN must be at least 32 characters")
+	}
+	if c.PlatformSetupToken != "" && len(c.PlatformSetupToken) < 32 {
+		return c, errors.New("ERAPAY_PLATFORM_SETUP_TOKEN must be at least 32 characters")
 	}
 	c.PayoutLive = os.Getenv("ERAPAY_PAYOUT_LIVE") == "1"
 	c.SMTPHost, c.SMTPPort, c.SMTPUser, c.SMTPPass, c.SMTPFrom =

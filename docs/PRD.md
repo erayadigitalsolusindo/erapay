@@ -34,6 +34,7 @@ Sumber: PRD v1.0 (11 Okt 2026), dipadatkan tanpa menghilangkan requirement, lalu
 | `prd/roadmap.md` | Roadmap, acceptance MVP, go/no-go (§10–11) | |
 | `prd/agent-rules.md` | Aturan kerja agent, urutan, DoD, struktur repo (§12) | [agent] |
 | `prd/open-questions.md` | Hal terbuka (§13) | |
+| `prd/platform-panel.md` | Panel platform DEWA: auth/bootstrap terpisah (§2.1) | [pp] |
 
 Peta task → file yang dibaca (selain file ini):
 - Payment/QRIS: payment, api, data, gateway-adapter, webhook-inbound
@@ -71,6 +72,8 @@ Peta task → file yang dibaca (selain file ini):
 
 ## 2. Peran
 | Peran | Boleh | Tidak boleh |
+|---|---|---|
+| Platform Admin (DEWA) | kelola role/permission/akses menu, penugasan user, dan audit di panel `/platform` (auth + cookie terpisah) | bertransaksi atas nama merchant; membuat payout tanpa approval (tetap patuh maker-checker); menetapkan tarif merchant (itu ranah `super_admin`) |
 |---|---|---|
 | Super Admin | konfigurasi global, user/role, gateway, feature flag, metrik | lihat gateway secret plaintext; aksi finansial sensitif perlu audit (+approval kedua bila dikonfigurasi) |
 | Ops/Support | cari merchant/transaksi, timeline, catatan | ubah nilai transaksi, hapus ledger; refund hanya dg permission khusus |
