@@ -42,12 +42,13 @@ const (
 	pathQuery    = "/snap-adapter/b2b/v1.0/qr/qr-mpm-query"
 	pathExpire   = "/snap-adapter/b2b/v1.0/qr/qr-expire"
 
-	// Kirim DOKU disbursement (doku.md §6). The check-status path is what the published
-	// spec writes even though it looks like a QRIS copy-paste ([?]: confirm with DOKU;
-	// it is a single constant so a confirmed correction is a one-line change).
+	// Kirim DOKU disbursement (doku.md §6). Semua path [V] dari halaman resmi
+	// developers.doku.com/payout/kirim-doku/*.md (14 Okt 2026) — termasuk
+	// check-status yang pakai path qr-mpm-status (halamannya sendiri, bukan typo QRIS).
 	pathInquiry  = "/snap/v1.1/emoney/bank-account-inquiry"
 	pathTransfer = "/snap/v1.1/emoney/transfer-bank"
 	pathCheck    = "/snap/v1.1/qr/qr-mpm-status"
+	pathBalance  = "/snap/v1.1/balance-inquiry"
 
 	serviceCodeQuery = "47" // doku.md §3 (Query)
 	feeTypeFixed     = "1"  // doku.md §3: only value allowed
@@ -236,6 +237,20 @@ type envelope struct {
 	BeneficiaryBankName      string  `json:"beneficiaryBankName"`
 	BeneficiaryBankShortName string  `json:"beneficiaryBankShortName"`
 	AdditionalInfo           *kdInfo `json:"additionalInfo"`
+
+	// Kirim DOKU balance inquiry (doku.md §6.3).
+	AccountNo    string `json:"accountNo"`
+	Name         string `json:"name"`
+	AccountInfos *struct {
+		HoldAmount       *amountField `json:"holdAmount"`
+		AvailableBalance *amountField `json:"avaliableBalance"` // [V] typo DOKU "avaliableBalance"
+	} `json:"accountInfos"`
+}
+
+// amountField adalah DTO {value, currency} respons amount DOKU.
+type amountField struct {
+	Value    string `json:"value"`
+	Currency string `json:"currency"`
 }
 
 // kdInfo is the additionalInfo object of the Kirim DOKU responses.
@@ -445,6 +460,55 @@ func (a *Adapter) MapTransferStatus(raw string) (gateway.TransferStatus, bool) {
 		return gateway.TransferRefunded, true
 	}
 	return "", false
+}
+
+// BalanceInquiry memeriksa saldo Kirim DOKU pengirim (doku.md §6.3). DOKU
+// menyuruh mengecek saldo sebelum setiap transfer untuk menghindari kegagalan
+// saldo kurang. Bukan bagian gateway.Disburser — executor EraPay tidak
+// menggate-kan transfer pada saldo (biaya bisa phone-call ops lewat cmd/kdtest).
+func (a *Adapter) BalanceInquiry(ctx context.Context, accountNo string) (BalanceResult, error) {
+	if accountNo == "" || len(accountNo) > 16 {
+		return BalanceResult{}, &gateway.Error{Kind: gateway.Rejected, Message: "accountNo is required (max 16 chars)"}
+	}
+	payload := map[string]any{
+		"partnerReferenceNo": "bal-" + a.externalID(),
+		"accountNo":          accountNo,
+	}
+	env, _, err := a.call(ctx, pathBalance, payload)
+	if err != nil {
+		return BalanceResult{ResponseCode: env.ResponseCode}, err
+	}
+	res := BalanceResult{
+		ResponseCode:     env.ResponseCode,
+		AccountNo:        env.AccountNo,
+		Name:             env.Name,
+		AvailableBalance: -1,
+		HoldAmount:       -1,
+	}
+	if env.AccountInfos != nil {
+		if env.AccountInfos.AvailableBalance != nil {
+			res.AvailableBalance = parseAmount(env.AccountInfos.AvailableBalance.Value)
+		}
+		if env.AccountInfos.HoldAmount != nil {
+			res.HoldAmount = parseAmount(env.AccountInfos.HoldAmount.Value)
+		}
+	}
+	if res.AvailableBalance < 0 {
+		// "Sukses" tanpa data yang dibutuhkan: tidak tahu apa yang DOKU lakukan.
+		return res, &gateway.Error{Kind: gateway.Ambiguous, Code: env.ResponseCode, HTTPStatus: 200,
+			Message: "balance response without availableBalance"}
+	}
+	return res, nil
+}
+
+// BalanceResult hasil BalanceInquiry; AvailableBalance/HoldAmount = -1 bila
+// tidak dilaporkan gateway.
+type BalanceResult struct {
+	AvailableBalance int64  `json:"available_balance"`
+	HoldAmount       int64  `json:"hold_amount"`
+	AccountNo        string `json:"account_no"`
+	Name             string `json:"name"`
+	ResponseCode     string `json:"response_code"`
 }
 
 // InquiryBankAccount is the documented account verification: it must succeed before a
