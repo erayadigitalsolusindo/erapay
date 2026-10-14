@@ -437,6 +437,9 @@ func (d Deps) mountV1(r chi.Router) {
 		}
 		if d.APIKeys != nil && d.PaymentFlow != nil {
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("payment:create")).Post("/payments", d.createPayment)
+			// Cek status manual: menanyakan ulang status ke gateway (DOKU) berdasarkan
+			// nomor referensi transaksi, lalu menerapkan hasil dengan source=inquiry.
+			r.With(d.requireAnyAuth, requireTenant, requirePerm("payment:read")).Post("/payments/{id}/inquiry", d.paymentInquiry)
 		}
 		if d.APIKeys != nil && d.Settlement != nil {
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("report:read")).Get("/balance", d.getBalance)

@@ -8,6 +8,7 @@ Baca juga: `../PRD.md`, `payment.md`, `data.md`.
 POST /v1/payments                        GET /v1/payments/{id}
 GET  /v1/payments?merchant_reference=&status=&from=&to=&cursor=
 POST /v1/payments/{id}/cancel   [cap]    POST /v1/payments/{id}/refund [cap]
+POST /v1/payments/{id}/inquiry           # cek status manual: tanya ulang status ke gateway (DOKU), terapkan hasil (source=inquiry)
 GET  /v1/refunds/{id}
 POST|GET /v1/webhook-endpoints           POST /v1/webhook-endpoints/{id}/rotate-secret
 GET  /v1/webhook-deliveries              GET /v1/merchant/profile
@@ -25,6 +26,6 @@ Body: `{merchant_reference, amount:100000, currency:"IDR", payment_method:"QRIS"
 Respons: `{id, merchant_reference, amount (=gross_amount), fee:{bearer, mdr_fee, platform_fee, merchant_net}, currency, payment_method, gateway, status:"pending", qr_code:{type:"provider_defined", value:<dari gateway>}, expires_at, created_at}`.
 
 **Error:** `{error:{code, message, request_id, retryable}}`.
-Kode: `VALIDATION_ERROR, UNAUTHORIZED, FORBIDDEN, MERCHANT_NOT_ACTIVE, PAYMENT_METHOD_UNAVAILABLE, IDEMPOTENCY_CONFLICT, PAYMENT_NOT_FOUND, GATEWAY_TIMEOUT, GATEWAY_REJECTED, PAYMENT_STATUS_UNKNOWN, RATE_LIMITED, INTERNAL_ERROR`.
+Kode: `VALIDATION_ERROR, UNAUTHORIZED, FORBIDDEN, MERCHANT_NOT_ACTIVE, PAYMENT_METHOD_UNAVAILABLE, IDEMPOTENCY_CONFLICT, PAYMENT_NOT_FOUND, GATEWAY_TIMEOUT, GATEWAY_REJECTED, PAYMENT_STATUS_UNKNOWN, RATE_LIMITED, INQUIRY_NOT_SUPPORTED, AMOUNT_MISMATCH, INQUIRY_FAILED, INTERNAL_ERROR`.
 
 **Idempotency:** scope min. merchant + operasi; simpan key, hash request kanonik, resource ID, status proses, expiry. Key sama+request sama → hasil pertama; key sama+payload beda → `IDEMPOTENCY_CONFLICT`. Unique constraint di PostgreSQL. Crash setelah gateway terima tapi sebelum respons tersimpan → inquiry/recovery dulu sebelum ulang create.

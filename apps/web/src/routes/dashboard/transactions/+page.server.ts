@@ -1,6 +1,7 @@
-import { guard, read } from '../../../lib/server/gw';
+import { fail } from '@sveltejs/kit';
+import { guard, call, done, read } from '../../../lib/server/gw';
 import type { Payment } from '../../../lib/server/payments';
-import type { PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from './$types';
 
 const STATUSES = ['created', 'pending', 'succeeded', 'failed', 'expired', 'cancelled', 'unknown'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -30,4 +31,17 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 		paged: !!cursor,
 		statuses: STATUSES
 	};
+};
+
+// Cek status (inquiry): tombol per baris meminta ulang status terbaru dari gateway
+// (DOKU) untuk transaksi pending/unknown. Keputusan status tetap di Go (PRD §0 #13).
+export const actions: Actions = {
+	inquiry: async ({ request, cookies, fetch, locals }) => {
+		const token = guard(locals, cookies, 'payment:read', 'merchant');
+		const f = await request.formData();
+		const id = String(f.get('id') ?? '').trim();
+		if (!id) return fail(400, { message: 'Transaksi tidak dikenal.' });
+		const r = await call(fetch, token, 'POST', `/v1/payments/${encodeURIComponent(id)}/inquiry`);
+		return done(r);
+	}
 };

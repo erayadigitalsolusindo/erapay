@@ -11,8 +11,10 @@ import (
 
 // testGW is a TEST-ONLY gateway adapter; it is never registered by production code.
 type testGW struct {
-	calls  atomic.Int32
-	create func(gateway.CreateRequest) (gateway.CreateResult, error)
+	calls     atomic.Int32
+	create    func(gateway.CreateRequest) (gateway.CreateResult, error)
+	query     func(gateway.QueryRequest) (gateway.QueryResult, error) // nil => ErrNotSupported
+	mapStatus func(string) (gateway.Status, bool)                     // nil => ("", false)
 }
 
 func (g *testGW) Code() string { return "gw1" }
@@ -23,11 +25,19 @@ func (g *testGW) CreatePayment(_ context.Context, r gateway.CreateRequest) (gate
 	g.calls.Add(1)
 	return g.create(r)
 }
-func (g *testGW) GetPayment(context.Context, gateway.QueryRequest) (gateway.QueryResult, error) {
+func (g *testGW) GetPayment(_ context.Context, r gateway.QueryRequest) (gateway.QueryResult, error) {
+	if g.query != nil {
+		return g.query(r)
+	}
 	return gateway.QueryResult{}, gateway.ErrNotSupported
 }
 func (g *testGW) CancelPayment(context.Context, gateway.CancelRequest) error { return nil }
-func (g *testGW) MapStatus(string) (gateway.Status, bool)                    { return "", false }
+func (g *testGW) MapStatus(s string) (gateway.Status, bool) {
+	if g.mapStatus != nil {
+		return g.mapStatus(s)
+	}
+	return "", false
+}
 
 func newTestGW() *testGW {
 	return &testGW{create: func(r gateway.CreateRequest) (gateway.CreateResult, error) {

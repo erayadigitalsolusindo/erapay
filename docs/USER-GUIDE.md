@@ -197,6 +197,18 @@ Arti status `unknown`:
 - **bukan gagal**.
 - tunggu webhook atau inquiry, jangan retry create payment.
 
+### Cek status transaksi (inquiry manual)
+
+Di menu **Transaksi**, pada baris pembayaran berstatus `pending` atau `unknown` ada tombol
+**🔄 Cek status**. Tombol ini menanyakan ulang status ke gateway (DOKU) berdasarkan nomor
+referensi transaksi, lalu menerapkan hasilnya dengan `source=inquiry` — jalur yang sama
+dengan poller otomatis (PRD §0 #2), jadi aman: nominal yang berbeda dari catatan lokal
+tidak pernah diterapkan, dan status final (mis. `succeeded`) tidak diubah lagi.
+
+- Status berubah otomatis setelah hasil dicek; riwayat perpindahan status di halaman detail.
+- Tidak ada uang yang berpindah: fitur ini hanya memperbarui pencatatan status.
+- Berfungsi sebagai "cek DOKU sudah sukses belum" sebelum melakukan tindak lanjut manual.
+
 ---
 
 ## 7. Saldo merchant

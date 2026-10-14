@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 )
 
@@ -131,6 +132,41 @@ func (d Deps) listPayments(w http.ResponseWriter, r *http.Request) {
 		resp["next_cursor"] = next
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// paymentInquiry implements POST /v1/payments/{id}/inquiry: the manual "cek status"
+// button on the transaction screen. It re-asks the gateway (DOKU) for the CURRENT
+// status of a pending/unknown payment based on its reference number, and applies
+// the result with source=inquiry — exactly what the background poller does, but on
+// demand. Money rules (amount check, state machine, source=inquiry) live in Go.
+func (d Deps) paymentInquiry(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	principal := PrincipalFrom(r.Context())
+	// Ownership first: same lookup as getPayment so another tenant's id is a 404,
+	// not a signal. Inquire itself is scoped by payment id.
+	if _, err := d.Payments.Get(r.Context(), principal.MerchantID, id); err != nil {
+		if errors.Is(err, payment.ErrNotFound) {
+			writeError(w, r, http.StatusNotFound, "PAYMENT_NOT_FOUND", "payment not found", false)
+			return
+		}
+		d.Log.Error("inquiry lookup", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	err := d.PaymentFlow.Inquire(r.Context(), id)
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	case errors.Is(err, payment.ErrNotFound):
+		writeError(w, r, http.StatusNotFound, "PAYMENT_NOT_FOUND", "payment not found", false)
+	case errors.Is(err, gateway.ErrNotSupported):
+		writeError(w, r, http.StatusServiceUnavailable, "INQUIRY_NOT_SUPPORTED", "gateway does not support status inquiry", false)
+	case errors.Is(err, payment.ErrAmountMismatch):
+		writeError(w, r, http.StatusConflict, "AMOUNT_MISMATCH", "gateway reports success with a different amount; review manually", false)
+	default:
+		d.Log.Error("payment inquiry", "err", err)
+		writeError(w, r, http.StatusBadGateway, "INQUIRY_FAILED", "gateway did not answer; try again later", true)
+	}
 }
 
 // reportSummary implements GET /v1/reports/summary?from=&to=&currency= (dates in WIB, inclusive).

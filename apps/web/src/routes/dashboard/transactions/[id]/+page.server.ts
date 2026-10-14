@@ -21,6 +21,12 @@ export const load: PageServerLoad = async ({ params, cookies, fetch, locals }) =
 };
 
 export const actions: Actions = {
+	inquiry: async ({ params, cookies, fetch, locals }) => {
+		const token = cookies.get(SESSION_COOKIE);
+		if (!token || !locals.user?.merchantId || !locals.user.permissions.includes('payment:read')) redirect(303, '/login');
+		const r = await call(fetch, token, 'POST', `/v1/payments/${encodeURIComponent(params.id)}/inquiry`);
+		return done(r);
+	},
 	refund: async ({ request, params, cookies, fetch, locals }) => {
 		const token = cookies.get(SESSION_COOKIE);
 		if (!token || !locals.user?.merchantId || !locals.user.permissions.includes('refund:request')) redirect(303, '/login');
