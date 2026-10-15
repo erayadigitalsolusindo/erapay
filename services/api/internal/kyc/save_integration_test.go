@@ -111,6 +111,17 @@ func TestSaveSectionLockedWhenSubmitted(t *testing.T) {
 	}
 }
 
+// Akun terverifikasi (approved) terkunci: merchant tidak bisa menyimpan lagi, hanya admin.
+func TestSaveSectionLockedWhenApproved(t *testing.T) {
+	svc, mid, setStatus := newSvc(t)
+	setStatus("approved")
+	err := svc.SaveSection(context.Background(), kyc.SaveSectionInput{
+		MerchantID: mid, Section: "company", Company: companyIn()})
+	if !errors.Is(err, kyc.ErrLocked) {
+		t.Fatalf("want ErrLocked, got %v", err)
+	}
+}
+
 // Entitas Perorangan harus lolos validasi DAN constraint DB (migrasi 0028), dan aman diulang.
 func TestSaveCompanyPerorangan(t *testing.T) {
 	svc, mid, _ := newSvc(t)

@@ -140,6 +140,9 @@ func (s *Service) AddEvidence(ctx context.Context, in UploadInput) (*Evidence, e
 	if s.cfg.Storage == nil {
 		return nil, ErrStorageMissing
 	}
+	if err := s.ensureEditable(ctx, in.MerchantID); err != nil {
+		return nil, err
+	}
 	if err := s.throttleCheck(ctx, "upload", in.IP, s.cfg.UploadPerIP); err != nil {
 		return nil, err
 	}
@@ -175,6 +178,9 @@ func (s *Service) AddEvidence(ctx context.Context, in UploadInput) (*Evidence, e
 
 // DeleteEvidence menghapus bukti bisnis milik merchant (baris + file).
 func (s *Service) DeleteEvidence(ctx context.Context, merchantID, actorID, evidenceID, requestID string) error {
+	if err := s.ensureEditable(ctx, merchantID); err != nil {
+		return err
+	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -205,6 +211,9 @@ func (s *Service) DeleteEvidence(ctx context.Context, merchantID, actorID, evide
 func (s *Service) SetBrandLogo(ctx context.Context, in UploadInput) error {
 	if s.cfg.Storage == nil {
 		return ErrStorageMissing
+	}
+	if err := s.ensureEditable(ctx, in.MerchantID); err != nil {
+		return err
 	}
 	if err := s.throttleCheck(ctx, "upload", in.IP, s.cfg.UploadPerIP); err != nil {
 		return err

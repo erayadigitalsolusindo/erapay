@@ -57,6 +57,9 @@ func (s *Service) UploadDocument(ctx context.Context, in UploadInput) (*Document
 	if !ValidDocType(in.DocType) {
 		return nil, fieldErr(map[string]string{"doc_type": "Jenis dokumen tidak dikenal"})
 	}
+	if err := s.ensureEditable(ctx, in.MerchantID); err != nil {
+		return nil, err
+	}
 	if err := s.throttleCheck(ctx, "upload", in.IP, s.cfg.UploadPerIP); err != nil {
 		return nil, err
 	}

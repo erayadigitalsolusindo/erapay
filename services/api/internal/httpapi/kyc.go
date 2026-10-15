@@ -34,7 +34,7 @@ func (d Deps) kycErr(w http.ResponseWriter, r *http.Request, err error) bool {
 	case errors.Is(err, kyc.ErrIncomplete):
 		writeError(w, r, http.StatusBadRequest, "KYC_INCOMPLETE", "pengajuan belum lengkap", false)
 	case errors.Is(err, kyc.ErrLocked):
-		writeError(w, r, http.StatusConflict, "KYC_LOCKED", "data sedang diverifikasi dan tidak bisa diubah", false)
+		writeError(w, r, http.StatusConflict, "KYC_LOCKED", "data tidak bisa diubah (sedang diverifikasi atau sudah terverifikasi); hubungi admin bila perlu perubahan", false)
 	case errors.Is(err, kyc.ErrInvalidSt):
 		writeError(w, r, http.StatusConflict, "INVALID_STATE", "aksi tidak sah untuk status saat ini", false)
 	case errors.Is(err, kyc.ErrSensitiveConfirm):

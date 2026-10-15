@@ -27,8 +27,23 @@ func (s *Service) throttleCheck(ctx context.Context, kind, ip string, perIP int)
 
 // editableStatus: boleh mengubah isian sekarang (SUBMITTED/IN_REVIEW = terkunci).
 // REJECTED juga diizinkan: merchant dapat memperbaiki & mengajukan ulang (keputusan 15 Okt 2026).
+// APPROVED juga terkunci: data yang sudah terverifikasi tidak bisa diubah merchant,
+// perubahan hanya lewat admin (keputusan 16 Okt 2026).
 func editableStatus(status string) bool {
-	return status == "draft" || status == "action_required" || status == "approved" || status == "rejected"
+	return status == "draft" || status == "action_required" || status == "rejected"
+}
+
+// ensureEditable menolak (ErrLocked) bila status merchant tidak boleh diubah sendiri oleh merchant.
+// Dipanggil sebelum menyimpan berkas supaya penolakan tidak meninggalkan file yatim.
+func (s *Service) ensureEditable(ctx context.Context, merchantID string) error {
+	m, err := s.repo.merchantRow(ctx, merchantID)
+	if err != nil {
+		return err
+	}
+	if !editableStatus(m.Status) {
+		return ErrLocked
+	}
+	return nil
 }
 
 // SaveSection menyimpan draft per bagian (partial save) dengan aturan edit per status.
@@ -56,7 +71,7 @@ func (s *Service) SaveSection(ctx context.Context, in SaveSectionInput) error {
 		return err
 	}
 	switch m.Status {
-	case "submitted", "under_review", "suspended":
+	case "submitted", "under_review", "suspended", "approved":
 		return ErrLocked
 	}
 
@@ -73,8 +88,8 @@ func (s *Service) SaveSection(ctx context.Context, in SaveSectionInput) error {
 			return ErrLocked
 		}
 		if sensitive, err = s.saveCompany(ctx, tx, in, &m); err != nil {
-				return err
-			}
+			return err
+		}
 	case "representative":
 		if in.Representative == nil {
 			return fieldErr(map[string]string{"representative": "Isian perwakilan wajib diisi"})

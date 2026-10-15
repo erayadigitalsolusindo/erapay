@@ -203,6 +203,8 @@
 				>
 					{submitting ? 'Mengirim…' : 'Kirim untuk Verifikasi'}
 				</button>
+			{:else if profile.status === 'approved'}
+				<span class="text-[13px] text-merah-gelap/60">Data terverifikasi dan terkunci. Hubungi admin bila perlu perubahan.</span>
 			{:else if !editable && profile.status === 'submitted'}
 				<span class="text-[13px] text-merah-gelap/60">Sedang diverifikasi — data terkunci.</span>
 			{/if}
