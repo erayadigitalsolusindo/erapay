@@ -20,9 +20,10 @@
 	const open = (f: KycFileRef) => (zoom = f);
 </script>
 
-{#snippet row(label: string, value: string | number | undefined | null)}
-	{#if value !== undefined && value !== null && value !== ''}
-		<div class="flex justify-between gap-4 py-1.5"><span class="muted">{label}</span><span class="text-right font-medium break-words">{value}</span></div>
+{#snippet row(label: string, value: string | number | undefined | null, always = false)}
+	{#if always || (value !== undefined && value !== null && value !== '')}
+		{@const empty = value === undefined || value === null || value === ''}
+		<div class="flex justify-between gap-4 py-1.5"><span class="muted">{label}</span><span class="text-right font-medium break-words {empty ? 'muted font-normal' : ''}">{empty ? '—' : value}</span></div>
 	{/if}
 {/snippet}
 
@@ -75,18 +76,28 @@
 		<h2 class="text-sm font-bold">{t('onb.detailIdentity')}</h2>
 		{#if m.identity}
 			<div class="mt-3 text-xs">
-				{@render row(t('onb.detailIdNumber'), m.identity.id_number ?? m.identity.id_masked)}
-				{@render row(t('onb.detailPob'), m.identity.place_of_birth)}
-				{@render row(t('onb.detailDob'), m.identity.date_of_birth ? fmtDob(m.identity.date_of_birth) : '')}
-				{@render row(t('onb.detailGender'), m.identity.gender ? gender(m.identity.gender) : '')}
-				{@render row(t('onb.detailAddress'), m.identity.address)}
-				{@render row(t('onb.detailNpwp'), m.identity.npwp ?? m.identity.npwp_masked)}
-				{@render row(t('onb.detailBizNpwp'), m.identity.business_npwp ?? m.identity.business_npwp_masked)}
-				{@render row(t('onb.detailNib'), m.identity.business_nib)}
+				{@render row(t('onb.detailIdNumber'), m.identity.id_number ?? m.identity.id_masked, true)}
+				{@render row(t('onb.detailPob'), m.identity.place_of_birth, true)}
+				{@render row(t('onb.detailDob'), m.identity.date_of_birth ? fmtDob(m.identity.date_of_birth) : '', true)}
+				{@render row(t('onb.detailGender'), m.identity.gender ? gender(m.identity.gender) : '', true)}
+				{@render row(t('onb.detailAddress'), m.identity.address, true)}
+				{@render row(t('onb.detailNpwp'), m.identity.npwp ?? m.identity.npwp_masked, true)}
+				{@render row(t('onb.detailBizNpwp'), m.identity.business_npwp ?? m.identity.business_npwp_masked, true)}
+				{@render row(t('onb.detailNib'), m.identity.business_nib, true)}
 			</div>
 			<p class="muted mt-2 text-[11px]">{t('onb.detailRaw')}</p>
 		{:else}
-			<p class="muted mt-3 text-xs">{t('onb.identityNo')}</p>
+			<div class="mt-3 text-xs">
+				{@render row(t('onb.detailIdNumber'), '', true)}
+				{@render row(t('onb.detailPob'), '', true)}
+				{@render row(t('onb.detailDob'), '', true)}
+				{@render row(t('onb.detailGender'), '', true)}
+				{@render row(t('onb.detailAddress'), '', true)}
+				{@render row(t('onb.detailNpwp'), '', true)}
+				{@render row(t('onb.detailBizNpwp'), '', true)}
+				{@render row(t('onb.detailNib'), '', true)}
+			</div>
+			<p class="muted mt-2 text-[11px]">{t('onb.identityNo')}</p>
 		{/if}
 	</section>
 </div>
@@ -103,6 +114,33 @@
 				{@render row('Email', kyc.company.email as string)}
 				{@render row('Alamat', [kyc.company.address_detail, kyc.company.kelurahan, kyc.company.kecamatan, kyc.company.kota, kyc.company.provinsi, kyc.company.postal_code].filter(Boolean).join(', '))}
 			</div>
+			<!-- Ringkasan kelengkapan: mengisi ruang kartu dan memberi gambaran cepat sebelum memutuskan -->
+			<div class="mt-4 rounded-xl border border-ink/10 bg-ink/[0.03] p-3">
+				<p class="muted mb-2 text-[11px] font-bold uppercase tracking-wider">Kelengkapan data</p>
+				<ul class="space-y-1.5 text-xs">
+					{#each kyc.checklist ?? [] as c (c.section)}
+						<li class="flex items-center gap-2">
+							<span class="grid size-4 shrink-0 place-items-center rounded-full text-[9px] font-bold text-white {c.needs_revision ? 'bg-amber-500' : c.complete ? 'bg-emerald-600' : 'bg-ink/30'}">{c.needs_revision ? '!' : c.complete ? '✓' : '·'}</span>
+							<span class="font-medium">{c.label}</span>
+							<span class="muted ml-auto text-[11px]">{c.needs_revision ? 'perlu revisi' : c.complete ? 'lengkap' : 'belum lengkap'}</span>
+						</li>
+					{/each}
+				</ul>
+				{#if kyc.submitted_at || kyc.reviewed_at}
+					<div class="mt-2 border-t border-ink/10 pt-2 text-[11px]">
+						{#if kyc.submitted_at}<p class="muted">Dikirim: <span class="font-semibold text-ink">{fmt(kyc.submitted_at)}</span></p>{/if}
+						{#if kyc.reviewed_at}<p class="muted">Ditinjau: <span class="font-semibold text-ink">{fmt(kyc.reviewed_at)}</span></p>{/if}
+					</div>
+				{/if}
+			</div>
+			{#if kyc.notes?.some((n) => !n.resolved)}
+				<div class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+					<p class="mb-1 text-[11px] font-bold uppercase tracking-wider">Catatan revisi aktif</p>
+					<ul class="list-disc space-y-0.5 pl-4">
+						{#each kyc.notes.filter((n) => !n.resolved) as n (n.id)}<li>{n.note}</li>{/each}
+					</ul>
+				</div>
+			{/if}
 		</section>
 
 		<section class="card p-5">
@@ -155,7 +193,15 @@
 		<section class="card p-5">
 			<h2 class="text-sm font-bold">4 · Dokumen legal</h2>
 			{#if kyc.company.entity_type === 'Perorangan'}
-				<p class="muted mt-3 text-xs">Entitas perorangan: dokumen badan usaha tidak diwajibkan.</p>
+				<div class="empty mt-4 grid place-items-center gap-3 rounded-xl border border-dashed border-ink/20 px-4 py-8 text-center">
+					<span class="empty-ring relative grid size-16 place-items-center rounded-full bg-emerald-50 text-emerald-600">
+						<svg viewBox="0 0 24 24" class="empty-float size-8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6l-8-3Z" /><path d="m9 12 2.2 2.2L15.5 10" /></svg>
+					</span>
+					<div>
+						<p class="text-sm font-bold">Tidak ada dokumen badan usaha</p>
+						<p class="muted mt-1 text-xs">Entitas <b>Perorangan</b> tidak diwajibkan mengunggah NPWP badan, akta, SK, NIB, maupun izin usaha. Cukup periksa KTP perwakilan.</p>
+					</div>
+				</div>
 			{:else}
 				<div class="mt-3 grid grid-cols-2 gap-3">
 					{#each data.docs as d (d.key)}{@render file(d.label, d.file, d.number)}{/each}
@@ -169,3 +215,33 @@
 {/if}
 
 {#if zoom}<ImageLightbox src={zoom.url} alt={zoom.name} onclose={() => (zoom = null)} />{/if}
+
+<style>
+	.empty-float {
+		animation: empty-float 3s ease-in-out infinite;
+	}
+	.empty-ring::before,
+	.empty-ring::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: 9999px;
+		border: 2px solid currentColor;
+		opacity: 0;
+		animation: empty-ping 2.8s ease-out infinite;
+	}
+	.empty-ring::after {
+		animation-delay: 1.4s;
+	}
+	@keyframes empty-float {
+		0%, 100% { transform: translateY(0); }
+		50% { transform: translateY(-4px); }
+	}
+	@keyframes empty-ping {
+		0% { transform: scale(1); opacity: 0.45; }
+		100% { transform: scale(1.7); opacity: 0; }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.empty-float, .empty-ring::before, .empty-ring::after { animation: none; }
+	}
+</style>

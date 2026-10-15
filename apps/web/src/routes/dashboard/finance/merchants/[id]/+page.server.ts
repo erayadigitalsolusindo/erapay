@@ -46,6 +46,9 @@ type Kyc = {
 		logo?: KycFileRef | null; links: { id: string; url: string }[]; evidences: KycFileRef[];
 	};
 	documents: Record<string, unknown>;
+	submitted_at?: string;
+	reviewed_at?: string;
+	checklist: { section: string; label: string; complete: boolean; needs_revision: boolean }[];
 	notes: { id: string; section: string; field?: string; note: string; resolved: boolean }[];
 };
 
