@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Galeri bukti bisnis: thumbnail 72px, tombol hapus, tombol tambah (gambar ≤ 5 MB).
 	import type { Evidence } from '../../server/kyc';
+	import ImageLightbox from './ImageLightbox.svelte';
 
 	let {
 		evidences = [],
@@ -22,6 +23,7 @@
 	// Pratinjau berkas yang baru dipilih (diunggah satu per satu) sampai muncul dari server.
 	let pending = $state<{ key: number; url: string; name: string }[]>([]);
 	let seq = 0;
+	let zoomed = $state<Evidence | null>(null);
 
 	async function addMany(files: File[]) {
 		const batch = files.map((f) => ({ key: seq++, url: URL.createObjectURL(f), name: f.name, f }));
@@ -43,7 +45,9 @@
 	<div class="flex flex-wrap gap-2">
 		{#each evidences as ev (ev.id)}
 			<div class="group relative size-[72px] overflow-hidden rounded-md border border-[#CBD2D9] bg-white">
-				<img src={ev.url} alt={ev.name} class="size-full object-cover" />
+				<button type="button" class="size-full cursor-zoom-in" aria-label="Perbesar {ev.name}" onclick={() => (zoomed = ev)}>
+					<img src={ev.url} alt={ev.name} class="size-full object-cover" />
+				</button>
 				{#if !locked}
 					<button
 						type="button"
@@ -90,6 +94,9 @@
 			if (fs.length) void addMany(fs);
 		}}
 	/>
+	{#if zoomed}
+		<ImageLightbox src={zoomed.url} alt={zoomed.name} onclose={() => (zoomed = null)} />
+	{/if}
 	{#if busy}
 		<p class="mt-1 text-[12px] text-[#7A8894]">mengunggah…</p>
 	{/if}

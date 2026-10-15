@@ -120,7 +120,7 @@
 				accept=".jpg,.jpeg,.png"
 				hint="JPG/PNG, maks 5 MB — tampil 72×72 px"
 				maxBytes={5 * 1024 * 1024}
-				file={form.logo ? { name: form.logo.name, size: form.logo.size, url: form.logo.url, mime: form.logo.mime } : null}
+				file={data.logo ? { name: data.logo.name, size: data.logo.size, url: data.logo.url, mime: data.logo.mime } : null}
 				uploading={logoBusy}
 				locked={locked}
 				error={uploadErrors.logo}
@@ -128,7 +128,7 @@
 			/>
 		</div>
 		<div class="sm:col-span-2">
-			<ImageGallery evidences={form.evidences ?? []} busy={evBusy} {locked} error={uploadErrors.evidence} onadd={onAddEvidence} ondelete={onDeleteEvidence} />
+			<ImageGallery evidences={data.evidences ?? []} busy={evBusy} {locked} error={uploadErrors.evidence} onadd={onAddEvidence} ondelete={onDeleteEvidence} />
 		</div>
 		<div class="sm:col-span-2">
 			<LinkList {links} {locked} error={errs.links} onchange={(v) => (links = v)} />

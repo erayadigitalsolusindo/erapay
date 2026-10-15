@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ImageLightbox from './ImageLightbox.svelte';
 	// Kartu unggah gaya DOKU: zona dashed, ringkasan berkas terunggah, tombol ganti.
 	// Batas: PDF/JPG/PNG, 15 MB (Akta 25 MB). Pengecekan ulang tetap dilakukan server.
 	let {
@@ -27,6 +28,7 @@
 	let localErr = $state('');
 	// Pratinjau gambar: object URL lokal sesaat setelah dipilih, lalu URL dari server.
 	let localUrl = $state<string | null>(null);
+	let zoom = $state(false);
 	const isImg = (m?: string, n?: string) => !!m?.startsWith('image/') || /\.(jpe?g|png)$/i.test(n ?? '');
 	const thumb = $derived(localUrl ?? (file?.url && isImg(file.mime, file.name) ? file.url : null));
 	$effect(() => () => {
@@ -57,31 +59,41 @@
 			Terkunci saat proses verifikasi.
 		</div>
 	{:else if file}
-		<div class="flex items-center gap-3 rounded-md border border-[#CBD2D9] bg-white px-3 py-2.5">
+		<div class="overflow-hidden rounded-md border border-[#CBD2D9] bg-white">
 			{#if thumb}
-				<img src={thumb} alt="Pratinjau {label}" class="h-14 w-20 shrink-0 rounded border border-[#E5E8ED] bg-[#F4F7FA] object-cover" />
-			{:else}
-				<span class="grid size-9 shrink-0 place-items-center rounded bg-[#F4F7FA] text-[#D32F2F]">
-					<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8">
-						<path d="M14 3v5h5" /><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-					</svg>
-				</span>
-			{/if}
-			<div class="min-w-0 flex-1">
-				<p class="truncate text-[13px] font-semibold text-[#1A2530]">{file.name}</p>
-				<p class="text-[12px] text-[#7A8894]">{fmtSize(file.size)}</p>
-			</div>
-			{#if uploading}
-				<span class="text-[12px] font-medium text-[#7A8894]">mengunggah…</span>
-			{:else if !locked}
 				<button
 					type="button"
-					class="rounded-md border border-[#CBD2D9] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#D32F2F] transition hover:border-[#D32F2F] hover:text-[#B02424]"
-				onclick={() => input?.click()}
-			>
-				Ganti
+					class="block w-full cursor-zoom-in bg-[#F4F7FA]"
+					aria-label="Perbesar {label}"
+					onclick={() => (zoom = true)}
+				>
+					<img src={thumb} alt="Pratinjau {label}" class="h-32 w-full object-contain" />
 				</button>
 			{/if}
+			<div class="flex items-center gap-3 px-3 py-2.5">
+				{#if !thumb}
+					<span class="grid size-9 shrink-0 place-items-center rounded bg-[#F4F7FA] text-[#D32F2F]">
+						<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8">
+							<path d="M14 3v5h5" /><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+						</svg>
+					</span>
+				{/if}
+				<div class="min-w-0 flex-1">
+					<p class="truncate text-[13px] font-semibold text-[#1A2530]">{file.name}</p>
+					<p class="text-[12px] text-[#7A8894]">{fmtSize(file.size)}</p>
+				</div>
+				{#if uploading}
+					<span class="text-[12px] font-medium text-[#7A8894]">mengunggah…</span>
+				{:else if !locked}
+					<button
+						type="button"
+						class="rounded-md border border-[#CBD2D9] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#D32F2F] transition hover:border-[#D32F2F] hover:text-[#B02424]"
+						onclick={() => input?.click()}
+					>
+						Ganti
+					</button>
+				{/if}
+			</div>
 			<input
 				bind:this={input}
 				type="file"
@@ -95,9 +107,6 @@
 			/>
 		</div>
 	{:else}
-		{#if localUrl}
-			<img src={localUrl} alt="Pratinjau {label}" class="mb-2 h-28 w-full rounded-md border border-[#E5E8ED] bg-[#F4F7FA] object-contain" />
-		{/if}
 		<button
 			type="button"
 			class="flex w-full flex-col items-center gap-1.5 rounded-md border-2 border-dashed px-4 py-6 text-center transition hover:border-[#D32F2F]/60 hover:bg-[#F4F7FA]
@@ -126,6 +135,9 @@
 				if (input) input.value = '';
 			}}
 		/>
+	{/if}
+	{#if zoom && thumb}
+		<ImageLightbox src={thumb} alt={label} onclose={() => (zoom = false)} />
 	{/if}
 	{#if finalErr}
 		<p class="mt-1 text-[12px] font-medium text-[#D32F2F]">{finalErr}</p>

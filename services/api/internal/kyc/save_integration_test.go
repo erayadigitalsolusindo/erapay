@@ -110,3 +110,26 @@ func TestSaveSectionLockedWhenSubmitted(t *testing.T) {
 		t.Fatalf("want ErrLocked, got %v", err)
 	}
 }
+
+// Entitas Perorangan harus lolos validasi DAN constraint DB (migrasi 0028), dan aman diulang.
+func TestSaveCompanyPerorangan(t *testing.T) {
+	svc, mid, _ := newSvc(t)
+	ctx := context.Background()
+	c := companyIn()
+	c.EntityType = "Perorangan"
+	for i := 0; i < 2; i++ {
+		if err := svc.SaveSection(ctx, kyc.SaveSectionInput{MerchantID: mid, Section: "company", Company: c}); err != nil {
+			t.Fatalf("simpan #%d: %v", i, err)
+		}
+	}
+	p, err := svc.GetProfile(ctx, mid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Company.EntityType != "Perorangan" {
+		t.Errorf("entity_type = %q", p.Company.EntityType)
+	}
+	if !p.Documents.Complete {
+		t.Error("perorangan: bagian dokumen harus dianggap lengkap")
+	}
+}
