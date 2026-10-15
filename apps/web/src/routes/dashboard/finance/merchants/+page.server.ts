@@ -24,9 +24,15 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 	const token = guard(locals, cookies, 'merchant:review', 'platform');
 	const asked = url.searchParams.get('status') ?? '';
 	const status = STATUSES.includes(asked) ? asked : 'submitted';
-	const merchants = await read<{ data: AdminMerchant[] }>(fetch, token, `/v1/admin/merchants?limit=100&status=${status}`);
+	// Semua status dibaca paralel: daftar untuk status terpilih + jumlah per status (kartu ringkasan).
+	const lists = await Promise.all(
+		STATUSES.map((st) => read<{ data: AdminMerchant[] }>(fetch, token, `/v1/admin/merchants?limit=100&status=${st}`))
+	);
+	const counts = Object.fromEntries(STATUSES.map((st, i) => [st, lists[i]?.data.length ?? 0])) as Record<string, number>;
+	const merchants = lists[STATUSES.indexOf(status)];
 	return {
 		merchants: merchants?.data ?? null,
+		counts,
 		status,
 		canApprove: locals.user!.permissions.includes('merchant:approve'),
 		canReview: locals.user!.permissions.includes('merchant:review')

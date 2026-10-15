@@ -98,7 +98,7 @@
 		<p class="text-[13px] text-[#7A8894]">Bagian ini terkunci saat verifikasi berjalan.</p>
 	{/if}
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-		<TextField id="kyc-biz-id" label="Business ID" value={form.business_id} hint="dibuat sistem" />
+		<TextField id="kyc-biz-id" label="Business ID" value={form.business_id} hint="dibuat sistem, tidak dapat diubah" readonly />
 		<SelectField id="kyc-entity" label="Jenis entitas" options={ENTITY} bind:value={form.entity_type} error={errs.entity_type} />
 		<TextField id="kyc-company-name" label="Nama badan usaha" bind:value={form.company_name} hint="sesuai akta" error={errs.company_name} />
 		<PhoneField id="kyc-company-phone" label="Nomor telepon perusahaan" bind:value={form.phone} error={errs.phone} />
