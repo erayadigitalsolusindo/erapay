@@ -26,8 +26,9 @@ func (s *Service) throttleCheck(ctx context.Context, kind, ip string, perIP int)
 }
 
 // editableStatus: boleh mengubah isian sekarang (SUBMITTED/IN_REVIEW = terkunci).
+// REJECTED juga diizinkan: merchant dapat memperbaiki & mengajukan ulang (keputusan 15 Okt 2026).
 func editableStatus(status string) bool {
-	return status == "draft" || status == "action_required" || status == "approved"
+	return status == "draft" || status == "action_required" || status == "approved" || status == "rejected"
 }
 
 // SaveSection menyimpan draft per bagian (partial save) dengan aturan edit per status.
@@ -55,7 +56,7 @@ func (s *Service) SaveSection(ctx context.Context, in SaveSectionInput) error {
 		return err
 	}
 	switch m.Status {
-	case "submitted", "under_review", "rejected", "suspended":
+	case "submitted", "under_review", "suspended":
 		return ErrLocked
 	}
 
@@ -229,7 +230,8 @@ func (s *Service) Submit(ctx context.Context, in SubmitInput) error {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if err := s.lockIn(ctx, tx, in.MerchantID, []string{"draft", "action_required"}); err != nil {
+	// REJECTED diizinkan ajukan ulang; transisi kembali ke submitted lalu antre review lagi.
+	if err := s.lockIn(ctx, tx, in.MerchantID, []string{"draft", "action_required", "rejected"}); err != nil {
 		return err
 	}
 	if err := s.repo.ensureSubmission(ctx, tx, in.MerchantID); err != nil {

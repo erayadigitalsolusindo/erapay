@@ -53,18 +53,25 @@ Aturan penting:
 ### 3.1 Daftar akun
 
 1. Buka halaman pendaftaran EraPay.
-2. Pilih jenis akun: `individual` atau `business`.
-3. Isi nama, nama usaha, email, nomor HP, dan password.
-4. Isi **data diri (verifikasi)** sesuai KTP: NIK, tempat lahir, tanggal lahir, jenis kelamin, alamat; NPWP pemilik opsional. Akun `business` wajib melampirkan NPWP badan usaha dan NIB. NIK dan NPWP disimpan **terenkripsi** (AES-256-GCM); hanya reviewer EraPay yang melihat nilai lengkapnya.
-5. Setujui syarat & ketentuan.
-6. EraPay mengirim tautan verifikasi email.
+2. Isi **nama lengkap**, email, nomor HP, dan password.
+3. Setujui syarat & ketentuan.
+4. EraPay mengirim tautan verifikasi email.
+
+> **Daftar minimal (15 Okt 2026):** data diri tidak lagi dikumpulkan di halaman daftar. Akun dibuat
+> `draft` dan setelah login Anda melengkapi **4 bagian data diri** — perusahaan, perwakilan,
+> merek, dokumen — lewat wizard di dashboard, lalu mengirimnya untuk verifikasi. NIK/NPWP tetap
+> disimpan terenkripsi; hanya reviewer EraPay yang melihat nilai lengkapnya.
 
 Pendaftaran **tidak langsung aktif**. Merchant harus:
 1. verifikasi email,
-2. memiliki **data diri lengkap** — approval ditolak (`IDENTITY_INCOMPLETE`) sampai lengkap; pelengkapan/perbaikan dilakukan di menu **Status akun**,
+2. memiliki **data diri lengkap** — approval ditolak (`IDENTITY_INCOMPLETE`) sampai lengkap; pelengkapan/perbaikan dilakukan di menu **Status akun** / wizard KYC,
 3. menunggu review platform,
 4. disetujui Super Admin,
 5. hanya setelah itu pembayaran/payout bisa aktif.
+
+> **Ditolak / perlu revisi?** Status `action_required` berarti perbaiki bagian yang ditandai lalu kirim ulang.
+> Status `rejected` juga **boleh diperbaiki & diajukan ulang** (tanpa batas percobaan) — buka form dan
+> kirim ulang; akun tidak terkunci permanen.
 
 ### 3.2 Login
 

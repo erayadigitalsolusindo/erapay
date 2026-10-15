@@ -60,16 +60,17 @@ export async function login(
 }
 
 export type RegisterInput = {
-	account_type: 'individual' | 'business';
 	name: string;
-	business_name: string;
 	email: string;
 	phone: string;
 	password: string;
 	accept_terms: boolean;
-	// Data diri untuk verifikasi (gaya DOKU): NIK, tempat/tanggal lahir, jenis kelamin, alamat,
-	// NPWP pemilik (opsional), serta NPWP badan + NIB untuk akun usaha. Validasi sepenuhnya di Go.
-	identity: {
+	account_type?: 'individual' | 'business';
+	business_name?: string;
+	// Data diri untuk verifikasi. Sejak 15 Okt 2026 daftar minimal hanya Nama, Email, Telpon, Password;
+	// data diri dilengkapi setelah login via wizard KYC, jadi identity dapat dikosongkan. Bila diisi,
+	// validasi sepenuhnya di Go.
+	identity?: {
 		id_number: string;
 		place_of_birth: string;
 		date_of_birth: string;
