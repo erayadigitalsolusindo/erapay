@@ -95,9 +95,9 @@
 
 {#snippet glyph(g: 'check' | 'x' | 'i' | 'bang')}
 	<svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		{#if g === 'check'}<path d="m7 12.5 3.2 3.2L17 9" />
-		{:else if g === 'x'}<path d="m8 8 8 8M16 8l-8 8" />
-		{:else}<path d="M12 7v6" /><circle cx="12" cy="17" r="0.6" fill="#fff" />{/if}
+		{#if g === 'check'}<path class="dh-g" pathLength="1" d="m7 12.5 3.2 3.2L17 9" />
+		{:else if g === 'x'}<path class="dh-g" pathLength="1" d="m8 8 8 8" /><path class="dh-g dh-g2" pathLength="1" d="M16 8l-8 8" />
+		{:else}<g class="dh-bang"><path d="M12 7v6" /><circle cx="12" cy="17" r="0.6" fill="#fff" /></g>{/if}
 	</svg>
 {/snippet}
 
@@ -112,10 +112,10 @@
 			style="background:{k.bg};color:{k.fg};border-left:4px solid {k.edge}"
 			onclick={() => dismissToast(t.id)}
 		>
-			<span class="grid size-5 shrink-0 place-items-center rounded-full" style="background:{k.fg}">{@render glyph(k.glyph)}</span>
+			<span class="dh-badge relative grid size-5 shrink-0 place-items-center rounded-full" style="background:{k.fg};--tone:{k.fg}"><span class="dh-badge-ring absolute inset-0 rounded-full"></span>{@render glyph(k.glyph)}</span>
 			<div class="min-w-0">
-				<p class="text-xs leading-tight font-extrabold">{t.title}</p>
-				<p class="text-[11px] leading-tight font-semibold break-words opacity-90">{t.message}</p>
+				<p class="m-0 text-xs leading-tight font-extrabold">{t.title}</p>
+				<p class="m-0 text-[11px] leading-tight font-semibold break-words opacity-90">{t.message}</p>
 			</div>
 			<span class="dh-bar absolute inset-x-0 bottom-0 h-0.5" style="background:{k.fg};opacity:.35"></span>
 		</div>
@@ -123,6 +123,13 @@
 </div>
 
 <style>
+	/* Halaman dasbor tanpa reset global: nolkan margin bawaan <p>/<h3> agar tidak melar. */
+	.dh-card :global(h3), .dh-card :global(p) { margin-block-end: 0; }
+	.dh-badge { animation: dh-icon-in 0.45s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+	.dh-badge-ring { border: 2px solid var(--tone); opacity: 0; animation: dh-ping 1.6s ease-out 0.3s 2; }
+	.dh-g { stroke-dasharray: 1; stroke-dashoffset: 1; animation: dh-draw 0.4s ease-out 0.2s forwards; }
+	.dh-g2 { animation-delay: 0.45s; }
+	.dh-bang { transform-origin: 50% 80%; animation: dh-shake 1.2s ease-in-out 0.3s 2; }
 	.dh-backdrop { animation: dh-fade 0.18s ease-out; }
 	.dh-card { animation: dh-pop 0.38s cubic-bezier(0.2, 1.2, 0.3, 1); }
 	.dh-toast { animation: dh-slide 0.4s cubic-bezier(0.2, 1, 0.3, 1); }
@@ -156,8 +163,8 @@
 	@keyframes dh-bob { 0%, 55%, 100% { transform: translateY(0); } 20% { transform: translateY(-5px); } 35% { transform: translateY(0); } 45% { transform: translateY(-2px); } }
 
 	@media (prefers-reduced-motion: reduce) {
-		.dh-backdrop, .dh-card, .dh-toast, .dh-icon, .dh-pulse, .dh-lid, .dh-bin, .dh-shake, .dh-bob, .dh-spark { animation: none; }
+		.dh-backdrop, .dh-card, .dh-toast, .dh-icon, .dh-pulse, .dh-lid, .dh-bin, .dh-shake, .dh-bob, .dh-spark, .dh-badge, .dh-badge-ring, .dh-bang { animation: none; }
 		.dh-bar { animation-duration: 4.2s; }
-		.dh-draw { animation: none; stroke-dashoffset: 0; }
+		.dh-draw, .dh-g { animation: none; stroke-dashoffset: 0; }
 	}
 </style>
