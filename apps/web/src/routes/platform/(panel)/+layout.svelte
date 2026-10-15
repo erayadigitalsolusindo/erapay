@@ -30,7 +30,7 @@
 	/>
 </svelte:head>
 
-<div data-theme={data.theme} class="adm min-h-screen bg-page font-sans text-ink antialiased">
+<div data-theme={data.theme} class="adm flex min-h-screen flex-col bg-page font-sans text-ink antialiased">
 	<header class="border-b border-ink/10 bg-surface">
 		<div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-3">
 			<div class="flex items-center gap-3">
@@ -63,8 +63,8 @@
 			</form>
 		</div>
 	</header>
-	<main class="mx-auto max-w-6xl p-5 lg:p-8">
+	<main class="mx-auto w-full max-w-6xl flex-1 p-5 lg:p-8">
 		{@render children()}
-		<footer class="muted mt-10 text-[10px]">{t('footer.tagline')}</footer>
 	</main>
+	<footer class="muted border-t border-ink/10 px-5 py-3 text-center text-[10px]">{t('footer.tagline')}</footer>
 </div>

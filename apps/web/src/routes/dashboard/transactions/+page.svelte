@@ -5,6 +5,8 @@
 	import StatusBadge from '../../../lib/components/StatusBadge.svelte';
 	import StateBadge from '../../../lib/components/StateBadge.svelte';
 	import { formatIDR } from '../../../lib/utils/money';
+	import Combobox from '../../../lib/components/Combobox.svelte';
+	import DateRange from '../../../lib/components/DateRange.svelte';
 	import type { Key } from '../../../lib/i18n/messages';
 
 	let { data, form } = $props();
@@ -29,6 +31,37 @@
 		};
 	};
 
+	// QR transaksi pending ditampilkan di dialog; hasil ditangkap lokal agar tidak mengganggu banner inquiry.
+	type QrView = { qr: string; qrRef: string; qrAmount: number; qrExpires: string | null };
+	let qrView = $state<QrView | null>(null);
+	let qrError = $state(false);
+	let qrBusy = $state('');
+	let qrDialog = $state<HTMLDialogElement>();
+	const qrEnhance: SubmitFunction = (input) => {
+		qrBusy = String(input.formData.get('id') ?? '');
+		qrError = false;
+		return async ({ result }) => {
+			qrBusy = '';
+			if (result.type === 'success' && result.data?.qr) {
+				qrView = result.data as unknown as QrView;
+				qrDialog?.showModal();
+			} else qrError = true;
+		};
+	};
+
+	let status = $state('');
+	let from = $state('');
+	let to = $state('');
+	$effect.pre(() => {
+		status = data.filters.status;
+		from = data.filters.from;
+		to = data.filters.to;
+	});
+	const statusOptions = $derived([
+		{ value: '', label: t('trx.filter.all') },
+		...data.statuses.map((s: string) => ({ value: s, label: t(`status.${s}` as Key) }))
+	]);
+
 	// Tautan "lebih lama" mempertahankan filter; kursor dari server bersifat opak.
 	const nextHref = $derived.by(() => {
 		const q = new URLSearchParams();
@@ -51,25 +84,18 @@
 	<a href="/dashboard/transactions/new" class="btn btn-red">＋ {t('trx.new')}</a>
 </div>
 
-<form method="GET" class="card mb-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+<form method="GET" class="card mb-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.6fr_auto]">
 	<div>
 		<label class="lbl mb-1.5" for="f-status">{t('trx.filter.status')}</label>
-		<select id="f-status" name="status" class="inp">
-			<option value="">{t('trx.filter.all')}</option>
-			{#each data.statuses as s (s)}<option value={s} selected={data.filters.status === s}>{t(`status.${s}` as Key)}</option>{/each}
-		</select>
+		<Combobox id="f-status" name="status" options={statusOptions} bind:value={status} />
 	</div>
 	<div>
 		<label class="lbl mb-1.5" for="f-ref">{t('trx.filter.ref')}</label>
 		<input id="f-ref" name="ref" class="inp" maxlength="64" value={data.filters.ref} />
 	</div>
-	<div>
-		<label class="lbl mb-1.5" for="f-from">{t('trx.filter.from')}</label>
-		<input id="f-from" name="from" type="date" class="inp" value={data.filters.from} />
-	</div>
-	<div>
-		<label class="lbl mb-1.5" for="f-to">{t('trx.filter.to')}</label>
-		<input id="f-to" name="to" type="date" class="inp" value={data.filters.to} />
+	<div class="sm:col-span-2">
+		<label class="lbl mb-1.5" for="f-range">{t('trx.filter.range')}</label>
+		<DateRange id="f-range" bind:from bind:to />
 	</div>
 	<div class="flex items-end gap-2">
 		<button type="submit" class="btn btn-red">{t('trx.filter.apply')}</button>
@@ -78,6 +104,9 @@
 </form>
 
 <div class="card overflow-hidden">
+	{#if qrError}
+		<p class="border-b border-ink/10 bg-rose-50 px-5 py-3 text-xs font-semibold text-red-700" role="alert">{t('trx.qrFail')}</p>
+	{/if}
 	{#if form?.done}
 		<p class="border-b border-ink/10 bg-emerald-50 px-5 py-3 text-xs font-semibold text-emerald-700" role="status">{t('trx.inquiryDone')}</p>
 	{:else if form?.message}
@@ -107,7 +136,8 @@
 							<td>{#if p.settlement_status && p.settlement_status !== 'not_expected'}<StateBadge kind="settle" value={p.settlement_status} />{:else}<span class="muted">—</span>{/if}</td>
 							<td class="text-right">
 								{#if p.status === 'created' || p.status === 'pending' || p.status === 'unknown'}
-									<form method="POST" action="?/inquiry" use:enhance={inquiryEnhance}>
+									{#if p.status === 'pending'}<form method="POST" action="?/qr" use:enhance={qrEnhance} class="mb-1.5"><input type="hidden" name="id" value={p.id} /><button type="submit" class="btn btn-red" disabled={qrBusy === p.id}>▦ {t('trx.showQr')}</button></form>{/if}
+										<form method="POST" action="?/inquiry" use:enhance={inquiryEnhance}>
 										<input type="hidden" name="id" value={p.id} />
 										<button type="submit" class="btn btn-light" disabled={submitting === p.id}>🔄 {t('trx.inquiryBtn')}</button>
 									</form>
@@ -126,3 +156,25 @@
 		</div>
 	{/if}
 </div>
+
+<dialog
+	bind:this={qrDialog}
+	class="m-auto w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-ink/15 bg-surface p-6 text-center text-ink shadow-2xl backdrop:bg-black/50"
+	aria-label={t('trx.qrTitle')}
+	onclick={(e) => e.target === qrDialog && qrDialog?.close()}
+	onclose={() => (qrView = null)}
+>
+	{#if qrView}
+		<h3 class="text-sm font-bold">{t('trx.qrTitle')}</h3>
+		<p class="muted mt-0.5 text-xs">{qrView.qrRef} · <b class="text-ink">{formatIDR(qrView.qrAmount)}</b></p>
+		<!-- eslint-disable-next-line svelte/no-at-html-tags -- SVG dibuat server dari library QR, bukan input pengguna -->
+		<div class="qr mx-auto mt-4 w-56 max-w-full rounded-xl bg-white p-2" aria-label={t('trx.qrLabel')}>{@html qrView.qr}</div>
+		<p class="mt-3 text-xs">{t('trx.scan')}</p>
+		{#if qrView.qrExpires}<p class="muted mt-1 text-[11px]">{t('trx.validUntil', { date: fmt(qrView.qrExpires) })}</p>{/if}
+		<button type="button" class="btn btn-light mt-4 w-full" onclick={() => qrDialog?.close()}>{t('trx.qrClose')}</button>
+	{/if}
+</dialog>
+
+<style>
+	.qr :global(svg) { width: 100%; height: auto; display: block; }
+</style>
