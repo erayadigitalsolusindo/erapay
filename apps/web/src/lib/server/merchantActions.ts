@@ -83,6 +83,12 @@ export const merchantActions = {
 		if (to !== 'under_review' && to !== 'rejected') return fail(400, { message: 'Pilih status tujuan.' });
 		return done(await call(fetch, token, 'POST', path(f, 'revoke'), { to, note: str(f, 'note') }));
 	},
+	// Buka kunci data merchant terverifikasi: approved -> action_required agar merchant bisa memperbaiki data; alasan wajib.
+	unlock: async ({ request, cookies, fetch, locals }: RequestEvent) => {
+		const token = guard(locals, cookies, 'merchant:approve', 'platform');
+		const f = await request.formData();
+		return done(await call(fetch, token, 'POST', path(f, 'kyc/unlock'), { note: str(f, 'note') }));
+	},
 	// Tangguhkan merchant (transaksi baru berhenti, data terkunci) dan aktifkan kembali; alasan wajib.
 	suspend: async ({ request, cookies, fetch, locals }: RequestEvent) => {
 		const token = guard(locals, cookies, 'merchant:approve', 'platform');

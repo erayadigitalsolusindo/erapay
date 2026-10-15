@@ -192,6 +192,18 @@
 				</form>
 			{/if}
 
+			{#if showRevoke}
+				<form method="POST" action="?/unlock" use:enhance={withConfirm({ variant: 'warning', title: 'Buka kunci data?', message: `Buka kunci data ${m.display_name}? Status kembali ke "Perlu Revisi" sehingga merchant bisa memperbaiki data lalu mengirim ulang untuk verifikasi.`, confirmText: 'Ya, buka kunci', successMessage: 'Kunci data dibuka. Merchant dapat memperbaiki data.' }, busyWrap)} class="space-y-2">
+					<h4 class="font-bold">Buka kunci data</h4>
+					<p class="muted">Data terverifikasi terkunci bagi merchant. Buka kunci agar merchant dapat mengubah data dan mengirim ulang untuk verifikasi.</p>
+					<input type="hidden" name="id" value={m.id} />
+					<div class="flex flex-wrap gap-2">
+						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder="Alasan membuka kunci (dibaca merchant)" minlength="3" maxlength="500" required />
+						<button class="btn btn-warn" type="submit" disabled={busy}>Buka kunci</button>
+					</div>
+				</form>
+			{/if}
+
 			{#if showReactivate}
 				<form
 					method="POST"

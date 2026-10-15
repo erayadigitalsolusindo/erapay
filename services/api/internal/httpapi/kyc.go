@@ -431,3 +431,24 @@ func (d Deps) kycRequestChanges(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
+
+// kycUnlock: admin membuka kunci data merchant terverifikasi (approved -> action_required), alasan wajib.
+func (d Deps) kycUnlock(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Note string `json:"note"`
+	}
+	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
+		return
+	}
+	p := PrincipalFrom(r.Context())
+	err := d.KYC.Unlock(r.Context(), kyc.UnlockInput{
+		MerchantID: id, ActorID: p.UserID, Note: body.Note, RequestID: middleware.GetReqID(r.Context())})
+	if !d.kycErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}

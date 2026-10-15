@@ -81,5 +81,6 @@ func (d Deps) mountKYCAdmin(r chi.Router) {
 		r.With(requirePerm("merchant:review")).Post("/merchants/{id}/kyc/request-changes", d.kycRequestChanges)
 		r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/kyc/approve", d.kycReviewAction("approve"))
 		r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/kyc/reject", d.kycReviewAction("reject"))
+		r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/kyc/unlock", d.kycUnlock)
 	})
 }
