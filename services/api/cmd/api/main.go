@@ -19,6 +19,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/kyc"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/mailer"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/observability"
@@ -35,6 +36,32 @@ import (
 type redisPinger struct{ c *redis.Client }
 
 func (r redisPinger) Ping(ctx context.Context) error { return r.c.Ping(ctx).Err() }
+
+// kycReviewerBridge menghubungkan paket KYC ke mekanisme review onboarding yang
+// sudah ada (transisi merchants.onboarding_status, verifikasi, penetapan fee).
+type kycReviewerBridge struct{ onb *onboarding.Service }
+
+func (b kycReviewerBridge) StartReview(ctx context.Context, in kyc.ReviewInput) error {
+	_, err := b.onb.StartReview(ctx, onboarding.ReviewInput{
+		MerchantID: in.MerchantID, ActorID: in.ActorID, RequestID: in.RequestID})
+	return err
+}
+func (b kycReviewerBridge) RequestChanges(ctx context.Context, in kyc.ReviewInput) error {
+	_, err := b.onb.RequestChanges(ctx, onboarding.ReviewInput{
+		MerchantID: in.MerchantID, ActorID: in.ActorID, Note: in.Note, RequestID: in.RequestID})
+	return err
+}
+func (b kycReviewerBridge) Reject(ctx context.Context, in kyc.RejectInput) error {
+	_, err := b.onb.Reject(ctx, onboarding.RejectInput{
+		MerchantID: in.MerchantID, ActorID: in.ActorID, Note: in.Note, RequestID: in.RequestID})
+	return err
+}
+func (b kycReviewerBridge) Approve(ctx context.Context, in kyc.ApproveInput) error {
+	_, err := b.onb.Approve(ctx, onboarding.ApproveInput{
+		MerchantID: in.MerchantID, ActorID: in.ActorID,
+		MDRBPS: in.MDRBPS, PlatformBPS: in.PlatformBPS, RequestID: in.RequestID})
+	return err
+}
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -138,13 +165,27 @@ func run(log *slog.Logger) error {
 		log.Warn("ERAPAY_ENCRYPTION_KEY not set: self sign-up stays off because the identity data (NIK, NPWP) cannot be sealed at rest")
 	}
 
+	onb := onboarding.NewService(pool, notifier, onboarding.Config{RegisterPerIP: cfg.RegisterPerIPHour, MDRCap: cfg.MDRCap, MDRCapUpTo: cfg.MDRCapUpTo, Box: box, Log: log})
+	var kycSvc *kyc.Service
+	if cfg.KYCStorageDir != "" && box != nil {
+		kycSvc = kyc.NewService(pool, kyc.Config{
+			Box: box, Storage: &kyc.LocalFS{Dir: cfg.KYCStorageDir}, Log: log,
+			RecheckPolicy: cfg.KYCRecheckPolicy,
+			UploadPerIP:   cfg.KYCDocUploadPerIP, SubmitPerIP: cfg.KYCSubmitPerIP,
+		})
+		kycSvc.SetReviewer(kycReviewerBridge{onb})
+	} else {
+		log.Warn("ERAPAY_KYC_STORAGE_DIR or ERAPAY_ENCRYPTION_KEY not set: /v1/kyc/* wizard is disabled")
+	}
+
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onboarding.NewService(pool, notifier, onboarding.Config{RegisterPerIP: cfg.RegisterPerIPHour, MDRCap: cfg.MDRCap, MDRCapUpTo: cfg.MDRCapUpTo, Box: box, Log: log}), Account: acct,
+			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onb, Account: acct,
 			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
+			KYC: kycSvc,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 			ARUSProvisionToken: cfg.ARUSProvisionToken,
 			PlatformSetupToken: cfg.PlatformSetupToken,

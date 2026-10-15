@@ -44,7 +44,7 @@ func (d Deps) requireProduction(next http.Handler) http.Handler {
 func (d Deps) mountKYC(r chi.Router) {
 	// Merchant (dashboard): data diri, unggah dokumen, submit.
 	r.Group(func(r chi.Router) {
-		r.Use(requireTenant)
+		r.Use(d.requireAuth, requireTenant)
 		r.Get("/kyc/profile", d.kycProfile)
 		r.Get("/kyc/profile/edit", d.kycProfileForEdit)
 		r.Get("/kyc/regions", d.kycRegions)
@@ -59,7 +59,7 @@ func (d Deps) mountKYC(r chi.Router) {
 	})
 	// Platform (reviewer): tinjauan + keputusan. Sesi merchant ditolak requirePlatform.
 	r.Route("/admin", func(r chi.Router) {
-		r.Use(requirePlatform)
+		r.Use(d.requireAuth, requirePlatform)
 		r.With(requirePerm("merchant:review")).Get("/merchants/{id}/kyc", d.adminKycProfile)
 		r.With(requirePerm("merchant:review")).Post("/merchants/{id}/kyc/start-review", d.kycReviewAction("start-review"))
 		r.With(requirePerm("merchant:review")).Post("/merchants/{id}/kyc/request-changes", d.kycRequestChanges)

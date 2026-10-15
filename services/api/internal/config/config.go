@@ -56,6 +56,13 @@ type Config struct {
 	MDRCapUpTo         int64  // ERAPAY_MDR_CAP_UPTO, minor units
 	ARUSProvisionToken string // ERAPAY_ARUS_PROVISION_TOKEN: server-to-server tenant provisioning secret
 	PlatformSetupToken string // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars): bootstrap first DEWA at /platform/setup
+
+	// KYC wizard (data diri + dokumen) — ERAPAY_KYC_STORAGE_DIR wajib untuk mengaktifkan
+	// seluruh route /v1/kyc/* (draft & edit). Tanpa penyimpanan, wizard mati total.
+	KYCStorageDir  string // ERAPAY_KYC_STORAGE_DIR: direktori lokal (LocalFS) untuk dokumen & bukti
+	KYCRecheckPolicy string // ERAPAY_KYC_RECHECK_POLICY: open (default) | closed — akses produksi saat re-check
+	KYCDocUploadPerIP int // ERAPAY_KYC_UPLOAD_PER_IP per jam (default 60)
+	KYCSubmitPerIP    int // ERAPAY_KYC_SUBMIT_PER_IP per jam (default 10)
 }
 
 func Load() (Config, error) {
@@ -184,6 +191,29 @@ func Load() (Config, error) {
 			return c, errors.New("ERAPAY_TRUSTED_PROXIES: invalid CIDR " + s)
 		}
 		c.TrustedProxies = append(c.TrustedProxies, p)
+	}
+	c.KYCStorageDir = strings.TrimSpace(os.Getenv("ERAPAY_KYC_STORAGE_DIR"))
+	c.KYCRecheckPolicy = strings.ToLower(strings.TrimSpace(os.Getenv("ERAPAY_KYC_RECHECK_POLICY")))
+	switch c.KYCRecheckPolicy {
+	case "", "open":
+		c.KYCRecheckPolicy = "open"
+	case "closed":
+	default:
+		return c, errors.New("ERAPAY_KYC_RECHECK_POLICY must be open or closed")
+	}
+	if v := os.Getenv("ERAPAY_KYC_UPLOAD_PER_IP"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return c, errors.New("ERAPAY_KYC_UPLOAD_PER_IP must be a positive integer")
+		}
+		c.KYCDocUploadPerIP = n
+	}
+	if v := os.Getenv("ERAPAY_KYC_SUBMIT_PER_IP"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return c, errors.New("ERAPAY_KYC_SUBMIT_PER_IP must be a positive integer")
+		}
+		c.KYCSubmitPerIP = n
 	}
 	return c, nil
 }

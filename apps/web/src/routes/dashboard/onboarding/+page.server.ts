@@ -1,39 +1,34 @@
 import { fail } from '@sveltejs/kit';
 import { requestEmail } from '../../../lib/server/auth';
-import { call, guard, read, str } from '../../../lib/server/gw';
+import { guard } from '../../../lib/server/gw';
+import {
+	loadProfile,
+	saveSection,
+	submitKyc,
+	uploadDocument,
+	setBrandLogo,
+	addEvidence,
+	deleteEvidence,
+	searchRegions,
+	type Profile
+} from '../../../lib/server/kyc';
 import type { Actions, PageServerLoad } from './$types';
-
-type Profile = {
-	id: string;
-	legal_name: string;
-	display_name: string;
-	account_type?: 'individual' | 'business' | null;
-	onboarding_status: string;
-	review_note: string | null;
-};
-
-// Data diri dari GET /v1/merchant/identity: NIK/NPWP ter-masking; field lainnya apa adanya.
-type Identity = {
-	id_masked?: string;
-	place_of_birth?: string;
-	date_of_birth?: string;
-	gender?: string;
-	address?: string;
-	npwp_masked?: string;
-	business_npwp_masked?: string;
-	business_nib?: string;
-	complete: boolean;
-};
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 	const token = guard(locals, cookies, 'merchant:write', 'merchant');
 	return {
-		profile: await read<Profile>(fetch, token, '/v1/merchant/profile'),
+		profile: await loadProfile(fetch, token),
 		email: locals.user!.email,
-		emailVerified: locals.user!.emailVerified,
-		identity: await read<Identity>(fetch, token, '/v1/merchant/identity')
+		emailVerified: locals.user!.emailVerified
 	};
 };
+
+// Terjemahkan hasil panggilan Go menjadi respons action: {ok:true, profile} atau fail().
+// Semua aturan (validasi, izin, batas) tetap di Go; di sini hanya meneruskan sesi.
+function done(r: { ok: boolean; message?: string; fields?: Record<string, string>; value?: Profile }, status = 400) {
+	if (r.ok) return { ok: true, profile: r.value ?? null };
+	return fail(status, { message: r.message ?? 'Gagal.', fields: r.fields });
+}
 
 export const actions: Actions = {
 	// Alamat diambil dari sesi, bukan dari form: tombol ini hanya untuk akun yang sedang login.
@@ -42,32 +37,80 @@ export const actions: Actions = {
 		const r = await requestEmail(fetch, getClientAddress(), 'resend-verification', locals.user!.email);
 		return r.ok ? { resent: true } : fail(r.code === 'rate_limited' ? 429 : 503, { message: r.code === 'rate_limited' ? 'Terlalu banyak permintaan. Coba lagi nanti.' : 'Layanan sedang tidak tersedia.' });
 	},
-	resubmit: async ({ request, locals, cookies, fetch }) => {
+	// Simpan satu bagian wizard KYC (company|representative|brand). Body JSON dari komponen.
+	kycSave: async ({ locals, cookies, fetch, request }) => {
 		const token = guard(locals, cookies, 'merchant:write', 'merchant');
-		const f = await request.formData();
-		const body: Record<string, string> = {};
-		if (str(f, 'legal_name')) body.legal_name = str(f, 'legal_name');
-		if (str(f, 'contact_phone')) body.contact_phone = str(f, 'contact_phone');
-		const r = await call(fetch, token, 'POST', '/v1/merchant/resubmit', body);
-		return r.ok ? { submitted: true } : fail(r.status === 409 ? 409 : 400, { message: r.message });
+		const body = await request.json().catch(() => null);
+		if (!body || typeof body.section !== 'string') return fail(400, { message: 'Bagian tidak valid.' });
+		const r = await saveSection(fetch, token, body.section, body.payload ?? {});
+		return done(r);
 	},
-	// Lengkapi/perbaiki data diri selama proses verifikasi. Aturan (wajib/tidak, format) ada di Go.
-	identity: async ({ request, locals, cookies, fetch }) => {
+	// Kirim seluruh isian untuk verifikasi (DRAFT/REJECTED/NEEDS_REVISION → SUBMITTED).
+	kycSubmit: async ({ locals, cookies, fetch }) => {
+		const token = guard(locals, cookies, 'merchant:write', 'merchant');
+		const r = await submitKyc(fetch, token);
+		return done(r);
+	},
+	// Unggah dokumen wajib (multipart: file, number, kbli, confirm).
+	kycUpload: async ({ locals, cookies, fetch, request }) => {
 		const token = guard(locals, cookies, 'merchant:write', 'merchant');
 		const f = await request.formData();
-		const s = (k: string) => String(f.get(k) ?? '').trim();
-		const identity: Record<string, string> = {
-			id_number: s('nik'),
-			place_of_birth: s('pob'),
-			date_of_birth: s('dob'),
-			gender: s('gender'),
-			address: s('address')
-		};
-		if (s('npwp')) identity.npwp = s('npwp');
-		if (s('biz_npwp')) identity.business_npwp = s('biz_npwp');
-		if (s('nib')) identity.business_nib = s('nib');
-		const r = await call<{ complete: boolean }>(fetch, token, 'POST', '/v1/merchant/identity', { identity });
-		if (r.ok) return { idSaved: true, identityComplete: r.value.complete };
-		return fail(r.status === 409 ? 409 : 400, { message: r.message });
+		const file = f.get('file');
+		if (!(file instanceof File)) return fail(400, { message: 'Berkas wajib diisi.' });
+		const docType = String(f.get('doc_type') ?? '');
+		const extra: { number?: string; kbli?: string; confirm?: boolean } = {};
+		const number = String(f.get('number') ?? '');
+		const kbli = String(f.get('kbli') ?? '');
+		if (number) extra.number = number;
+		if (kbli) extra.kbli = kbli;
+		if (f.get('confirm') === 'true') extra.confirm = true;
+		const r = await uploadDocument(fetch, token, docType, fileToFileLike(file), extra);
+		const profile = await loadProfile(fetch, token);
+		return r.ok
+			? { ok: true, profile }
+			: fail(r.status === 409 ? 409 : 400, { message: r.message, fields: r.fields });
+	},
+	// Ganti logo merek (multipart: file).
+	kycLogo: async ({ locals, cookies, fetch, request }) => {
+		const token = guard(locals, cookies, 'merchant:write', 'merchant');
+		const f = await request.formData();
+		const file = f.get('file');
+		if (!(file instanceof File)) return fail(400, { message: 'Berkas wajib diisi.' });
+		const r = await setBrandLogo(fetch, token, fileToFileLike(file));
+		const profile = await loadProfile(fetch, token);
+		return r.ok ? { ok: true, profile } : fail(400, { message: r.message });
+	},
+	// Tambah bukti bisnis (multipart: file).
+	kycEvidence: async ({ locals, cookies, fetch, request }) => {
+		const token = guard(locals, cookies, 'merchant:write', 'merchant');
+		const f = await request.formData();
+		const file = f.get('file');
+		if (!(file instanceof File)) return fail(400, { message: 'Berkas wajib diisi.' });
+		const r = await addEvidence(fetch, token, fileToFileLike(file));
+		const profile = await loadProfile(fetch, token);
+		return r.ok ? { ok: true, profile } : fail(400, { message: r.message });
+	},
+	// Hapus bukti bisnis.
+	kycDeleteEvidence: async ({ locals, cookies, fetch, request }) => {
+		const token = guard(locals, cookies, 'merchant:write', 'merchant');
+		const body = await request.json().catch(() => null);
+		if (!body || typeof body.id !== 'string') return fail(400, { message: 'ID tidak valid.' });
+		const r = await deleteEvidence(fetch, token, body.id);
+		const profile = await loadProfile(fetch, token);
+		return r.ok ? { ok: true, profile } : fail(400, { message: r.message });
+	},
+	// Autocomplete wilayah (kode pos / kelurahan / kota) untuk form alamat.
+	kycRegions: async ({ locals, cookies, fetch, request }) => {
+		const token = guard(locals, cookies, 'merchant:write', 'merchant');
+		const body = await request.json().catch(() => null);
+		const q = typeof body?.q === 'string' ? body.q : '';
+		const regions = await searchRegions(fetch, token, q);
+		return { ok: true, regions };
 	}
 };
+
+// SvelteKit File dari formData dikonversi menjadi File (File sudah subclass Blob;
+// fungsi upload memakai parameter bertipe File/Blob).
+function fileToFileLike(file: File): File {
+	return file;
+}
