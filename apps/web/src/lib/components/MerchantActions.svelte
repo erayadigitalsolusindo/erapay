@@ -22,7 +22,7 @@
 	let busy = $state(false);
 
 	const reviewable = ['submitted', 'under_review', 'action_required'];
-	const showVerify = $derived(canApprove && !m.owner_email_verified);
+	const showVerify = $derived(canReview && !m.owner_email_verified);
 	const showStart = $derived(canReview && m.status === 'submitted');
 	const showChanges = $derived(canReview && ['submitted', 'under_review'].includes(m.status));
 	const showDecide = $derived(canApprove && reviewable.includes(m.status));

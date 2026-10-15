@@ -42,7 +42,7 @@ export const merchantActions = {
 	},
 	// Verifikasi email pemilik secara manual (email tak sampai); alasan wajib dan tercatat di audit.
 	verifyEmail: async ({ request, cookies, fetch, locals }: RequestEvent) => {
-		const token = guard(locals, cookies, 'merchant:approve', 'platform');
+		const token = guard(locals, cookies, 'merchant:review', 'platform');
 		const f = await request.formData();
 		return done(await call(fetch, token, 'POST', path(f, 'verify-email'), { note: str(f, 'note') }));
 	}
