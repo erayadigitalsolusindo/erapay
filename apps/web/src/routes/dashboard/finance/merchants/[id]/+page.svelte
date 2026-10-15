@@ -18,6 +18,15 @@
 	const isImg = (f: KycFileRef) => f.mime.startsWith('image/');
 	let zoom = $state<KycFileRef | null>(null);
 	const open = (f: KycFileRef) => (zoom = f);
+	// Pecah URL jadi domain (judul) + path (keterangan) untuk daftar tautan jualan.
+	const linkParts = (url: string) => {
+		try {
+			const u = new URL(url);
+			return { host: u.hostname.replace(/^www\./, ''), path: u.pathname === '/' ? '' : u.pathname + u.search };
+		} catch {
+			return { host: url, path: '' };
+		}
+	};
 </script>
 
 {#snippet row(label: string, value: string | number | undefined | null, always = false)}
@@ -182,9 +191,23 @@
 				<p class="text-[11px] text-amber-700">Belum ada bukti.</p>
 			{/if}
 			{#if kyc.brand.links?.length}
-				<p class="muted mb-1 mt-3 text-[11px] font-semibold">Tautan jualan</p>
-				<ul class="space-y-1 text-xs">
-					{#each kyc.brand.links as l (l.id)}<li><a href={l.url} target="_blank" rel="noopener noreferrer nofollow" class="break-all text-merah hover:underline">{l.url}</a></li>{/each}
+				<p class="muted mb-2 mt-4 text-[11px] font-semibold">Tautan jualan ({kyc.brand.links.length})</p>
+				<ul class="grid gap-2">
+					{#each kyc.brand.links as l (l.id)}
+						{@const u = linkParts(l.url)}
+						<li>
+							<a href={l.url} target="_blank" rel="noopener noreferrer nofollow" class="group flex items-center gap-3 rounded-xl border border-ink/10 bg-surface px-3 py-2.5 transition hover:border-merah/40 hover:bg-merah/5 focus-visible:ring-4 focus-visible:ring-emas/60">
+								<span class="grid size-8 shrink-0 place-items-center rounded-lg bg-merah/10 text-merah">
+									<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" /><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" /></svg>
+								</span>
+								<span class="min-w-0 flex-1">
+									<span class="block truncate text-xs font-bold">{u.host}</span>
+									<span class="muted block truncate text-[11px]">{u.path || l.url}</span>
+								</span>
+								<svg viewBox="0 0 24 24" class="size-4 shrink-0 text-ink/40 transition group-hover:text-merah" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9" /></svg>
+							</a>
+						</li>
+					{/each}
 				</ul>
 			{/if}
 		</section>

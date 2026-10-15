@@ -132,10 +132,10 @@
 					<!-- Aturan transaksi kecil (BI): transaksi sampai batas tertentu dikenai MDR flat -->
 					<div class="rounded-xl border border-ink/10 bg-ink/[0.03] p-3">
 						<label class="flex cursor-pointer items-start gap-2">
-							<input type="checkbox" name="flat_on" class="mt-0.5 accent-merah" bind:checked={flatOn} />
-							<span>
+							<input type="checkbox" name="flat_on" class="mt-0.5 shrink-0 accent-merah" bind:checked={flatOn} />
+							<span class="min-w-0 flex-1 break-words">
 								<b>Aturan transaksi kecil (BI)</b>
-								<span class="muted block">Transaksi sampai batas tertentu dikenai MDR flat (menggantikan persen/nominal di atas). Di atas batas tetap memakai tarif di atas.</span>
+								<span class="muted block leading-relaxed">Transaksi sampai batas tertentu dikenai MDR flat (menggantikan persen/nominal di atas). Di atas batas tetap memakai tarif di atas.</span>
 							</span>
 						</label>
 						{#if flatOn}

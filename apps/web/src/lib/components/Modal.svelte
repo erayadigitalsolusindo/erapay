@@ -15,7 +15,7 @@
 		role="dialog"
 		aria-modal="true"
 		aria-label={title}
-		class="card w-full {wide ? 'max-w-2xl' : 'max-w-lg'} p-5 outline-none"
+		class="card w-full min-w-0 {wide ? 'max-w-2xl' : 'max-w-lg'} break-words p-5 outline-none"
 	>
 		<div class="mb-4 flex items-start justify-between gap-3">
 			<h3 class="text-sm font-bold">{title}</h3>
