@@ -747,6 +747,52 @@ func (s *Service) Revoke(ctx context.Context, in RevokeInput) (Merchant, error) 
 	return s.Get(ctx, in.MerchantID)
 }
 
+type VerifyEmailInput struct {
+	MerchantID string
+	ActorID    string
+	Note       string // alasan/bukti verifikasi manual (wajib, masuk audit)
+	RequestID  string
+}
+
+// VerifyOwnerEmail menandai email pemilik merchant sebagai terverifikasi oleh admin (tanpa tautan email),
+// untuk kasus email tak sampai. Idempoten: yang sudah terverifikasi tidak diubah. Sesi yang berjalan
+// membaca status ini dari DB, jadi berlaku seketika.
+func (s *Service) VerifyOwnerEmail(ctx context.Context, in VerifyEmailInput) (Merchant, error) {
+	in.Note = strings.TrimSpace(in.Note)
+	if n := utf8.RuneCountInString(in.Note); n < 3 || n > 500 {
+		return Merchant{}, invalid("note must be 3-500 characters")
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Merchant{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var status string
+	if err := tx.QueryRow(ctx, `SELECT onboarding_status FROM merchants WHERE id::text = $1 FOR NO KEY UPDATE`, in.MerchantID).Scan(&status); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Merchant{}, ErrNotFound
+		}
+		return Merchant{}, err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE users SET email_verified_at = now(), updated_at = now()
+		WHERE email_verified_at IS NULL AND id IN (
+			SELECT mu.user_id FROM merchant_users mu JOIN roles r ON r.id = mu.role_id AND r.code = 'merchant_owner'
+			WHERE mu.merchant_id::text = $1)`, in.MerchantID)
+	if err != nil {
+		return Merchant{}, err
+	}
+	if tag.RowsAffected() > 0 {
+		if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant.email_verified_manually", EntityType: "merchant",
+			EntityID: in.MerchantID, RequestID: in.RequestID, Metadata: map[string]any{"note": in.Note}}); err != nil {
+			return Merchant{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Merchant{}, err
+	}
+	return s.Get(ctx, in.MerchantID)
+}
+
 // lockIn row-locks the merchant and returns ErrNotFound, or ErrState unless its status is in allowed.
 func lockIn(ctx context.Context, tx pgx.Tx, id string, allowed []string) error {
 	var status string

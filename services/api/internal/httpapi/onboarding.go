@@ -183,6 +183,28 @@ func (d Deps) adminRevokeMerchant(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, m)
 }
 
+// adminVerifyMerchantEmail: verifikasi email pemilik secara manual (alasan wajib, tercatat di audit).
+func (d Deps) adminVerifyMerchantEmail(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Note string `json:"note"`
+	}
+	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
+		return
+	}
+	m, err := d.Onboarding.VerifyOwnerEmail(r.Context(), onboarding.VerifyEmailInput{
+		MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, Note: body.Note,
+		RequestID: middleware.GetReqID(r.Context()),
+	})
+	if !d.onboardingErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
 func (d Deps) adminReviewAction(action string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)

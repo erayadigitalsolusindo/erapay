@@ -1,6 +1,5 @@
 <script lang="ts">
-	import Combobox from '../../../../lib/components/Combobox.svelte';
-	import { enhance } from '$app/forms';
+	import MerchantActions from '../../../../lib/components/MerchantActions.svelte';
 	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
 	import StateBadge from '../../../../lib/components/StateBadge.svelte';
 
@@ -9,8 +8,6 @@
 	const { t } = i18n;
 	const fmt = (iso: string) => new Date(iso).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'short' });
 	const filters = ['submitted', 'under_review', 'action_required', 'approved', 'rejected', 'suspended'] as const;
-	const pct = (bps: FormDataEntryValue | null) => (Number(bps) / 100).toString();
-	const reviewable = ['submitted', 'under_review', 'action_required'];
 </script>
 
 {#if form?.message}<p class="mb-4 text-xs font-semibold text-red-700" role="alert">{form.message}</p>{/if}
@@ -59,65 +56,7 @@
 							</td>
 							<td>
 								<div class="mb-2"><a class="text-[11px] font-bold text-merah hover:underline" href={`/dashboard/finance/merchants/${encodeURIComponent(m.id)}`}>{t('onb.detail')}</a></div>
-								{#if data.canReview && ['submitted', 'under_review'].includes(m.status)}
-									<div class="mb-3 flex flex-wrap items-center gap-2">
-										{#if m.status === 'submitted'}
-											<form method="POST" action="?/startReview" use:enhance>
-												<input type="hidden" name="id" value={m.id} />
-												<button class="btn" type="submit">{t('onb.startReview')}</button>
-											</form>
-										{/if}
-										<form method="POST" action="?/requestChanges" class="flex items-center gap-2" use:enhance>
-											<input type="hidden" name="id" value={m.id} />
-											<input class="inp w-44 py-2" name="note" placeholder={t('onb.changesNote')} minlength="3" maxlength="500" required aria-label={t('onb.changesNote')} />
-											<button class="btn" type="submit">{t('onb.requestChanges')}</button>
-										</form>
-									</div>
-								{/if}
-								{#if m.status === 'approved' && data.canApprove}
-									<form
-										method="POST"
-										action="?/revoke"
-										class="flex flex-wrap items-center gap-2"
-										use:enhance={({ cancel }) => {
-											if (!confirm(t('onb.revokeConfirm', { name: m.display_name }))) cancel();
-										}}
-									>
-										<input type="hidden" name="id" value={m.id} />
-										<Combobox id={`revoke-to-${m.id}`} name="to" class="w-44" required value="under_review" options={[
-											{ value: 'under_review', label: t('onb.revokeToReview') },
-											{ value: 'rejected', label: t('onb.revokeToRejected') }
-										]} />
-										<input class="inp w-44 py-2" name="note" placeholder={t('onb.noteRequired')} minlength="3" maxlength="500" required aria-label={t('onb.noteRequired')} />
-										<button class="btn btn-danger" type="submit">{t('onb.revokeBtn')}</button>
-									</form>
-									<p class="muted mt-1 max-w-sm text-[10px] whitespace-normal">{t('onb.revokeHint')}</p>
-								{/if}
-								{#if reviewable.includes(m.status) && data.canApprove}
-									{#if !m.owner_email_verified}<p class="mb-1 text-[10px] font-semibold text-amber-700">{t('onb.needVerify')}</p>{/if}
-									<div class="flex flex-wrap items-start gap-3">
-										<form
-											method="POST"
-											action="?/approve"
-											class="flex flex-wrap items-center gap-2"
-											use:enhance={({ formData, cancel }) => {
-												const msg = t('onb.approveConfirm', { name: m.display_name, mdr: pct(formData.get('mdr_bps')), platform: pct(formData.get('platform_bps')) });
-												if (!confirm(msg)) cancel();
-											}}
-										>
-											<input type="hidden" name="id" value={m.id} />
-											<input class="inp w-32 py-2" name="mdr_bps" type="number" min="0" max="10000" step="1" inputmode="numeric" required placeholder={t('onb.mdr')} aria-label={t('onb.mdr')} />
-											<input class="inp w-44 py-2" name="platform_bps" type="number" min="0" max="10000" step="1" inputmode="numeric" required placeholder={t('onb.platform')} aria-label={t('onb.platform')} />
-											<button class="btn btn-red" type="submit">{t('onb.approveBtn')}</button>
-										</form>
-										<form method="POST" action="?/reject" class="flex items-center gap-2" use:enhance>
-											<input type="hidden" name="id" value={m.id} />
-											<input class="inp w-44 py-2" name="note" placeholder={t('onb.noteRequired')} minlength="3" maxlength="500" required aria-label={t('onb.noteRequired')} />
-											<button class="btn btn-danger" type="submit">{t('fin.reject')}</button>
-										</form>
-									</div>
-									<p class="muted mt-1 max-w-sm text-[10px] whitespace-normal">{t('onb.bpsHint')}</p>
-								{/if}
+								<MerchantActions {m} canReview={data.canReview} canApprove={data.canApprove} />
 							</td>
 						</tr>
 					{/each}

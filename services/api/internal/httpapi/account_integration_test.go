@@ -447,3 +447,36 @@ func TestRevokeApprovalHTTP(t *testing.T) {
 		t.Fatalf("revoke -> rejected: %d %s", r.StatusCode, status())
 	}
 }
+
+// Admin (merchant:approve) bisa memverifikasi email pemilik secara manual; alasan wajib, tercatat, idempoten.
+func TestVerifyEmailManuallyHTTP(t *testing.T) {
+	w := setup(t)
+	mid := register(t, w, "manual@toko.test")
+	fin := w.client(t, "finance@erapay.test")
+	root := w.client(t, "root@erapay.test")
+	act := func(c *http.Client, body string) *http.Response {
+		return w.do(t, c, "POST", "/v1/admin/merchants/"+mid+"/verify-email", body, nil)
+	}
+	verified := func() bool {
+		var ok bool
+		_ = w.db.QueryRow(t.Context(), `SELECT COALESCE(bool_or(u.email_verified_at IS NOT NULL), false) FROM merchant_users mu
+			JOIN users u ON u.id = mu.user_id WHERE mu.merchant_id = $1`, mid).Scan(&ok)
+		return ok
+	}
+	if r := act(fin, `{"note":"konfirmasi via telepon"}`); r.StatusCode != 403 {
+		t.Fatalf("finance: %d", r.StatusCode)
+	}
+	if r := act(root, `{"note":" "}`); r.StatusCode != 400 || verified() {
+		t.Fatalf("tanpa alasan: %d", r.StatusCode)
+	}
+	for i := 0; i < 2; i++ {
+		if r := act(root, `{"note":"konfirmasi via telepon"}`); r.StatusCode != 200 || !verified() {
+			t.Fatalf("verifikasi #%d: %d", i, r.StatusCode)
+		}
+	}
+	var n int
+	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM audit_logs WHERE action='merchant.email_verified_manually' AND entity_id=$1`, mid).Scan(&n)
+	if n != 1 {
+		t.Fatalf("audit = %d, want 1 (idempoten)", n)
+	}
+}

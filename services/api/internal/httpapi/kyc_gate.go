@@ -73,6 +73,10 @@ func (d Deps) mountKYCAdmin(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(requirePlatform)
 		r.With(requirePerm("merchant:review")).Get("/merchants/{id}/kyc", d.adminKycProfile)
+		// Berkas KYC untuk reviewer (KTP, dokumen legal, bukti bisnis, logo): handler yang sama dengan sisi merchant.
+		r.With(requirePerm("merchant:review")).Get("/kyc-files/documents/{id}", d.kycDocumentFile)
+		r.With(requirePerm("merchant:review")).Get("/kyc-files/evidences/{id}", d.kycEvidenceFile)
+		r.With(requirePerm("merchant:review")).Get("/kyc-files/logo/{id}", d.adminKycLogoFile)
 		r.With(requirePerm("merchant:review")).Post("/merchants/{id}/kyc/start-review", d.kycReviewAction("start-review"))
 		r.With(requirePerm("merchant:review")).Post("/merchants/{id}/kyc/request-changes", d.kycRequestChanges)
 		r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/kyc/approve", d.kycReviewAction("approve"))
