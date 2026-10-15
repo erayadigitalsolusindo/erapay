@@ -16,7 +16,8 @@
 		locked = false,
 		busy = false,
 		ktp = null,
-		api
+		api,
+		register
 	}: {
 		data: Representative;
 		errors?: Record<string, string>;
@@ -25,21 +26,27 @@
 		busy?: boolean;
 		ktp?: { name: string; size: number } | null;
 		api: SectionApi;
+		/** Daftarkan fungsi simpan agar tombol "Selanjutnya" menyimpan dulu. */
+		register?: (fn: () => Promise<{ ok: boolean; message?: string }>) => void;
 	} = $props();
 
 	const POSITIONS = [
-		{ value: 'pemilik', label: 'Pemilik' },
-		{ value: 'direktur', label: 'Direktur' },
-		{ value: 'komisaris', label: 'Komisaris' },
-		{ value: 'pimpinan', label: 'Pimpinan' }
+		{ value: 'Pemilik', label: 'Pemilik' },
+		{ value: 'Direktur', label: 'Direktur' },
+		{ value: 'Komisaris', label: 'Komisaris' },
+		{ value: 'Manajer', label: 'Manajer' }
 	];
 	const NATIONS = [
-		{ value: 'indonesia', label: 'Indonesia' },
-		{ value: 'asing', label: 'Warga Negara Asing' }
+		{ value: 'Indonesia', label: 'Indonesia' },
+		{ value: 'WNA', label: 'Warga Negara Asing' }
 	];
 
-	let form = $state({ ...data });
+	// id_number omitempty di Go = undefined; bind:value pada TextField akan crash (halaman 500) bila undefined.
+	let form = $state({ ...data, id_number: data.id_number ?? '' });
 	let saving = $state(false);
+	let msg = $state('');
+	let fieldErr = $state<Record<string, string>>({});
+	const errs = $derived({ ...errors, ...fieldErr });
 	let ktpBusy = $state(false);
 	let docErrors = $state<Record<string, string>>({});
 
@@ -54,9 +61,15 @@
 			nationality: form.nationality
 		};
 		if (form.id_number) payload.id_number = form.id_number;
-		await api.save('representative', payload);
+		const r = await api.save('representative', payload);
+		fieldErr = r.fields ?? {};
+		msg = r.ok ? '' : (r.message ?? 'Gagal menyimpan.');
 		saving = false;
+		return r;
 	}
+	$effect(() => {
+		register?.(() => (locked ? Promise.resolve({ ok: true }) : save()));
+	});
 
 	async function uploadKtp(file: File) {
 		ktpBusy = true;
@@ -72,18 +85,18 @@
 		<p class="text-[13px] text-[#7A8894]">Bagian ini terkunci saat verifikasi berjalan.</p>
 	{/if}
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-		<TextField id="kyc-rep-name" label="Nama lengkap (sesuai KTP)" bind:value={form.name} error={errors.name} />
-		<SelectField id="kyc-rep-position" label="Jabatan" options={POSITIONS} bind:value={form.position} error={errors.position} />
-		<PhoneField id="kyc-rep-phone" label="Nomor telepon pribadi" bind:value={form.phone} error={errors.phone} />
-		<TextField id="kyc-rep-email" label="Email pribadi" type="email" bind:value={form.email} error={errors.email} />
-		<SelectField id="kyc-rep-nation" label="Kewarganegaraan" options={NATIONS} bind:value={form.nationality} error={errors.nationality} />
+		<TextField id="kyc-rep-name" label="Nama lengkap (sesuai KTP)" bind:value={form.name} error={errs.name} />
+		<SelectField id="kyc-rep-position" label="Jabatan" options={POSITIONS} bind:value={form.position} error={errs.position} />
+		<PhoneField id="kyc-rep-phone" label="Nomor telepon pribadi" bind:value={form.phone} error={errs.phone} />
+		<TextField id="kyc-rep-email" label="Email pribadi" type="email" bind:value={form.email} error={errs.email} />
+		<SelectField id="kyc-rep-nation" label="Kewarganegaraan" options={NATIONS} bind:value={form.nationality} error={errs.nationality} />
 		{#if form.id_masked}
 			<TextField id="kyc-rep-nik-masked" label="NIK perwakilan" value={form.id_masked} masked hint="tersimpan — tulis ulang hanya jika berubah" />
-			<TextField id="kyc-rep-nik-new" label="NIK baru (opsional)" inputmode="numeric" bind:value={form.id_number} hint="16 digit; dibiarkan kosong = tidak berubah" error={errors.id_number} />
+			<TextField id="kyc-rep-nik-new" label="NIK baru (opsional)" inputmode="numeric" bind:value={form.id_number} hint="16 digit; dibiarkan kosong = tidak berubah" error={errs.id_number} />
 		{:else}
 			<div class="sm:col-span-2">
 				<TextField id="kyc-rep-nik" label="NIK perwakilan" inputmode="numeric" bind:value={form.id_number}
-					hint="16 digit sesuai KTP; disegel (tidak tampil penuh setelah disimpan)" error={errors.id_number} />
+					hint="16 digit sesuai KTP; disegel (tidak tampil penuh setelah disimpan)" error={errs.id_number} />
 			</div>
 		{/if}
 		<div class="sm:col-span-2">
@@ -99,6 +112,7 @@
 			/>
 		</div>
 	</div>
+	{#if msg}<p class="text-[13px] font-medium text-[#D32F2F]" role="alert">{msg}</p>{/if}
 	<button
 		type="button"
 		disabled={locked || saving || busy}

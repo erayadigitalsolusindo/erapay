@@ -23,6 +23,18 @@
 	let sectionErr = $state<Record<string, Record<string, string>>>({});
 	let summary = $state('');
 	let idx = $derived(TABS.findIndex((t) => t.key === active));
+	let saveActive: (() => Promise<{ ok: boolean; message?: string }>) | null = null;
+	let moving = $state(false);
+	const register = (fn: () => Promise<{ ok: boolean; message?: string }>) => (saveActive = fn);
+
+	// Simpan bagian aktif lebih dulu; pindah tab hanya bila berhasil (data tidak hilang saat refresh).
+	async function next() {
+		moving = true;
+		summary = '';
+		const r = saveActive ? await saveActive() : { ok: true };
+		moving = false;
+		if (r.ok) active = TABS[idx + 1].key;
+	}
 
 	const check = $derived(profile.checklist ?? []);
 	const done = (s: string) => check.find((c) => c.section === s)?.complete ?? false;
@@ -67,7 +79,7 @@
 
 	<!-- tab bar -->
 	<div class="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-		{#each TABS as t (t.key)}
+		{#each TABS as t, i (t.key)}
 			<button
 				type="button"
 				class="relative rounded-md border px-3 py-2.5 text-left transition
@@ -84,7 +96,7 @@
 						{:else if flagged(t.key)}
 							!
 						{:else}
-							{idx + 1}
+							{i + 1}
 						{/if}
 					</span>
 					<span class="text-[13px] font-semibold {active === t.key ? 'text-[#1A2530]' : 'text-[#42505C]'}">{t.label}</span>
@@ -103,12 +115,12 @@
 	<!-- kartu putih bagian aktif -->
 	<div class="rounded-xl border border-[#E5E8ED] bg-white p-5 shadow-sm sm:p-6">
 		{#if active === 'company'}
-			<CompanySection data={profile.company} errors={sectionErr.company ?? {}} notes={profile.notes} locked={!editable} api={api} />
+			<CompanySection data={profile.company} errors={sectionErr.company ?? {}} notes={profile.notes} locked={!editable} api={api} {register} />
 		{:else if active === 'representative'}
 			<RepresentativeSection data={profile.representative} errors={sectionErr.representative ?? {}} notes={profile.notes}
-				ktp={profile.documents.ktp} locked={!editable} api={api} />
+				ktp={profile.documents.ktp} locked={!editable} api={api} {register} />
 		{:else if active === 'brand'}
-			<BrandSection data={profile.brand} errors={sectionErr.brand ?? {}} notes={profile.notes} locked={!editable} api={api} />
+			<BrandSection data={profile.brand} errors={sectionErr.brand ?? {}} notes={profile.notes} locked={!editable} api={api} {register} />
 		{:else if active === 'documents'}
 			<DocumentsSection documents={profile.documents} errors={sectionErr.documents ?? {}} notes={profile.notes}
 				locked={!editable} approved={profile.status === 'approved'} api={api} />
@@ -133,7 +145,8 @@
 				<button
 					type="button"
 					class="h-10 rounded-md bg-[#D32F2F] px-5 text-[13px] font-bold tracking-wide text-white transition hover:bg-[#B02424]"
-					onclick={() => (active = TABS[idx + 1].key)}
+					disabled={moving}
+						onclick={next}
 				>
 					Selanjutnya →
 				</button>

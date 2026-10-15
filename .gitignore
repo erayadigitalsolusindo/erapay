@@ -34,3 +34,5 @@ doku-capture.txt
 .DS_Store
 Thumbs.db
 desktop.ini
+# berkas KYC lokal
+.data/

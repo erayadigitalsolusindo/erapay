@@ -40,9 +40,13 @@ export const actions: Actions = {
 	// Simpan satu bagian wizard KYC (company|representative|brand). Body JSON dari komponen.
 	kycSave: async ({ locals, cookies, fetch, request }) => {
 		const token = guard(locals, cookies, 'merchant:write', 'merchant');
-		const body = await request.json().catch(() => null);
+		const body = await readJson(request);
 		if (!body || typeof body.section !== 'string') return fail(400, { message: 'Bagian tidak valid.' });
-		const r = await saveSection(fetch, token, body.section, body.payload ?? {});
+		// Go mengharapkan {company|representative|brand: {...}, confirm_sensitive}, bukan payload datar.
+			const r = await saveSection(fetch, token, body.section, {
+				[body.section]: body.payload ?? {},
+				...(body.confirm_sensitive ? { confirm_sensitive: true } : {})
+			});
 		return done(r);
 	},
 	// Kirim seluruh isian untuk verifikasi (DRAFT/REJECTED/NEEDS_REVISION → SUBMITTED).
@@ -93,7 +97,7 @@ export const actions: Actions = {
 	// Hapus bukti bisnis.
 	kycDeleteEvidence: async ({ locals, cookies, fetch, request }) => {
 		const token = guard(locals, cookies, 'merchant:write', 'merchant');
-		const body = await request.json().catch(() => null);
+		const body = await readJson(request);
 		if (!body || typeof body.id !== 'string') return fail(400, { message: 'ID tidak valid.' });
 		const r = await deleteEvidence(fetch, token, body.id);
 		const profile = await loadProfile(fetch, token);
@@ -102,12 +106,21 @@ export const actions: Actions = {
 	// Autocomplete wilayah (kode pos / kelurahan / kota) untuk form alamat.
 	kycRegions: async ({ locals, cookies, fetch, request }) => {
 		const token = guard(locals, cookies, 'merchant:write', 'merchant');
-		const body = await request.json().catch(() => null);
+		const body = await readJson(request);
 		const q = typeof body?.q === 'string' ? body.q : '';
 		const regions = await searchRegions(fetch, token, q);
 		return { ok: true, regions };
 	}
 };
+
+// SvelteKit menolak (415) body non-form pada action, jadi komponen mengirim JSON dalam field form "json".
+async function readJson(request: Request): Promise<any> {
+	try {
+		return JSON.parse(String((await request.formData()).get('json') ?? 'null'));
+	} catch {
+		return null;
+	}
+}
 
 // SvelteKit File dari formData dikonversi menjadi File (File sudah subclass Blob;
 // fungsi upload memakai parameter bertipe File/Blob).

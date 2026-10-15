@@ -166,6 +166,10 @@ func (d Deps) adminSetUserRole(w http.ResponseWriter, r *http.Request) {
 	}
 	p := PrincipalFrom(r.Context())
 	if err := d.Auth.SetUserRoles(r.Context(), userID, body.MerchantID, body.RoleIDs, p.UserID, middleware.GetReqID(r.Context())); err != nil {
+		if errors.Is(err, auth.ErrRoleScope) {
+			writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Role merchant tidak bisa diberikan sebagai role platform (atau sebaliknya).", false)
+			return
+		}
 		d.Log.Error("rbac.user_roles.set", "err", err)
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
 		return

@@ -17,7 +17,8 @@
 		notes = [],
 		locked = false,
 		busy = false,
-		api
+		api,
+		register
 	}: {
 		data: Brand;
 		errors?: Record<string, string>;
@@ -25,6 +26,8 @@
 		locked?: boolean;
 		busy?: boolean;
 		api: SectionApi;
+		/** Daftarkan fungsi simpan agar tombol "Selanjutnya" menyimpan dulu. */
+		register?: (fn: () => Promise<{ ok: boolean; message?: string }>) => void;
 	} = $props();
 
 	const CATEGORIES = [
@@ -36,17 +39,20 @@
 	];
 
 	let form = $state({ ...data });
-	let links: string[] = $state(data.links.map((l) => l.url));
+	let links: string[] = $state((data.links ?? []).map((l) => l.url));
 	let amount = $state(data.monthly_amount ? String(data.monthly_amount) : '');
 	let count = $state(data.monthly_count ? String(data.monthly_count) : '');
 	let saving = $state(false);
+	let msg = $state('');
+	let fieldErr = $state<Record<string, string>>({});
+	const errs = $derived({ ...errors, ...fieldErr });
 	let logoBusy = $state(false);
 	let evBusy = $state(false);
 	let uploadErrors = $state<Record<string, string>>({});
 
 	async function save() {
 		saving = true;
-		await api.save('brand', {
+		const r = await api.save('brand', {
 			name: form.name,
 			category: form.category,
 			description: form.description,
@@ -54,8 +60,14 @@
 			monthly_count: Number(count.replace(/\D/g, '')) || 0,
 			links: links.map((l) => l.trim()).filter(Boolean)
 		});
+		fieldErr = r.fields ?? {};
+		msg = r.ok ? '' : (r.message ?? 'Gagal menyimpan.');
 		saving = false;
+		return r;
 	}
+	$effect(() => {
+		register?.(() => (locked ? Promise.resolve({ ok: true }) : save()));
+	});
 
 	async function onLogo(file: File) {
 		logoBusy = true;
@@ -81,26 +93,26 @@
 	{/if}
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 		<TextField id="kyc-brand-id" label="Brand ID" value={form.brand_id} hint="dibuat sistem" />
-		<TextField id="kyc-brand-name" label="Nama merek" bind:value={form.name} error={errors.name} />
-		<SelectField id="kyc-brand-cat" label="Kategori" options={CATEGORIES} bind:value={form.category} error={errors.category} />
+		<TextField id="kyc-brand-name" label="Nama merek" bind:value={form.name} error={errs.name} />
+		<SelectField id="kyc-brand-cat" label="Kategori" options={CATEGORIES} bind:value={form.category} error={errs.category} />
 		<div class="grid grid-cols-2 gap-4 sm:col-span-2">
 			<TextField
 				id="kyc-brand-amount"
 				label="Perkiraan nilai transaksi / bulan (Rp)"
 				inputmode="numeric"
 				bind:value={amount}
-				error={errors.monthly_amount}
+				error={errs.monthly_amount}
 			/>
 			<TextField
 				id="kyc-brand-count"
 				label="Perkiraan jumlah transaksi / bulan"
 				inputmode="numeric"
 				bind:value={count}
-				error={errors.monthly_count}
+				error={errs.monthly_count}
 			/>
 		</div>
 		<div class="sm:col-span-2">
-			<TextareaField id="kyc-brand-desc" label="Deskripsi singkat usaha" bind:value={form.description} error={errors.description} />
+			<TextareaField id="kyc-brand-desc" label="Deskripsi singkat usaha" bind:value={form.description} error={errs.description} />
 		</div>
 		<div>
 			<FileCard
@@ -116,12 +128,13 @@
 			/>
 		</div>
 		<div class="sm:col-span-2">
-			<ImageGallery evidences={form.evidences} busy={evBusy} {locked} error={uploadErrors.evidence} onadd={onAddEvidence} ondelete={onDeleteEvidence} />
+			<ImageGallery evidences={form.evidences ?? []} busy={evBusy} {locked} error={uploadErrors.evidence} onadd={onAddEvidence} ondelete={onDeleteEvidence} />
 		</div>
 		<div class="sm:col-span-2">
-			<LinkList {links} {locked} error={errors.links} onchange={(v) => (links = v)} />
+			<LinkList {links} {locked} error={errs.links} onchange={(v) => (links = v)} />
 		</div>
 	</div>
+	{#if msg}<p class="text-[13px] font-medium text-[#D32F2F]" role="alert">{msg}</p>{/if}
 	<button
 		type="button"
 		disabled={locked || saving || busy}

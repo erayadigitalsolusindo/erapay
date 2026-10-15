@@ -52,6 +52,27 @@ type MenuAccess struct {
 // karena halamannya membaca data lintas-tenant atau data satu tenant.
 var ErrMenuScope = errors.New("menu scope does not match role scope")
 
+// ErrRoleScope: role merchant tidak boleh diberikan sebagai role platform (dan sebaliknya).
+// Satu baris user_roles saja sudah membuat sesi bersifat platform (tanpa merchant), sehingga menu
+// merchant tampil tetapi halamannya mengalihkan balik ke /dashboard.
+var ErrRoleScope = errors.New("role scope does not match assignment scope")
+
+func (s *Service) checkRoleScopes(ctx context.Context, roleIDs []string, want string) error {
+	for _, rid := range roleIDs {
+		if strings.TrimSpace(rid) == "" {
+			continue
+		}
+		var scope string
+		if err := s.db.QueryRow(ctx, `SELECT scope FROM roles WHERE id::text = $1`, rid).Scan(&scope); err != nil {
+			return err
+		}
+		if scope != want {
+			return ErrRoleScope
+		}
+	}
+	return nil
+}
+
 func (s *Service) ListRoles(ctx context.Context) ([]RBACRole, error) {
 	rows, err := s.db.Query(ctx, `SELECT id::text, code, scope FROM roles ORDER BY scope, code`)
 	if err != nil {
@@ -203,6 +224,13 @@ func (s *Service) RevokeRolePermission(ctx context.Context, roleID, perm, actor,
 }
 
 func (s *Service) SetUserRoles(ctx context.Context, userID, merchantID string, roleIDs []string, actor, requestID string) error {
+	want := "merchant"
+	if merchantID == "" {
+		want = "platform"
+	}
+	if err := s.checkRoleScopes(ctx, roleIDs, want); err != nil {
+		return err
+	}
 	if merchantID == "" {
 		tx, err := s.db.Begin(ctx)
 		if err != nil {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import { enhance } from '$app/forms';
+	import { enhance, deserialize } from '$app/forms';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import KycWizard from '../../../lib/components/kyc/KycWizard.svelte';
 	import StatusAkun from '../../../lib/components/kyc/StatusAkun.svelte';
@@ -16,33 +16,36 @@
 	const editable = $derived(!!profile?.editable && !profile?.locked);
 
 	// —— Action helper: panggil server action (+page.server.ts) lalu muat ulang data page ——
-	async function postAction(name: string, body?: unknown, isMultipart = false) {
+	async function postAction(name: string, body?: unknown, isMultipart = false): Promise<any> {
 		let res: Response;
+		// x-sveltekit-action + accept JSON: tanpa ini SvelteKit membalas HTML (bukan JSON) sehingga
+		// hasil aksi terbaca salah ("sukses" padahal tidak tersimpan) atau memicu 500 saat render.
+		const headers: Record<string, string> = { accept: 'application/json', 'x-sveltekit-action': 'true' };
 		try {
 			if (isMultipart && body instanceof FormData) {
-				res = await fetch(`./?/${name}`, { method: 'POST', body });
+				res = await fetch(`?/${name}`, { method: 'POST', headers, body });
 			} else {
-				res = await fetch(`./?/${name}`, {
+				res = await fetch(`?/${name}`, {
 					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: body ? JSON.stringify(body) : '{}'
+					headers,
+					body: new URLSearchParams({ json: JSON.stringify(body ?? {}) })
 				});
 			}
 		} catch {
 			return { ok: false, message: 'Layanan tidak dapat dihubungi.' };
 		}
-		let json: any = null;
+		let result: any;
 		try {
-			json = await res.json();
+			result = deserialize(await res.text());
 		} catch {
-			json = null;
+			return { ok: false, message: 'Respons server tidak valid.', status: res.status };
 		}
-		if (res.status >= 400 || json?.type === 'failure') {
-			const d = json?.data ?? {};
-			return { ok: false, message: d.message ?? 'Permintaan gagal.', status: res.status, fields: d.fields };
+		if (result.type === 'failure') {
+			const d: any = result.data ?? {};
+			return { ok: false, message: d.message ?? 'Permintaan gagal.', status: result.status, fields: d.fields };
 		}
-		const d = json?.data ?? json ?? {};
-		return { ok: true, ...d };
+		if (result.type !== 'success') return { ok: false, message: 'Terjadi kesalahan server.', status: res.status };
+		return { ok: true, ...((result.data as object) ?? {}) };
 	}
 
 	// Membangun SectionApi yang memakai action server (token & cookie sesi tidak pernah
