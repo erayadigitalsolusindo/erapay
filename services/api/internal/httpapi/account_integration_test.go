@@ -567,3 +567,34 @@ func TestApproveFixedFeesHTTP(t *testing.T) {
 		t.Fatalf("plan = mdr %d bps + %d, platform %d bps + %d", mdrBPS, mdrFixed, platBPS, platFixed)
 	}
 }
+
+// Aturan transaksi kecil di persetujuan: nilai batas dan flat harus berpasangan, dan tersimpan di plan.
+func TestApproveFlatSmallTransactionHTTP(t *testing.T) {
+	w := setup(t)
+	mid := register(t, w, "flat@toko.test")
+	verifyOwner(t, w, "flat@toko.test")
+	root := w.client(t, "root@erapay.test")
+	approve := func(body string) *http.Response {
+		return w.do(t, root, "POST", "/v1/admin/merchants/"+mid+"/approve", body, nil)
+	}
+	for name, body := range map[string]string{
+		"tanpa pasangan":     `{"mdr_bps":70,"platform_bps":100,"mdr_flat_up_to":100000}`,
+		"flat > batas":       `{"mdr_bps":70,"platform_bps":100,"mdr_flat_up_to":300,"mdr_flat_fee":500}`,
+		"flat tanpa batas":   `{"mdr_bps":70,"platform_bps":100,"mdr_flat_up_to":0,"mdr_flat_fee":500}`,
+		"flat kelewat besar": `{"mdr_bps":70,"platform_bps":100,"mdr_flat_up_to":100000,"mdr_flat_fee":2000000}`,
+	} {
+		if r := approve(body); r.StatusCode != 400 {
+			t.Fatalf("%s: %d, want 400", name, r.StatusCode)
+		}
+	}
+	if r := approve(`{"mdr_bps":70,"platform_bps":100,"mdr_flat_up_to":100000,"mdr_flat_fee":500}`); r.StatusCode != 200 {
+		t.Fatalf("approve: %d", r.StatusCode)
+	}
+	var upTo, fee int64
+	if err := w.db.QueryRow(t.Context(), `SELECT mdr_flat_up_to, mdr_flat_fee FROM pricing_plans WHERE code = 'qris-'||$1::text`, mid).Scan(&upTo, &fee); err != nil {
+		t.Fatal(err)
+	}
+	if upTo != 100000 || fee != 500 {
+		t.Fatalf("plan flat = %d / %d", upTo, fee)
+	}
+}

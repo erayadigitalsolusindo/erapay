@@ -23,6 +23,7 @@
 	let open = $state(false);
 	let err = $state('');
 	let busy = $state(false);
+	let flatOn = $state(false);
 
 	const reviewable = ['submitted', 'under_review', 'action_required'];
 	const showVerify = $derived(canReview && !m.owner_email_verified);
@@ -38,6 +39,8 @@
 		const v = String(fd.get(`${key}_value`) ?? '').trim();
 		return fd.get(`${key}_unit`) === 'rupiah' ? `Rp ${v}` : `${v}%`;
 	};
+	const flatText = (fd: FormData) =>
+		fd.get('flat_on') === 'on' ? ` Transaksi sampai Rp ${String(fd.get('flat_up_to') ?? '').trim()} dikenai MDR flat Rp ${String(fd.get('flat_fee') ?? '').trim()}.` : '';
 	// Aksi tanpa dialog konfirmasi (mulai review, minta perbaikan, tolak sudah punya alasan wajib).
 	const plain =
 		(title: string, successMessage: string): SubmitFunction =>
@@ -117,7 +120,7 @@
 				<form
 					method="POST"
 					action="?/approve"
-					use:enhance={withConfirm((fd) => ({ variant: 'info', title: t('onb.approveBtn'), message: t('onb.approveConfirm', { name: m.display_name, mdr: feeText(fd, 'mdr'), platform: feeText(fd, 'platform') }), confirmText: 'Ya, setujui', successMessage: 'Merchant disetujui. Tarif sudah ditetapkan.' }), busyWrap)}
+					use:enhance={withConfirm((fd) => ({ variant: 'info', title: t('onb.approveBtn'), message: t('onb.approveConfirm', { name: m.display_name, mdr: feeText(fd, 'mdr'), platform: feeText(fd, 'platform') }) + flatText(fd), confirmText: 'Ya, setujui', successMessage: 'Merchant disetujui. Tarif sudah ditetapkan.' }), busyWrap)}
 					class="space-y-2"
 				>
 					<h4 class="font-bold">{t('onb.approveBtn')}</h4>
@@ -125,6 +128,26 @@
 					<div class="flex flex-wrap gap-2">
 						<FeeInput name="mdr" label="MDR (biaya gateway)" />
 						<FeeInput name="platform" label="Fee platform EraPay" />
+					</div>
+					<!-- Aturan transaksi kecil (BI): transaksi sampai batas tertentu dikenai MDR flat -->
+					<div class="rounded-xl border border-ink/10 bg-ink/[0.03] p-3">
+						<label class="flex cursor-pointer items-start gap-2">
+							<input type="checkbox" name="flat_on" class="mt-0.5 accent-merah" bind:checked={flatOn} />
+							<span>
+								<b>Aturan transaksi kecil (BI)</b>
+								<span class="muted block">Transaksi sampai batas tertentu dikenai MDR flat (menggantikan persen/nominal di atas). Di atas batas tetap memakai tarif di atas.</span>
+							</span>
+						</label>
+						{#if flatOn}
+							<div class="mt-2 flex flex-wrap items-end gap-2">
+								<label class="min-w-0 flex-1 basis-40"><span class="mb-1 block text-[11px] font-bold">Transaksi sampai (Rp)</span>
+									<input class="inp w-full py-2" name="flat_up_to" inputmode="numeric" autocomplete="off" required placeholder="mis. 100.000" />
+								</label>
+								<label class="min-w-0 flex-1 basis-40"><span class="mb-1 block text-[11px] font-bold">Dikenai MDR flat (Rp)</span>
+									<input class="inp w-full py-2" name="flat_fee" inputmode="numeric" autocomplete="off" required placeholder="mis. 500" />
+								</label>
+							</div>
+						{/if}
 					</div>
 					<div class="flex justify-end">
 						<button class="btn btn-red" type="submit" disabled={busy}>{t('onb.approveBtn')}</button>

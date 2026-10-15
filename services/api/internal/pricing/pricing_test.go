@@ -135,3 +135,46 @@ func TestSumInvariantProperty(t *testing.T) {
 		}
 	}
 }
+
+// Aturan transaksi kecil (BI): sampai batas (inklusif) MDR flat, di atasnya kembali ke rumus biasa.
+func TestMDRFlatSmallTransaction(t *testing.T) {
+	plan := Plan{Version: 1,
+		MDR:      Rate{BPS: 70, FlatUpTo: 100_000, FlatFee: 500, Rounding: RoundHalfUp},
+		Platform: Rate{BPS: 100, Rounding: RoundHalfUp}}
+	cases := []struct{ gross, wantMDR int64 }{
+		{1_000, 500},       // jauh di bawah batas
+		{99_999, 500},      // tepat di bawah batas
+		{100_000, 500},     // batas bersifat inklusif
+		{100_001, 700},     // di atas batas: 0,7% (half_up) = 700,007 -> 700
+		{1_000_000, 7_000}, // rumus biasa
+	}
+	for _, c := range cases {
+		b, err := Compute(c.gross, "IDR", plan)
+		if err != nil {
+			t.Fatalf("gross %d: %v", c.gross, err)
+		}
+		if b.MDRFee != c.wantMDR {
+			t.Errorf("gross %d: mdr = %d, want %d", c.gross, b.MDRFee, c.wantMDR)
+		}
+		if b.Gross != b.MDRFee+b.PlatformFee+b.MerchantNet {
+			t.Errorf("gross %d: invarian jumlah rusak: %+v", c.gross, b)
+		}
+	}
+	// Flat 0 = gratis di bawah batas (perilaku lama sebelum aturan baru).
+	free := plan
+	free.MDR.FlatFee = 0
+	if b, _ := Compute(50_000, "IDR", free); b.MDRFee != 0 {
+		t.Errorf("flat 0: mdr = %d, want 0", b.MDRFee)
+	}
+	// Biaya flat lebih besar dari nominal transaksi ditolak (net tidak boleh negatif).
+	tiny := plan
+	tiny.Platform = Rate{Rounding: RoundHalfUp}
+	if _, err := Compute(300, "IDR", tiny); err == nil {
+		t.Error("flat 500 pada transaksi 300 harus ditolak")
+	}
+	bad := plan
+	bad.MDR.FlatFee = -1
+	if _, err := Compute(1_000, "IDR", bad); err == nil {
+		t.Error("flat negatif harus ditolak")
+	}
+}

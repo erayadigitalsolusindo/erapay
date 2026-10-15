@@ -153,13 +153,14 @@ func (s *Service) CreateTx(ctx context.Context, tx pgx.Tx, in CreateInput) (Paym
 	err = tx.QueryRow(ctx, `
 		SELECT p.id::text, p.version, p.mdr_bps, p.mdr_fixed, p.mdr_rounding,
 		       p.platform_bps, p.platform_fixed, p.platform_rounding,
-		       p.mdr_cap, p.mdr_cap_up_to
+		       p.mdr_cap, p.mdr_cap_up_to, p.mdr_flat_up_to, p.mdr_flat_fee
 		FROM merchant_pricing_assignments a JOIN pricing_plans p ON p.id = a.plan_id
 		WHERE a.merchant_id = $1 AND p.gateway = $2 AND p.payment_method = $3 AND a.effective_from <= $4
 		ORDER BY a.effective_from DESC LIMIT 1`,
 		in.MerchantID, in.Gateway, in.PaymentMethod, s.now()).
 		Scan(&planID, &plan.Version, &plan.MDR.BPS, &plan.MDR.Fixed, &mdrR,
-			&plan.Platform.BPS, &plan.Platform.Fixed, &platR, &plan.MDR.Cap, &plan.MDR.CapUpTo)
+			&plan.Platform.BPS, &plan.Platform.Fixed, &platR, &plan.MDR.Cap, &plan.MDR.CapUpTo,
+			&plan.MDR.FlatUpTo, &plan.MDR.FlatFee)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Payment{}, ErrNoPricing
 	}

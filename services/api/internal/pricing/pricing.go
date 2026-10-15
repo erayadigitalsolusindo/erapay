@@ -21,10 +21,14 @@ const (
 // Rate is bps of gross plus an optional fixed amount. Both come from the
 // versioned plan, never from constants (PRD pricing.md).
 type Rate struct {
-	BPS      int64
-	Fixed    int64
-	Cap      int64 // 0 = no cap; otherwise the fee never exceeds this total
-	CapUpTo  int64 // 0 = the cap applies at any amount; >0 = the cap applies only when gross <= CapUpTo
+	BPS     int64
+	Fixed   int64
+	Cap     int64 // 0 = no cap; otherwise the fee never exceeds this total
+	CapUpTo int64 // 0 = the cap applies at any amount; >0 = the cap applies only when gross <= CapUpTo
+	// Small-transaction rule (BI): when FlatUpTo > 0 and gross <= FlatUpTo the fee is exactly FlatFee,
+	// replacing the percentage, fixed part and cap. FlatUpTo == 0 disables it; FlatFee may be 0 (free).
+	FlatUpTo int64
+	FlatFee  int64
 	Rounding Rounding
 }
 
@@ -89,6 +93,12 @@ func fee(gross int64, r Rate) (int64, error) {
 	}
 	if r.CapUpTo > 0 && r.Cap == 0 {
 		return 0, fmt.Errorf("%w: cap_up_to %d without a cap", ErrInvalidRate, r.CapUpTo)
+	}
+	if r.FlatUpTo < 0 || r.FlatUpTo > MaxGross || r.FlatFee < 0 || r.FlatFee > MaxGross {
+		return 0, ErrInvalidRate
+	}
+	if r.FlatUpTo > 0 && gross <= r.FlatUpTo {
+		return r.FlatFee, nil
 	}
 	num := gross * r.BPS // safe: gross <= 1e13, bps <= 1e4
 	var q int64

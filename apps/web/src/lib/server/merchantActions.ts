@@ -5,6 +5,12 @@ import type { RequestEvent } from '@sveltejs/kit';
 
 const MAX_FIXED = 1_000_000; // sama dengan onboarding.MaxFixedFee di Go
 
+/** Rupiah bulat dari isian ("100.000", "100000"); null bila bukan angka. */
+function parseRupiah(raw: string): number | null {
+	const digits = raw.trim().replace(/[.\s]/g, '').replace(/,\d+$/, '');
+	return /^\d{1,12}$/.test(digits) ? Number(digits) : null;
+}
+
 function parseFee(f: FormData, key: string, label: string): { bps: number; fixed?: undefined } | { fixed: number; bps?: undefined } | { error: string } {
 	const raw = str(f, `${key}_value`).trim();
 	const unit = str(f, `${key}_unit`);
@@ -46,10 +52,21 @@ export const merchantActions = {
 		if ('error' in mdr) return fail(400, { message: mdr.error });
 		const platform = parseFee(f, 'platform', 'Fee platform');
 		if ('error' in platform) return fail(400, { message: platform.error });
+		// Aturan transaksi kecil (BI): transaksi sampai batas tertentu dikenai MDR flat. Opsional, diisi berpasangan.
+		let flat: { mdr_flat_up_to: number; mdr_flat_fee: number } | undefined;
+		if (f.get('flat_on') === 'on') {
+			const upTo = parseRupiah(str(f, 'flat_up_to'));
+			const fee = parseRupiah(str(f, 'flat_fee'));
+			if (upTo === null || upTo <= 0) return fail(400, { message: 'Aturan transaksi kecil: isi batas transaksi (Rp) dengan angka bulat lebih dari 0.' });
+			if (fee === null || fee > MAX_FIXED) return fail(400, { message: `Aturan transaksi kecil: isi biaya flat (Rp) angka bulat 0 sampai ${MAX_FIXED.toLocaleString('id-ID')}.` });
+			if (fee > upTo) return fail(400, { message: 'Aturan transaksi kecil: biaya flat tidak boleh lebih besar dari batas transaksi.' });
+			flat = { mdr_flat_up_to: upTo, mdr_flat_fee: fee };
+		}
 		return done(
 			await call(fetch, token, 'POST', path(f, 'approve'), {
 				...(mdr.bps !== undefined ? { mdr_bps: mdr.bps } : { mdr_fixed: mdr.fixed }),
-				...(platform.bps !== undefined ? { platform_bps: platform.bps } : { platform_fixed: platform.fixed })
+				...(platform.bps !== undefined ? { platform_bps: platform.bps } : { platform_fixed: platform.fixed }),
+				...flat
 			})
 		);
 	},

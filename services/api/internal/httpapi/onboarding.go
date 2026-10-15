@@ -122,6 +122,8 @@ func (d Deps) adminApproveMerchant(w http.ResponseWriter, r *http.Request) {
 		PlatformBPS   *int   `json:"platform_bps"`
 		MDRFixed      *int64 `json:"mdr_fixed"`
 		PlatformFixed *int64 `json:"platform_fixed"`
+		MDRFlatUpTo   *int64 `json:"mdr_flat_up_to"`
+		MDRFlatFee    *int64 `json:"mdr_flat_fee"`
 	}
 	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
 		return
@@ -130,6 +132,11 @@ func (d Deps) adminApproveMerchant(w http.ResponseWriter, r *http.Request) {
 	// explicitly, as a percentage (bps), a fixed rupiah amount, or both. The unstated half is 0.
 	if (body.MDRBPS == nil && body.MDRFixed == nil) || (body.PlatformBPS == nil && body.PlatformFixed == nil) {
 		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "mdr and platform fee are required (mdr_bps/mdr_fixed and platform_bps/platform_fixed)", false)
+		return
+	}
+	// Aturan transaksi kecil: kedua nilainya diisi bersama atau tidak sama sekali.
+	if (body.MDRFlatUpTo == nil) != (body.MDRFlatFee == nil) {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "mdr_flat_up_to and mdr_flat_fee must be sent together", false)
 		return
 	}
 	in := onboarding.ApproveInput{MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, RequestID: middleware.GetReqID(r.Context())}
@@ -144,6 +151,9 @@ func (d Deps) adminApproveMerchant(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.PlatformFixed != nil {
 		in.PlatformFixed = *body.PlatformFixed
+	}
+	if body.MDRFlatUpTo != nil {
+		in.MDRFlatUpTo, in.MDRFlatFee = *body.MDRFlatUpTo, *body.MDRFlatFee
 	}
 	m, err := d.Onboarding.Approve(r.Context(), in)
 	if !d.onboardingErr(w, r, err) {

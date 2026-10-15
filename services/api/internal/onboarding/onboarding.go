@@ -599,7 +599,10 @@ type ApproveInput struct {
 	// Biaya tetap per transaksi (rupiah, integer). Tiap komponen (MDR, platform) boleh persen, nominal, atau keduanya.
 	MDRFixed      int64
 	PlatformFixed int64
-	RequestID     string
+	// Aturan transaksi kecil (BI): transaksi <= MDRFlatUpTo dikenai MDR flat MDRFlatFee. 0/0 = tidak dipakai.
+	MDRFlatUpTo int64
+	MDRFlatFee  int64
+	RequestID   string
 }
 
 // MaxFixedFee membatasi biaya tetap agar salah ketik (mis. tambahan nol) tidak lolos: Rp 1.000.000.
@@ -614,6 +617,10 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 	}
 	if in.MDRFixed < 0 || in.MDRFixed > MaxFixedFee || in.PlatformFixed < 0 || in.PlatformFixed > MaxFixedFee {
 		return Merchant{}, invalid("mdr_fixed and platform_fixed must be integer rupiah 0..%d", MaxFixedFee)
+	}
+	if in.MDRFlatUpTo < 0 || in.MDRFlatFee < 0 || in.MDRFlatFee > MaxFixedFee || (in.MDRFlatUpTo == 0 && in.MDRFlatFee != 0) ||
+		(in.MDRFlatUpTo > 0 && in.MDRFlatFee > in.MDRFlatUpTo) || in.MDRFlatUpTo > 1_000_000_000 {
+		return Merchant{}, invalid("mdr_flat_up_to and mdr_flat_fee must be set together (fee <= threshold, fee <= %d)", MaxFixedFee)
 	}
 	if s.cfg.MDRCap < 0 || s.cfg.MDRCapUpTo < 0 {
 		return Merchant{}, invalid("mdr_cap and mdr_cap_up_to must be non-negative")
@@ -654,10 +661,10 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 	}
 	var planID string
 	if err := tx.QueryRow(ctx, `INSERT INTO pricing_plans
-		(code, version, gateway, payment_method, mdr_bps, mdr_fixed, mdr_rounding, platform_bps, platform_fixed, platform_rounding, mdr_cap, mdr_cap_up_to, created_by, approved_by)
-		SELECT 'qris-'||$1::text, COALESCE(max(version),0)+1, 'doku', 'QRIS', $2, $7, 'half_up', $3, $8, 'half_up', $5, $6, $4, $4
+		(code, version, gateway, payment_method, mdr_bps, mdr_fixed, mdr_rounding, platform_bps, platform_fixed, platform_rounding, mdr_cap, mdr_cap_up_to, mdr_flat_up_to, mdr_flat_fee, created_by, approved_by)
+		SELECT 'qris-'||$1::text, COALESCE(max(version),0)+1, 'doku', 'QRIS', $2, $7, 'half_up', $3, $8, 'half_up', $5, $6, $9, $10, $4, $4
 		FROM pricing_plans WHERE code = 'qris-'||$1::text RETURNING id::text`,
-		in.MerchantID, in.MDRBPS, in.PlatformBPS, in.ActorID, s.cfg.MDRCap, s.cfg.MDRCapUpTo, in.MDRFixed, in.PlatformFixed).Scan(&planID); err != nil {
+		in.MerchantID, in.MDRBPS, in.PlatformBPS, in.ActorID, s.cfg.MDRCap, s.cfg.MDRCapUpTo, in.MDRFixed, in.PlatformFixed, in.MDRFlatUpTo, in.MDRFlatFee).Scan(&planID); err != nil {
 		return Merchant{}, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from, created_by)
@@ -671,7 +678,8 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant.approved", EntityType: "merchant",
 		EntityID: in.MerchantID, RequestID: in.RequestID,
 		Metadata: map[string]any{"plan_id": planID, "mdr_bps": in.MDRBPS, "platform_bps": in.PlatformBPS,
-			"mdr_fixed": in.MDRFixed, "platform_fixed": in.PlatformFixed}}); err != nil {
+			"mdr_fixed": in.MDRFixed, "platform_fixed": in.PlatformFixed,
+			"mdr_flat_up_to": in.MDRFlatUpTo, "mdr_flat_fee": in.MDRFlatFee}}); err != nil {
 		return Merchant{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
