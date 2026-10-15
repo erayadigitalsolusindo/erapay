@@ -94,28 +94,28 @@
 {/if}
 
 {#snippet glyph(g: 'check' | 'x' | 'i' | 'bang')}
-	<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+	<svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 		{#if g === 'check'}<path d="m7 12.5 3.2 3.2L17 9" />
 		{:else if g === 'x'}<path d="m8 8 8 8M16 8l-8 8" />
 		{:else}<path d="M12 7v6" /><circle cx="12" cy="17" r="0.6" fill="#fff" />{/if}
 	</svg>
 {/snippet}
 
-<div class="pointer-events-none fixed top-4 right-4 z-[110] flex w-[min(92vw,24rem)] flex-col gap-3" aria-live="polite">
+<div class="pointer-events-none fixed top-3 right-3 z-[110] flex max-w-[min(92vw,19rem)] flex-col items-end gap-1.5" aria-live="polite">
 	{#each ui.toasts as t (t.id)}
 		{@const k = TOAST[t.variant]}
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div
-			class="dh-toast pointer-events-auto relative flex cursor-pointer items-center gap-3 overflow-hidden rounded-md py-3 pr-4 pl-4 shadow-md"
+			class="dh-toast pointer-events-auto relative flex cursor-pointer items-center gap-2 overflow-hidden rounded py-1.5 pr-3 pl-2.5 shadow"
 			role="status"
 			title="Klik untuk menutup"
-			style="background:{k.bg};color:{k.fg};border-left:5px solid {k.edge}"
+			style="background:{k.bg};color:{k.fg};border-left:4px solid {k.edge}"
 			onclick={() => dismissToast(t.id)}
 		>
-			<span class="grid size-7 shrink-0 place-items-center rounded-full" style="background:{k.fg}">{@render glyph(k.glyph)}</span>
+			<span class="grid size-5 shrink-0 place-items-center rounded-full" style="background:{k.fg}">{@render glyph(k.glyph)}</span>
 			<div class="min-w-0">
-				<p class="text-[13px] leading-tight font-extrabold">{t.title}</p>
-				<p class="mt-0.5 text-xs leading-snug font-semibold break-words opacity-90">{t.message}</p>
+				<p class="text-xs leading-tight font-extrabold">{t.title}</p>
+				<p class="text-[11px] leading-tight font-semibold break-words opacity-90">{t.message}</p>
 			</div>
 			<span class="dh-bar absolute inset-x-0 bottom-0 h-0.5" style="background:{k.fg};opacity:.35"></span>
 		</div>
