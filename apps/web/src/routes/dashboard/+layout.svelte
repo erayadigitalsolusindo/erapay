@@ -3,6 +3,7 @@
 	import { createI18n, setI18n } from '../../lib/i18n/i18n.svelte';
 	import Header from './_components/Header.svelte';
 	import Sidebar from './_components/Sidebar.svelte';
+	import TabBar from './_components/TabBar.svelte';
 
 	let { data, children } = $props();
 
@@ -34,6 +35,7 @@
 	<Sidebar user={data.user} menus={data.menus} />
 	<div class="min-w-0">
 		<Header user={data.user} bind:theme />
+		<TabBar user={data.user} menus={data.menus} />
 		<main class="border-t border-ink/10 bg-page p-5 lg:p-8">
 			{#if data.user.merchantId && !data.user.emailVerified}
 				<p class="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900" role="status">

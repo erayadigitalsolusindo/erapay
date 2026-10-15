@@ -5,6 +5,9 @@ export type Lang = (typeof LANGS)[number];
 const id = {
 	'nav.workspace': 'Workspace',
 	'nav.main': 'Menu utama',
+	'tabs.label': 'Tab halaman terbuka',
+	'tabs.close': 'Tutup tab {name}',
+	'tabs.closeAll': 'Tutup semua',
 	'nav.overview': 'Ringkasan',
 	'nav.overview.desc': 'Pantau performa pembayaran dalam satu tempat.',
 	'nav.transactions': 'Transaksi',
@@ -506,6 +509,9 @@ const id = {
 const en: Record<keyof typeof id, string> = {
 	'nav.workspace': 'Workspace',
 	'nav.main': 'Main menu',
+	'tabs.label': 'Open page tabs',
+	'tabs.close': 'Close tab {name}',
+	'tabs.closeAll': 'Close all',
 	'nav.overview': 'Overview',
 	'nav.overview.desc': 'Monitor payment performance in one place.',
 	'nav.transactions': 'Transactions',
