@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/kyc"
 )
 
@@ -24,9 +25,10 @@ func newTestRouter(db, rd error) http.Handler {
 	})
 }
 
-// TestKYCMounting memastikan route KYC terpasang pada rute /v1 terpisah (di luar
-// requireJSON, karena unggah dokumen memakai multipart) dan router tidak panic.
-// Handler tidak dieksekusi karena tidak ada sesi → cukup membuktikan mount.
+// TestKYCMounting memastikan route KYC terpasang pada rute /v1 yang SAMA dengan
+// mountV1 (bukan mount /v1 kedua) — kombinasi Auth + KYC aktif seperti produksi.
+// KYC merchant di luar requireJSON (unggah multipart / DELETE), admin di /admin.
+// Handler tidak dieksekusi karena tidak ada sesi → cukup membuktikan mount + tidak panic.
 func TestKYCMounting(t *testing.T) {
 	svc := kyc.NewService(nil, kyc.Config{})
 	defer svc.SetReviewer(nil) // tidak dipakai di test
@@ -34,9 +36,10 @@ func TestKYCMounting(t *testing.T) {
 		Log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 		DB:    fakePinger{},
 		Redis: fakePinger{},
+		Auth:  auth.NewService(nil, auth.DefaultConfig()),
 		KYC:   svc,
 	})
-	for _, path := range []string{"/v1/kyc/profile", "/v1/kyc/submit", "/v1/kyc/documents/ktp", "/v1/kyc/brand/logo", "/v1/kyc/evidences/add", "/v1/kyc/regions"} {
+	for _, path := range []string{"/v1/kyc/profile", "/v1/kyc/submit", "/v1/kyc/documents/ktp", "/v1/kyc/brand/logo", "/v1/kyc/evidences/add", "/v1/kyc/regions", "/v1/admin/merchants/{id}/kyc", "/v1/admin/merchants/{id}/kyc/start-review"} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		if path != "/v1/kyc/profile" && path != "/v1/kyc/regions" {

@@ -246,6 +246,7 @@ func (d Deps) platformSetup(w http.ResponseWriter, r *http.Request) {
 // the panel uses its own cookie and never depends on dashboard sessions.
 func (d Deps) mountPlatform(r chi.Router) {
 	r.Route("/platform", func(r chi.Router) {
+		r.Use(requireJSON) // semua endpoint platform JSON (setup, login, MFA, RBAC)
 		r.Get("/setup-status", d.platformSetupStatus)
 		r.Post("/setup", d.platformSetup)
 		r.Post("/auth/login", d.platformLogin)

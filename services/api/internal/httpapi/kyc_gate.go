@@ -33,16 +33,21 @@ func (d Deps) requireProduction(next http.Handler) http.Handler {
 	})
 }
 
-// mountKYC mendaftarkan seluruh route KYC. PANGGIL dari mountV1 (auth.go):
+// mountKYC mendaftarkan route KYC sisi merchant (dashboard). PANGGIL dari mountV1
+// (auth.go) pada rute /v1 yang SAMA, TANPA requireJSON (unggah dokumen/logo/bukti
+// memakai multipart dan DELETE tanpa Content-Type).
 //
 //	if d.KYC != nil {
 //		d.mountKYC(r) // di dalam r.Route("/v1", ...)
 //	}
 //
+// Route reviewer didaftarkan terpisah oleh mountKYCAdmin di dalam blok rute /admin
+// yang sudah ada (auth.go) — tidak boleh membuat mount /admin kedua.
+//
 // Gate produksi (requireProduction) tidak dipasang otomatis: tempel pada endpoint
 // fitur produksi baru, mis. r.With(d.requireProduction).Post("/...", ...).
 func (d Deps) mountKYC(r chi.Router) {
-	// Merchant (dashboard): data diri, unggah dokumen, submit.
+	// Merchant (dashboard): data diri, unggah dokumen, submit. Sesi merchant wajib.
 	r.Group(func(r chi.Router) {
 		r.Use(d.requireAuth, requireTenant)
 		r.Get("/kyc/profile", d.kycProfile)
@@ -57,9 +62,15 @@ func (d Deps) mountKYC(r chi.Router) {
 		r.Delete("/kyc/evidences/{id}", d.kycDeleteEvidence)
 		r.Get("/kyc/evidences/{id}/file", d.kycEvidenceFile)
 	})
-	// Platform (reviewer): tinjauan + keputusan. Sesi merchant ditolak requirePlatform.
-	r.Route("/admin", func(r chi.Router) {
-		r.Use(d.requireAuth, requirePlatform)
+}
+
+// mountKYCAdmin mendaftarkan route KYC sisi reviewer di dalam blok rute /admin yang
+// sudah ada (mountV1 auth.go). PANGGIL dari dalam r.Route("/admin", ...) yang sudah
+// requireAuth. Sesi merchant ditolak requirePlatform; keputusan di-gate permission.
+func (d Deps) mountKYCAdmin(r chi.Router) {
+	// Platform (reviewer): tinjauan + keputusan.
+	r.Group(func(r chi.Router) {
+		r.Use(requirePlatform)
 		r.With(requirePerm("merchant:review")).Get("/merchants/{id}/kyc", d.adminKycProfile)
 		r.With(requirePerm("merchant:review")).Post("/merchants/{id}/kyc/start-review", d.kycReviewAction("start-review"))
 		r.With(requirePerm("merchant:review")).Post("/merchants/{id}/kyc/request-changes", d.kycRequestChanges)

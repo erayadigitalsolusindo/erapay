@@ -100,11 +100,6 @@ func NewRouter(d Deps) http.Handler {
 	if d.Auth != nil {
 		d.mountV1(r)
 	}
-	if d.KYC != nil {
-		// KYC dipasang pada rute /v1 terpisah: endpoint unggah (dokumen/logo/bukti)
-		// memakai multipart/form-data sehingga tidak boleh berada di bawah requireJSON.
-		r.Route("/v1", func(r chi.Router) { d.mountKYC(r) })
-	}
 	if d.ARUSProvisionToken != "" {
 		r.Route("/v1/integrations/arus", func(ir chi.Router) {
 			ir.Use(d.requireARUSProvisionToken)

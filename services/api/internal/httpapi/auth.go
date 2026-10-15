@@ -414,18 +414,21 @@ func requireJSON(next http.Handler) http.Handler {
 
 func (d Deps) mountV1(r chi.Router) {
 	r.Route("/v1", func(r chi.Router) {
-		r.Use(requireJSON)
-		r.Post("/auth/login", d.login)
-		r.Post("/auth/mfa/verify", d.mfaVerify) // Complete login with MFA code
-		if d.Onboarding != nil && d.Onboarding.CanRegister() {
-			r.Post("/auth/register", d.register)
-		}
-		if d.Account != nil {
-			r.Post("/auth/verify-email", d.verifyEmail)
-			r.Post("/auth/resend-verification", d.resendVerification)
-			r.Post("/auth/forgot-password", d.forgotPassword)
-			r.Post("/auth/reset-password", d.resetPassword)
-		}
+		// Auth + account: JSON bodies only (requireJSON blocks cross-site form posts).
+		r.Group(func(r chi.Router) {
+			r.Use(requireJSON)
+			r.Post("/auth/login", d.login)
+			r.Post("/auth/mfa/verify", d.mfaVerify) // Complete login with MFA code
+			if d.Onboarding != nil && d.Onboarding.CanRegister() {
+				r.Post("/auth/register", d.register)
+			}
+			if d.Account != nil {
+				r.Post("/auth/verify-email", d.verifyEmail)
+				r.Post("/auth/resend-verification", d.resendVerification)
+				r.Post("/auth/forgot-password", d.forgotPassword)
+				r.Post("/auth/reset-password", d.resetPassword)
+			}
+		})
 		if d.APIKeys != nil {
 			r.With(d.requireAPIKey).Get("/api-keys/self", d.apiKeySelf)
 		}
@@ -436,17 +439,17 @@ func (d Deps) mountV1(r chi.Router) {
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("report:read")).Get("/reports/summary", d.reportSummary)
 		}
 		if d.APIKeys != nil && d.PaymentFlow != nil {
-			r.With(d.requireAnyAuth, requireTenant, requirePerm("payment:create")).Post("/payments", d.createPayment)
+			r.With(d.requireAnyAuth, requireJSON, requireTenant, requirePerm("payment:create")).Post("/payments", d.createPayment)
 			// Cek status manual: menanyakan ulang status ke gateway (DOKU) berdasarkan
 			// nomor referensi transaksi, lalu menerapkan hasil dengan source=inquiry.
-			r.With(d.requireAnyAuth, requireTenant, requirePerm("payment:read")).Post("/payments/{id}/inquiry", d.paymentInquiry)
+			r.With(d.requireAnyAuth, requireJSON, requireTenant, requirePerm("payment:read")).Post("/payments/{id}/inquiry", d.paymentInquiry)
 		}
 		if d.APIKeys != nil && d.Settlement != nil {
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("report:read")).Get("/balance", d.getBalance)
 		}
 		d.mountPlatform(r) // panel DEWA (/platform), auth terpisah dari dashboard (/v1)
 		r.Group(func(r chi.Router) {
-			r.Use(d.requireAuth)
+			r.Use(d.requireAuth, requireJSON)
 			r.Get("/menus", d.listMenus)
 			r.Get("/banks", d.listBanks) // daftar bank Kirim DOKU untuk form rekening
 			r.Post("/auth/logout", d.logout)
@@ -469,6 +472,9 @@ func (d Deps) mountV1(r chi.Router) {
 						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/approve", d.adminApproveMerchant)
 						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/reject", d.adminRejectMerchant)
 					})
+				}
+				if d.KYC != nil {
+					d.mountKYCAdmin(r)
 				}
 				if d.Settlement != nil {
 					r.With(requirePerm("settlement:read")).Get("/unsettled-payments", d.listUnsettled)
@@ -547,6 +553,12 @@ func (d Deps) mountV1(r chi.Router) {
 				}
 			})
 		})
+		// KYC (dashboard): unggah dokumen/logo/bukti memakai multipart dan DELETE tanpa
+		// Content-Type, sehingga TIDAK berada di bawah requireJSON. requireAuth +
+		// requireTenant dipasang di dalam mountKYC.
+		if d.KYC != nil {
+			d.mountKYC(r)
+		}
 	})
 }
 
