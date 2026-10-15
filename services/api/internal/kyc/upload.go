@@ -10,12 +10,12 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/audit"
 )
 
-var docTypes = []string{"ktp", "npwp_badan", "akta", "sk_kemenkumham", "nib", "izin_usaha"}
+var docTypes = []string{"ktp", "ktp_back", "npwp_badan", "akta", "sk_kemenkumham", "nib", "izin_usaha"}
 
 // ValidDocType: enam dokumen wajib (KTP menyatu dengan bagian perwakilan).
 func ValidDocType(t string) bool {
 	switch t {
-	case "ktp", "npwp_badan", "akta", "sk_kemenkumham", "nib", "izin_usaha":
+	case "ktp", "ktp_back", "npwp_badan", "akta", "sk_kemenkumham", "nib", "izin_usaha":
 		return true
 	}
 	return false

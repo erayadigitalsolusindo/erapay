@@ -14,16 +14,32 @@
 		busy?: boolean;
 		locked?: boolean;
 		error?: string;
-		onadd: (f: File) => void;
+		onadd: (f: File) => void | Promise<void>;
 		ondelete: (id: string) => void;
 	} = $props();
 
 	let input: HTMLInputElement | undefined;
+	// Pratinjau berkas yang baru dipilih (diunggah satu per satu) sampai muncul dari server.
+	let pending = $state<{ key: number; url: string; name: string }[]>([]);
+	let seq = 0;
+
+	async function addMany(files: File[]) {
+		const batch = files.map((f) => ({ key: seq++, url: URL.createObjectURL(f), name: f.name, f }));
+		pending = [...pending, ...batch.map(({ f: _f, ...p }) => p)];
+		for (const b of batch) {
+			try {
+				await onadd(b.f);
+			} finally {
+				pending = pending.filter((p) => p.key !== b.key);
+				URL.revokeObjectURL(b.url);
+			}
+		}
+	}
 </script>
 
 <div class="w-full">
 	<label class="mb-1.5 block text-[13px] font-semibold text-[#1A2530]">Bukti bisnis (galeri)</label>
-	<p class="mb-2 text-[12px] text-[#7A8894]">Foto kios/pakai produk, katalog, atau materi promosi. JPG/PNG, maks 5 MB.</p>
+	<p class="mb-2 text-[12px] text-[#7A8894]">Foto kios/pakai produk, katalog, atau materi promosi. JPG/PNG, maks 5 MB; boleh pilih lebih dari satu.</p>
 	<div class="flex flex-wrap gap-2">
 		{#each evidences as ev (ev.id)}
 			<div class="group relative size-[72px] overflow-hidden rounded-md border border-[#CBD2D9] bg-white">
@@ -40,6 +56,12 @@
 				{/if}
 			</div>
 		{/each}
+		{#each pending as p (p.key)}
+			<div class="relative size-[72px] overflow-hidden rounded-md border border-[#CBD2D9] bg-white">
+				<img src={p.url} alt={p.name} class="size-full object-cover opacity-60" />
+				<span class="absolute inset-0 grid place-items-center bg-white/40 text-[10px] font-semibold text-[#42505C]">mengunggah…</span>
+			</div>
+		{/each}
 		{#if !locked}
 			<button
 				type="button"
@@ -50,7 +72,7 @@
 				<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg>
 			</button>
 		{/if}
-		{#each Array.from({ length: Math.max(0, 3 - evidences.length - (locked ? 0 : 1)) }) as _, i (i)}
+		{#each Array.from({ length: Math.max(0, 3 - evidences.length - pending.length - (locked ? 0 : 1)) }) as _, i (i)}
 			<!-- placeholder kotak kosong agar galeri terasa seperti galeri -->
 			<div class="size-[72px] rounded-md border border-dashed border-[#E5E8ED]"></div>
 		{/each}
@@ -58,12 +80,14 @@
 	<input
 		type="file"
 		accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+		multiple
+		bind:this={input}
 		class="hidden"
 		onchange={(e) => {
 			const inp = e.currentTarget as HTMLInputElement;
-			const f = inp.files?.[0];
-			if (f) onadd(f);
+			const fs = Array.from(inp.files ?? []);
 			inp.value = '';
+			if (fs.length) void addMany(fs);
 		}}
 	/>
 	{#if busy}

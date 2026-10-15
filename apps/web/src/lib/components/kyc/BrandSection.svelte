@@ -120,7 +120,7 @@
 				accept=".jpg,.jpeg,.png"
 				hint="JPG/PNG, maks 5 MB — tampil 72×72 px"
 				maxBytes={5 * 1024 * 1024}
-				file={form.logo ? { name: form.logo.name, size: form.logo.size } : null}
+				file={form.logo ? { name: form.logo.name, size: form.logo.size, url: form.logo.url, mime: form.logo.mime } : null}
 				uploading={logoBusy}
 				locked={locked}
 				error={uploadErrors.logo}

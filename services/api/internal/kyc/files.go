@@ -106,6 +106,22 @@ func (s *Service) GetEvidenceFile(ctx context.Context, evID, viewerMerchantID st
 	return e, f, nil
 }
 
+// GetLogoFile membuka logo merek (pemilik atau reviewer). Reviewer menyebut merchantID target.
+func (s *Service) GetLogoFile(ctx context.Context, merchantID string) (name, mime string, f io.ReadSeekCloser, err error) {
+	b, err := s.repo.brandRow(ctx, s.db, merchantID)
+	if err != nil {
+		return "", "", nil, err
+	}
+	if b.LogoKey == nil || *b.LogoKey == "" {
+		return "", "", nil, ErrNotFound
+	}
+	f, err = s.cfg.Storage.Open(ctx, *b.LogoKey)
+	if err != nil {
+		return "", "", nil, err
+	}
+	return val(b.LogoName), val(b.LogoMime), f, nil
+}
+
 // ensureBrand memastikan baris brand ada (dengan Brand ID server) dan mengembalikannya.
 func (s *Service) ensureBrand(ctx context.Context, tx pgx.Tx, merchantID string) (brandRow, error) {
 	b, err := s.repo.brandRow(ctx, tx, merchantID)

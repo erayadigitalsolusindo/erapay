@@ -3,6 +3,7 @@ package kyc
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -123,14 +124,17 @@ func companyComplete(m *rawMerchant) bool {
 }
 
 func representativeComplete(m *rawMerchant, docs []docRow) bool {
-	hasKTP := false
+	hasKTP, hasKTPBack := false, false
 	for _, d := range docs {
-		if d.DocType == "ktp" {
+		switch d.DocType {
+		case "ktp":
 			hasKTP = true
+		case "ktp_back":
+			hasKTPBack = true
 		}
 	}
 	return val(m.OwnerName) != "" && val(m.OwnerPosition) != "" &&
-		val(m.OwnerPhone) != "" && val(m.OwnerEmail) != "" && len(m.idEnc) > 0 && hasKTP
+		val(m.OwnerPhone) != "" && val(m.OwnerEmail) != "" && len(m.idEnc) > 0 && hasKTP && hasKTPBack
 }
 
 func brandComplete(b *brandRow, evs []evidenceRow) bool {
@@ -139,12 +143,18 @@ func brandComplete(b *brandRow, evs []evidenceRow) bool {
 		b.Count != nil && *b.Count > 0 && len(evs) > 0
 }
 
+// isPerorangan: perorangan tidak diminta dokumen badan usaha (NPWP badan, akta, SK, NIB, izin).
+func isPerorangan(m *rawMerchant) bool { return val(m.EntityType) == "Perorangan" }
+
 func docsComplete(m *rawMerchant, docs []docRow) bool {
 	have := map[string]bool{}
 	for _, d := range docs {
 		have[d.DocType] = true
 	}
-	for _, t := range []string{"ktp", "npwp_badan", "akta", "sk_kemenkumham", "nib", "izin_usaha"} {
+	if isPerorangan(m) {
+		return true // dokumen badan usaha tidak berlaku bagi perorangan
+	}
+	for _, t := range []string{"npwp_badan", "akta", "sk_kemenkumham", "nib", "izin_usaha"} {
 		if !have[t] {
 			return false
 		}
@@ -207,8 +217,12 @@ func buildRepresentative(m *rawMerchant, docs []docRow, notes []Note) Representa
 	}
 	r.IDMasked = maskWith(m.IDLast4, 16)
 	for _, d := range docs {
-		if d.DocType == "ktp" {
-			r.KTP = &File{ID: d.ID, URL: "/v1/kyc/documents/" + d.ID + "/file", Name: d.Name, Mime: d.Mime, Size: d.Size}
+		f := &File{ID: d.ID, URL: "/v1/kyc/documents/" + d.ID + "/file", Name: d.Name, Mime: d.Mime, Size: d.Size}
+		switch d.DocType {
+		case "ktp":
+			r.KTP = f
+		case "ktp_back":
+			r.KTPBack = f
 		}
 	}
 	r.Complete = representativeComplete(m, docs)
@@ -232,7 +246,7 @@ func buildBrand(b *brandRow, evs []evidenceRow, lks []Link, notes []Note) Brand 
 		out.MonthlyCount = *b.Count
 	}
 	if b.LogoKey != nil && *b.LogoKey != "" {
-		out.Logo = &File{Name: val(b.LogoName), Mime: val(b.LogoMime), Size: i64(b.LogoSize)}
+		out.Logo = &File{URL: "/v1/kyc/brand/logo/file?v=" + strconv.FormatInt(i64(b.LogoSize), 10), Name: val(b.LogoName), Mime: val(b.LogoMime), Size: i64(b.LogoSize)}
 	}
 	out.Evidences = make([]Evidence, 0, len(evs))
 	for _, e := range evs {
@@ -339,29 +353,34 @@ func (s *Service) completeness(m *rawMerchant, docs []docRow, b *brandRow, evs [
 	if !have["ktp"] {
 		f["representative.ktp"] = "Kartu Tanda Penduduk wajib diunggah"
 	}
-	if !have["npwp_badan"] {
-		f["documents.npwp_badan"] = "Dokumen NPWP Badan wajib diunggah"
+	if !have["ktp_back"] {
+		f["representative.ktp_back"] = "KTP sisi belakang wajib diunggah"
 	}
-	if m.bizEnc == nil {
-		f["documents.npwp_number"] = "Nomor NPWP badan wajib diisi"
-	}
-	if !have["akta"] {
-		f["documents.akta"] = "Akta Pendirian dan Perubahan Perusahaan wajib diunggah"
-	}
-	if !have["sk_kemenkumham"] {
-		f["documents.sk_kemenkumham"] = "SK Kementerian Hukum & HAM wajib diunggah"
-	}
-	if !have["nib"] {
-		f["documents.nib"] = "NIB wajib diunggah"
-	}
-	if val(m.NIB) == "" {
-		f["documents.nib_number"] = "Nomor NIB (13 digit) wajib diisi"
-	}
-	if val(m.KBLI) == "" {
-		f["documents.kbli"] = "KBLI 5 digit wajib diisi"
-	}
-	if !have["izin_usaha"] {
-		f["documents.izin_usaha"] = "Surat Izin Usaha wajib diunggah"
+	if !isPerorangan(m) {
+		if !have["npwp_badan"] {
+			f["documents.npwp_badan"] = "Dokumen NPWP Badan wajib diunggah"
+		}
+		if m.bizEnc == nil {
+			f["documents.npwp_number"] = "Nomor NPWP badan wajib diisi"
+		}
+		if !have["akta"] {
+			f["documents.akta"] = "Akta Pendirian dan Perubahan Perusahaan wajib diunggah"
+		}
+		if !have["sk_kemenkumham"] {
+			f["documents.sk_kemenkumham"] = "SK Kementerian Hukum & HAM wajib diunggah"
+		}
+		if !have["nib"] {
+			f["documents.nib"] = "NIB wajib diunggah"
+		}
+		if val(m.NIB) == "" {
+			f["documents.nib_number"] = "Nomor NIB (13 digit) wajib diisi"
+		}
+		if val(m.KBLI) == "" {
+			f["documents.kbli"] = "KBLI 5 digit wajib diisi"
+		}
+		if !have["izin_usaha"] {
+			f["documents.izin_usaha"] = "Surat Izin Usaha wajib diunggah"
+		}
 	}
 	if b.ID == "" || val(b.Name) == "" {
 		f["brand.name"] = "Nama merek wajib diisi"

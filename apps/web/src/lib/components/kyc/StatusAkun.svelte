@@ -142,7 +142,7 @@
 		</section>
 		<section class="rounded-xl border border-[#E5E8ED] bg-white p-5 shadow-sm">
 			<h2 class="mb-4 text-base font-bold text-[#1A2530]">2. Perwakilan Bisnis</h2>
-			<RepresentativeSection data={profile.representative} notes={profile.notes} locked ktp={profile.documents.ktp} api={NOOP} errors={{}} />
+			<RepresentativeSection data={profile.representative} notes={profile.notes} locked ktp={profile.representative.ktp} ktpBack={profile.representative.ktp_back} api={NOOP} errors={{}} />
 		</section>
 		<section class="rounded-xl border border-[#E5E8ED] bg-white p-5 shadow-sm">
 			<h2 class="mb-4 text-base font-bold text-[#1A2530]">3. Merek & Usaha</h2>
@@ -150,7 +150,7 @@
 		</section>
 		<section class="rounded-xl border border-[#E5E8ED] bg-white p-5 shadow-sm">
 			<h2 class="mb-4 text-base font-bold text-[#1A2530]">4. Dokumen</h2>
-			<DocumentsSection documents={profile.documents} notes={profile.notes} locked api={NOOP} errors={{}} approved={profile.status === 'approved'} />
+			<DocumentsSection documents={profile.documents} notes={profile.notes} locked api={NOOP} errors={{}} approved={profile.status === 'approved'} personal={profile.company.entity_type === 'Perorangan'} />
 		</section>
 	</div>
 

@@ -11,9 +11,9 @@ func validateCompany(in *CompanyInput) map[string]string {
 	f := map[string]string{}
 	in.EntityType = strings.TrimSpace(in.EntityType)
 	switch in.EntityType {
-	case "PT", "CV", "Yayasan":
+	case "PT", "CV", "Yayasan", "Perorangan":
 	default:
-		f["entity_type"] = "Pilih jenis badan usaha (PT/CV/Yayasan)"
+		f["entity_type"] = "Pilih jenis badan usaha (PT/CV/Yayasan/Perorangan)"
 	}
 	if n := utf8.RuneCountInString(strings.TrimSpace(in.CompanyName)); n < 3 || n > 120 {
 		f["company_name"] = "Nama company wajib 3-120 karakter"

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { enhance, deserialize } from '$app/forms';
+
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import KycWizard from '../../../lib/components/kyc/KycWizard.svelte';
 	import StatusAkun from '../../../lib/components/kyc/StatusAkun.svelte';
@@ -84,7 +85,7 @@
 				const fd = new FormData();
 				fd.append('file', file);
 				const r = await postAction('kycEvidence', fd, true);
-				if (r.ok) void invalidateAll();
+				if (r.ok) await invalidateAll();
 				return { ok: r.ok, message: r.message };
 			},
 			deleteEvidence: async (id) => {

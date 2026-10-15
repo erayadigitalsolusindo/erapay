@@ -16,6 +16,7 @@
 		locked = false,
 		busy = false,
 		ktp = null,
+		ktpBack = null,
 		api,
 		register
 	}: {
@@ -24,7 +25,8 @@
 		notes?: Note[];
 		locked?: boolean;
 		busy?: boolean;
-		ktp?: { name: string; size: number } | null;
+		ktp?: { name: string; size: number; url?: string; mime?: string } | null;
+		ktpBack?: { name: string; size: number; url?: string; mime?: string } | null;
 		api: SectionApi;
 		/** Daftarkan fungsi simpan agar tombol "Selanjutnya" menyimpan dulu. */
 		register?: (fn: () => Promise<{ ok: boolean; message?: string }>) => void;
@@ -48,6 +50,7 @@
 	let fieldErr = $state<Record<string, string>>({});
 	const errs = $derived({ ...errors, ...fieldErr });
 	let ktpBusy = $state(false);
+	let ktpBackBusy = $state(false);
 	let docErrors = $state<Record<string, string>>({});
 
 	async function save() {
@@ -71,11 +74,13 @@
 		register?.(() => (locked ? Promise.resolve({ ok: true }) : save()));
 	});
 
-	async function uploadKtp(file: File) {
-		ktpBusy = true;
-		const r = await api.uploadDoc('ktp', file);
-		if (!r.ok) docErrors = { ...docErrors, ktp: r.message ?? 'Unggahan gagal.' };
-		ktpBusy = false;
+	async function uploadKtp(side: 'ktp' | 'ktp_back', file: File) {
+		if (side === 'ktp') ktpBusy = true;
+		else ktpBackBusy = true;
+		const r = await api.uploadDoc(side, file);
+		docErrors = { ...docErrors, [side]: r.ok ? '' : (r.message ?? 'Unggahan gagal.') };
+		if (side === 'ktp') ktpBusy = false;
+		else ktpBackBusy = false;
 	}
 </script>
 
@@ -99,16 +104,26 @@
 					hint="16 digit sesuai KTP; disegel (tidak tampil penuh setelah disimpan)" error={errs.id_number} />
 			</div>
 		{/if}
-		<div class="sm:col-span-2">
+		<div class="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
 			<FileCard
-				label="Kartu Tanda Penduduk (KTP) perwakilan"
+				label="KTP perwakilan — sisi depan"
 				hint="PDF/JPG/PNG, maks 15 MB"
 				file={ktp}
 				uploading={ktpBusy}
 				locked={locked}
 				error={docErrors.ktp}
 				maxBytes={15 * 1024 * 1024}
-				onfile={uploadKtp}
+				onfile={(f) => uploadKtp('ktp', f)}
+			/>
+			<FileCard
+				label="KTP perwakilan — sisi belakang"
+				hint="PDF/JPG/PNG, maks 15 MB"
+				file={ktpBack}
+				uploading={ktpBackBusy}
+				locked={locked}
+				error={docErrors.ktp_back}
+				maxBytes={15 * 1024 * 1024}
+				onfile={(f) => uploadKtp('ktp_back', f)}
 			/>
 		</div>
 	</div>

@@ -58,6 +58,7 @@ type Representative struct {
 	IDMasked      string `json:"id_masked"`           // NIK ter-mask: "3374••••••••7890"
 	IDNumber      string `json:"id_number,omitempty"` // hanya mode edit pemilik / reviewer
 	KTP           *File  `json:"ktp,omitempty"`
+	KTPBack       *File  `json:"ktp_back,omitempty"`
 	Complete      bool   `json:"complete"`
 	NeedsRevision bool   `json:"needs_revision"`
 	Recheck       bool   `json:"recheck,omitempty"`

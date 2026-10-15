@@ -31,7 +31,8 @@
 	const ENTITY = [
 		{ value: 'PT', label: 'Perseroan Terbatas (PT)' },
 		{ value: 'CV', label: 'Commanditaire Vennootschap (CV)' },
-		{ value: 'Yayasan', label: 'Yayasan' }
+		{ value: 'Yayasan', label: 'Yayasan' },
+		{ value: 'Perorangan', label: 'Personal / Perorangan' }
 	];
 
 	let form = $state({ ...data });

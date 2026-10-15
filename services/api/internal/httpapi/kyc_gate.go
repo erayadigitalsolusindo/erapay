@@ -58,6 +58,7 @@ func (d Deps) mountKYC(r chi.Router) {
 		r.Post("/kyc/documents/{doc_type}", d.kycUploadDocument)
 		r.Get("/kyc/documents/{id}/file", d.kycDocumentFile)
 		r.Post("/kyc/brand/logo", d.kycSetBrandLogo)
+		r.Get("/kyc/brand/logo/file", d.kycLogoFile)
 		r.Post("/kyc/evidences", d.kycAddEvidence)
 		r.Delete("/kyc/evidences/{id}", d.kycDeleteEvidence)
 		r.Get("/kyc/evidences/{id}/file", d.kycEvidenceFile)

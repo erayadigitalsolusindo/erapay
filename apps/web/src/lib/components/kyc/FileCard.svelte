@@ -16,7 +16,7 @@
 		hint?: string;
 		accept?: string;
 		maxBytes?: number;
-		file?: { name: string; size: number } | null;
+		file?: { name: string; size: number; url?: string; mime?: string } | null;
 		uploading?: boolean;
 		error?: string;
 		locked?: boolean;
@@ -25,6 +25,13 @@
 
 	let input = $state<HTMLInputElement>();
 	let localErr = $state('');
+	// Pratinjau gambar: object URL lokal sesaat setelah dipilih, lalu URL dari server.
+	let localUrl = $state<string | null>(null);
+	const isImg = (m?: string, n?: string) => !!m?.startsWith('image/') || /\.(jpe?g|png)$/i.test(n ?? '');
+	const thumb = $derived(localUrl ?? (file?.url && isImg(file.mime, file.name) ? file.url : null));
+	$effect(() => () => {
+		if (localUrl) URL.revokeObjectURL(localUrl);
+	});
 	const finalErr = $derived(localErr || error);
 
 	const fmtSize = (n: number) =>
@@ -37,6 +44,8 @@
 			localErr = `Ukuran maksimum ${Math.round(maxBytes / 1024 / 1024)} MB.`;
 			return;
 		}
+		if (localUrl) URL.revokeObjectURL(localUrl);
+		localUrl = isImg(f.type, f.name) ? URL.createObjectURL(f) : null;
 		onfile(f);
 	}
 </script>
@@ -49,11 +58,15 @@
 		</div>
 	{:else if file}
 		<div class="flex items-center gap-3 rounded-md border border-[#CBD2D9] bg-white px-3 py-2.5">
-			<span class="grid size-9 shrink-0 place-items-center rounded bg-[#F4F7FA] text-[#D32F2F]">
-				<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8">
-					<path d="M14 3v5h5" /><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-				</svg>
-			</span>
+			{#if thumb}
+				<img src={thumb} alt="Pratinjau {label}" class="h-14 w-20 shrink-0 rounded border border-[#E5E8ED] bg-[#F4F7FA] object-cover" />
+			{:else}
+				<span class="grid size-9 shrink-0 place-items-center rounded bg-[#F4F7FA] text-[#D32F2F]">
+					<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8">
+						<path d="M14 3v5h5" /><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+					</svg>
+				</span>
+			{/if}
 			<div class="min-w-0 flex-1">
 				<p class="truncate text-[13px] font-semibold text-[#1A2530]">{file.name}</p>
 				<p class="text-[12px] text-[#7A8894]">{fmtSize(file.size)}</p>
@@ -82,6 +95,9 @@
 			/>
 		</div>
 	{:else}
+		{#if localUrl}
+			<img src={localUrl} alt="Pratinjau {label}" class="mb-2 h-28 w-full rounded-md border border-[#E5E8ED] bg-[#F4F7FA] object-contain" />
+		{/if}
 		<button
 			type="button"
 			class="flex w-full flex-col items-center gap-1.5 rounded-md border-2 border-dashed px-4 py-6 text-center transition hover:border-[#D32F2F]/60 hover:bg-[#F4F7FA]

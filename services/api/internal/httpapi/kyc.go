@@ -300,6 +300,21 @@ func (d Deps) kycEvidenceFile(w http.ResponseWriter, r *http.Request) {
 	serveKycFile(w, r, ev.Name, ev.Mime, f)
 }
 
+// kycLogoFile: logo merek milik merchant yang sedang login.
+func (d Deps) kycLogoFile(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	if p.MerchantID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	name, mimeType, f, err := d.KYC.GetLogoFile(r.Context(), p.MerchantID)
+	if !d.kycErr(w, r, err) {
+		return
+	}
+	defer f.Close()
+	serveKycFile(w, r, name, mimeType, f)
+}
+
 // serveKycFile mengalirkan berkas dari Storage dengan header aman.
 func serveKycFile(w http.ResponseWriter, r *http.Request, name, mimeType string, f io.ReadSeekCloser) {
 	w.Header().Set("Content-Type", mimeType)

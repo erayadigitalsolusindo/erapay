@@ -118,12 +118,12 @@
 			<CompanySection data={profile.company} errors={sectionErr.company ?? {}} notes={profile.notes} locked={!editable} api={api} {register} />
 		{:else if active === 'representative'}
 			<RepresentativeSection data={profile.representative} errors={sectionErr.representative ?? {}} notes={profile.notes}
-				ktp={profile.documents.ktp} locked={!editable} api={api} {register} />
+				ktp={profile.representative.ktp} ktpBack={profile.representative.ktp_back} locked={!editable} api={api} {register} />
 		{:else if active === 'brand'}
 			<BrandSection data={profile.brand} errors={sectionErr.brand ?? {}} notes={profile.notes} locked={!editable} api={api} {register} />
 		{:else if active === 'documents'}
 			<DocumentsSection documents={profile.documents} errors={sectionErr.documents ?? {}} notes={profile.notes}
-				locked={!editable} approved={profile.status === 'approved'} api={api} />
+				locked={!editable} approved={profile.status === 'approved'} personal={profile.company.entity_type === 'Perorangan'} api={api} />
 		{/if}
 	</div>
 

@@ -98,6 +98,8 @@ export type Representative = {
 	nationality: string;
 	id_masked: string; // "••••1234" (server)
 	id_number: string; // terisi hanya pada profil edit (reveal pemilik)
+	ktp?: (KycFile & { id: string }) | null;
+	ktp_back?: (KycFile & { id: string }) | null;
 	id_confirmed: boolean;
 	complete: boolean;
 };
