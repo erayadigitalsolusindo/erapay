@@ -36,13 +36,13 @@
 		<span class="absolute -right-1 -bottom-1 rounded-full px-1 text-[8px] leading-4 font-bold {badgeClass}">{i18n.lang.toUpperCase()}</span>
 	</button>
 	{#if open}
-		<ul role="listbox" aria-label={i18n.t('lang.pick')} class="card absolute top-full z-40 list-none m-0 mt-2 w-44 p-1.5 text-neutral-800 shadow-lg {align === 'right' ? 'right-0' : 'left-0'}">
+		<ul role="listbox" aria-label={i18n.t('lang.pick')} class="absolute top-full z-40 m-0 mt-2 w-44 list-none rounded-xl border border-black/10 bg-white p-1.5 text-neutral-800 shadow-xl {align === 'right' ? 'right-0' : 'left-0'}">
 			{#each LANGS as l (l)}
 				<li role="option" aria-selected={i18n.lang === l}>
 					<button
 						type="button"
 						onclick={() => pilih(l)}
-						class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-ink/5 {i18n.lang === l ? 'text-merah' : ''}"
+						class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-neutral-100 {i18n.lang === l ? 'text-merah' : ''}"
 					>
 						{LANG_NAMES[l]}
 						{#if i18n.lang === l}<span aria-hidden="true">✓</span>{/if}
