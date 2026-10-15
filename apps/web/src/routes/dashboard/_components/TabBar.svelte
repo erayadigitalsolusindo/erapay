@@ -79,6 +79,53 @@
 		else tabs = [{ href: HOME, url: HOME }];
 	}
 
+	// Menu klik kanan ala browser: tutup tab ini / lainnya / kanan / kiri / semua.
+	let menu = $state<{ x: number; y: number; href: string } | null>(null);
+
+	function sisakan(keep: (i: number) => boolean) {
+		const sisa = tabs.filter((_, i) => keep(i));
+		if (sisa.some((x) => x.href === current)) tabs = sisa;
+		else if (sisa.length) {
+			tabs = sisa;
+			goto(sisa[sisa.length - 1].url);
+		} else tutupSemua();
+	}
+
+	function aksi(kind: 'close' | 'others' | 'right' | 'left' | 'all') {
+		const at = tabs.findIndex((x) => x.href === menu?.href);
+		menu = null;
+		if (at < 0) return;
+		if (kind === 'close') tutup(tabs[at].href);
+		else if (kind === 'others') sisakan((i) => i === at);
+		else if (kind === 'right') sisakan((i) => i <= at);
+		else if (kind === 'left') sisakan((i) => i >= at);
+		else tutupSemua();
+	}
+
+	function bukaMenu(e: MouseEvent, tab: Tab) {
+		e.preventDefault();
+		// Jaga agar menu tidak keluar layar.
+		menu = { x: Math.min(e.clientX, innerWidth - 220), y: Math.min(e.clientY, innerHeight - 200), href: tab.href };
+	}
+
+	$effect(() => {
+		if (!menu) return;
+		const tutupMenu = () => (menu = null);
+		const esc = (e: KeyboardEvent) => e.key === 'Escape' && tutupMenu();
+		addEventListener('pointerdown', tutupMenu);
+		addEventListener('blur', tutupMenu);
+		addEventListener('resize', tutupMenu);
+		addEventListener('keydown', esc);
+		return () => {
+			removeEventListener('pointerdown', tutupMenu);
+			removeEventListener('blur', tutupMenu);
+			removeEventListener('resize', tutupMenu);
+			removeEventListener('keydown', esc);
+		};
+	});
+
+	const menuIdx = $derived(tabs.findIndex((x) => x.href === menu?.href));
+
 	function onKey(e: KeyboardEvent, tab: Tab) {
 		if (e.key === 'Delete' || (e.key === 'w' && e.altKey)) {
 			e.preventDefault();
@@ -95,6 +142,8 @@
 				{@const on = tab.href === current}
 				{#if it}
 					<div
+						role="presentation"
+						oncontextmenu={(e) => bukaMenu(e, tab)}
 						class="group flex shrink-0 items-center rounded-t-xl border border-b-0 text-xs font-semibold {on
 							? 'border-ink/10 bg-page text-ink'
 							: 'border-transparent text-ink/60 hover:bg-ink/5 hover:text-ink'}"
@@ -130,5 +179,22 @@
 		>
 			{t('tabs.closeAll')}
 		</button>
+	</div>
+{/if}
+{#if menu}
+	<div
+		role="menu"
+		tabindex="-1"
+		class="fixed z-50 w-52 rounded-xl border border-ink/15 bg-surface p-1 text-xs font-semibold shadow-xl"
+		style="left:{menu.x}px;top:{menu.y}px"
+		onpointerdown={(e) => e.stopPropagation()}
+		oncontextmenu={(e) => e.preventDefault()}
+	>
+		<button type="button" role="menuitem" class="block w-full rounded-lg px-3 py-2 text-left hover:bg-ink/5" onclick={() => aksi('close')}>{t('tabs.ctx.close')}</button>
+		<button type="button" role="menuitem" class="block w-full rounded-lg px-3 py-2 text-left hover:bg-ink/5 disabled:opacity-40 disabled:hover:bg-transparent" disabled={tabs.length < 2} onclick={() => aksi('others')}>{t('tabs.ctx.others')}</button>
+		<button type="button" role="menuitem" class="block w-full rounded-lg px-3 py-2 text-left hover:bg-ink/5 disabled:opacity-40 disabled:hover:bg-transparent" disabled={menuIdx >= tabs.length - 1} onclick={() => aksi('right')}>{t('tabs.ctx.right')}</button>
+		<button type="button" role="menuitem" class="block w-full rounded-lg px-3 py-2 text-left hover:bg-ink/5 disabled:opacity-40 disabled:hover:bg-transparent" disabled={menuIdx <= 0} onclick={() => aksi('left')}>{t('tabs.ctx.left')}</button>
+		<div class="my-1 border-t border-ink/10"></div>
+		<button type="button" role="menuitem" class="block w-full rounded-lg px-3 py-2 text-left hover:bg-ink/5" onclick={() => aksi('all')}>{t('tabs.closeAll')}</button>
 	</div>
 {/if}

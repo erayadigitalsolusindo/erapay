@@ -33,7 +33,7 @@
 	class="adm font-sans min-h-screen bg-surface text-ink antialiased lg:grid lg:grid-cols-[248px_minmax(0,1fr)]"
 >
 	<Sidebar user={data.user} menus={data.menus} />
-	<div class="min-w-0">
+	<div class="flex min-h-screen min-w-0 flex-col">
 		<Header user={data.user} bind:theme />
 		<TabBar user={data.user} menus={data.menus} />
 		{#if data.user.impersonating}
@@ -47,7 +47,7 @@
 				</form>
 			</div>
 		{/if}
-		<main class="border-t border-ink/10 bg-page p-5 lg:p-8">
+		<main class="flex-1 border-t border-ink/10 bg-page p-5 lg:p-8">
 			{#if data.user.merchantId && !data.user.emailVerified}
 				<p class="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900" role="status">
 					{i18n.t('onb.banner.unverified')}
@@ -69,7 +69,7 @@
 				</p>
 			{/if}
 			{@render children()}
-			<footer class="muted mt-8 text-[10px]">{i18n.t('footer.tagline')}</footer>
 		</main>
+		<footer class="muted border-t border-ink/10 bg-page px-5 py-3 text-[10px] lg:px-8">{i18n.t('footer.tagline')}</footer>
 	</div>
 </div>

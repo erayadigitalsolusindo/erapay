@@ -1,6 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { guard, call, done, read } from '../../../lib/server/gw';
-import type { Payment } from '../../../lib/server/payments';
+import { getPayment, qrSvg, type Payment } from '../../../lib/server/payments';
 import type { Actions, PageServerLoad } from './$types';
 
 const STATUSES = ['created', 'pending', 'succeeded', 'failed', 'expired', 'cancelled', 'unknown'];
@@ -36,6 +36,14 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 // Cek status (inquiry): tombol per baris meminta ulang status terbaru dari gateway
 // (DOKU) untuk transaksi pending/unknown. Keputusan status tetap di Go (PRD §0 #13).
 export const actions: Actions = {
+	// QR tidak ada di daftar (hanya di detail); diambil per permintaan dan hanya ada selama pending.
+	qr: async ({ request, cookies, fetch, locals }) => {
+		const token = guard(locals, cookies, 'payment:read', 'merchant');
+		const id = String((await request.formData()).get('id') ?? '').trim();
+		const p = id ? await getPayment(fetch, token, id) : null;
+		if (!p?.qr_code) return fail(404, { qrFail: true });
+		return { qr: await qrSvg(p.qr_code.value), qrRef: p.merchant_reference, qrAmount: p.amount, qrExpires: p.expires_at };
+	},
 	inquiry: async ({ request, cookies, fetch, locals }) => {
 		const token = guard(locals, cookies, 'payment:read', 'merchant');
 		const f = await request.formData();

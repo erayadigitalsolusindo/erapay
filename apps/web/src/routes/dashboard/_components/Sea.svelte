@@ -14,12 +14,82 @@
 	const W = 268;
 
 	let svg: SVGSVGElement;
+	const SIMPAN = 'erapay_sea_level';
 
 	// dibuat ulang saat ukuran sidebar berubah; token mencegah build lama menimpa yang baru.
 	onMount(() => {
 		let raf = 0;
 		let token = 0;
 		let timer: ReturnType<typeof setTimeout>;
+
+		// Tinggi air 0..1 (1 = penuh). Tekan/tahan di area air untuk menyusutkan sampai hilang,
+		// tekan/tahan lagi untuk memunculkannya kembali; klik singkat langsung menuntaskan arah itu.
+		let level = 1;
+		let gerak = 0;
+		let areaH = 800;
+		let areaLvl = 430;
+		try {
+			const v = parseFloat(localStorage.getItem(SIMPAN) ?? '');
+			if (v === 0) level = 0;
+		} catch {
+			/* penyimpanan diblokir: air tampil penuh */
+		}
+
+		const terap = () => {
+			const air = svg.querySelector('#air');
+			if (!air) return;
+			const e = level * level * (3 - 2 * level); // smoothstep
+			air.setAttribute('transform', `translate(0 ${(1 - e) * (areaH - areaLvl + 90)})`);
+			air.setAttribute('opacity', String(Math.min(1, level * 4)));
+			(air as SVGElement).style.display = level <= 0 ? 'none' : '';
+		};
+
+		const naik = (dir: 1 | -1, penuh: boolean) => {
+			cancelAnimationFrame(gerak);
+			let last = performance.now();
+			const step = (t: number) => {
+				level = Math.max(0, Math.min(1, level + dir * ((t - last) / 1100)));
+				last = t;
+				terap();
+				if (level > 0 && level < 1 && (penuh || holding)) gerak = requestAnimationFrame(step);
+				else done();
+			};
+			gerak = requestAnimationFrame(step);
+		};
+		const done = () => {
+			try {
+				localStorage.setItem(SIMPAN, level <= 0 ? '0' : '1');
+			} catch {
+				/* abaikan */
+			}
+		};
+
+		let holding = false;
+		let downAt = 0;
+		let dir: 1 | -1 = -1;
+		const host = svg.parentElement as HTMLElement;
+		const down = (e: PointerEvent) => {
+			if (e.button !== 0 || (e.target as Element).closest('a,button,input,select,textarea,[role=button]')) return;
+			// Hanya di area air (bagian bawah sidebar); wilayah navigasi tetap normal.
+			if (e.clientY < host.getBoundingClientRect().top + areaLvl - 16) return;
+			holding = true;
+			downAt = performance.now();
+			// Arah ditentukan saat mulai: penuh → menyusut, kosong → muncul; di tengah, balik dari arah terakhir.
+			dir = level >= 1 ? -1 : level <= 0 ? 1 : (dir === 1 ? -1 : 1);
+			naik(dir, false);
+		};
+		const up = () => {
+			if (!holding) return;
+			holding = false;
+			if (performance.now() - downAt < 220) naik(dir, true); // klik singkat: tuntaskan
+			else {
+				cancelAnimationFrame(gerak);
+				done();
+			}
+		};
+		host.addEventListener('pointerdown', down);
+		addEventListener('pointerup', up);
+		addEventListener('pointercancel', up);
 
 		const acak = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -75,6 +145,7 @@
 
 			svg.innerHTML =
 				`<defs><linearGradient id="mg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="420"><stop offset="0" style="stop-color:var(--w1)"/><stop offset="1" style="stop-color:var(--w2)"/></linearGradient></defs>` +
+				`<g id="air">` +
 				gambar(lapis[0]) +
 				`<g id="pulau" transform="translate(194 ${lvl - 4})"><path d="M-56 18C-48 -4 -24 -18 0 -18C24 -18 48 -4 56 18Z" style="fill:var(--sand)"/>` +
 				`<path d="M-30 -2C-18 -14 -4 -17 8 -14C22 -17 34 -8 42 2C22 -4 0 -4 -30 -2Z" style="fill:var(--palm)" opacity=".8"/>` +
@@ -82,7 +153,7 @@
 				`<g transform="translate(-20 -10) scale(.65)"><g class="pl"><path d="M0 0C-2 -12 -6 -22 -12 -30" fill="none" style="stroke:var(--trunk)" stroke-width="3" stroke-linecap="round"/><g transform="translate(-12 -30)">${daun()}</g></g></g></g>` +
 				gambar(lapis[1]) +
 				gambar(lapis[2]) +
-				`<g id="racun"></g><g id="gelembung"></g>`;
+				`<g id="racun"></g><g id="gelembung"></g></g>`;
 
 			const q = (id: string) => svg.querySelector('#' + id)!;
 
@@ -257,6 +328,10 @@
 		return () => {
 			token++;
 			cancelAnimationFrame(raf);
+			cancelAnimationFrame(gerak);
+			host.removeEventListener('pointerdown', down);
+			removeEventListener('pointerup', up);
+			removeEventListener('pointercancel', up);
 			clearTimeout(timer);
 			ro.disconnect();
 			svg.innerHTML = '';
