@@ -484,6 +484,8 @@ func (d Deps) mountV1(r chi.Router) {
 						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/approve", d.adminApproveMerchant)
 						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/reject", d.adminRejectMerchant)
 						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/revoke", d.adminRevokeMerchant)
+						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/suspend", d.adminSuspendMerchant(false))
+						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/reactivate", d.adminSuspendMerchant(true))
 						r.With(requirePerm("merchant:review")).Post("/merchants/{id}/verify-email", d.adminVerifyMerchantEmail)
 					})
 				}

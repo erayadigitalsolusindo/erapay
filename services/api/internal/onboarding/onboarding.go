@@ -747,6 +747,78 @@ func (s *Service) Revoke(ctx context.Context, in RevokeInput) (Merchant, error) 
 	return s.Get(ctx, in.MerchantID)
 }
 
+type SuspendInput struct {
+	MerchantID string
+	ActorID    string
+	Note       string // alasan (wajib; dibaca merchant dan masuk audit)
+	RequestID  string
+}
+
+// Suspend menangguhkan merchant: submitted/under_review/action_required/approved -> suspended.
+// Berbeda dari Reject (penolakan yang bisa diajukan ulang), penangguhan menghentikan transaksi
+// baru dan mengunci data sampai admin mengaktifkannya kembali (Reactivate). Dana/ledger tidak disentuh.
+func (s *Service) Suspend(ctx context.Context, in SuspendInput) (Merchant, error) {
+	in.Note = strings.TrimSpace(in.Note)
+	if n := utf8.RuneCountInString(in.Note); n < 3 || n > 500 {
+		return Merchant{}, invalid("note must be 3-500 characters")
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Merchant{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	from := append(append([]string{}, reviewable...), "approved")
+	if err := lockIn(ctx, tx, in.MerchantID, from); err != nil {
+		return Merchant{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE merchants SET onboarding_status='suspended', review_note=$3, reviewed_by=$2,
+		reviewed_at=now(), updated_at=now(), version=version+1 WHERE id=$1`, in.MerchantID, in.ActorID, in.Note); err != nil {
+		return Merchant{}, err
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant.suspended", EntityType: "merchant",
+		EntityID: in.MerchantID, RequestID: in.RequestID, Metadata: map[string]any{"note": in.Note}}); err != nil {
+		return Merchant{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Merchant{}, err
+	}
+	return s.Get(ctx, in.MerchantID)
+}
+
+// Reactivate mengakhiri penangguhan: kembali approved bila merchant pernah disetujui (punya plan harga),
+// selain itu kembali under_review agar diputuskan lewat alur biasa. Alasan wajib.
+func (s *Service) Reactivate(ctx context.Context, in SuspendInput) (Merchant, error) {
+	in.Note = strings.TrimSpace(in.Note)
+	if n := utf8.RuneCountInString(in.Note); n < 3 || n > 500 {
+		return Merchant{}, invalid("note must be 3-500 characters")
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Merchant{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockIn(ctx, tx, in.MerchantID, []string{"suspended"}); err != nil {
+		return Merchant{}, err
+	}
+	var to string
+	if err := tx.QueryRow(ctx, `SELECT CASE WHEN EXISTS (SELECT 1 FROM merchant_pricing_assignments WHERE merchant_id = $1)
+		THEN 'approved' ELSE 'under_review' END`, in.MerchantID).Scan(&to); err != nil {
+		return Merchant{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE merchants SET onboarding_status=$3, review_note=NULL, reviewed_by=$2,
+		reviewed_at=now(), updated_at=now(), version=version+1 WHERE id=$1`, in.MerchantID, in.ActorID, to); err != nil {
+		return Merchant{}, err
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant.reactivated", EntityType: "merchant",
+		EntityID: in.MerchantID, RequestID: in.RequestID, Metadata: map[string]any{"note": in.Note, "to": to}}); err != nil {
+		return Merchant{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Merchant{}, err
+	}
+	return s.Get(ctx, in.MerchantID)
+}
+
 type VerifyEmailInput struct {
 	MerchantID string
 	ActorID    string

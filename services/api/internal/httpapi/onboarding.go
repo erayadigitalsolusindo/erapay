@@ -160,6 +160,35 @@ func (d Deps) adminRejectMerchant(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, m)
 }
 
+// adminSuspendMerchant: tangguhkan merchant, atau aktifkan kembali (reactivate); alasan wajib.
+func (d Deps) adminSuspendMerchant(reactivate bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var body struct {
+			Note string `json:"note"`
+		}
+		if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
+			return
+		}
+		in := onboarding.SuspendInput{MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, Note: body.Note,
+			RequestID: middleware.GetReqID(r.Context())}
+		var m onboarding.Merchant
+		var err error
+		if reactivate {
+			m, err = d.Onboarding.Reactivate(r.Context(), in)
+		} else {
+			m, err = d.Onboarding.Suspend(r.Context(), in)
+		}
+		if !d.onboardingErr(w, r, err) {
+			return
+		}
+		writeJSON(w, http.StatusOK, m)
+	}
+}
+
 // adminRevokeMerchant: cabut persetujuan (approved -> under_review | rejected), alasan wajib.
 func (d Deps) adminRevokeMerchant(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)

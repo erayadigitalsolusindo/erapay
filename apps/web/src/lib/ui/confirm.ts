@@ -17,12 +17,12 @@ export type WithConfirmOptions = ConfirmOptions & {
  * @param next logika tambahan setelah disetujui (mis. status busy); boleh mengembalikan callback hasil.
  */
 export function withConfirm(
-	opts: WithConfirmOptions | ((fd: FormData) => WithConfirmOptions),
+	opts: WithConfirmOptions | ((fd: FormData, action: URL) => WithConfirmOptions),
 	next?: SubmitFunction
 ): SubmitFunction {
 	return (input) => {
-		const { formData, formElement, submitter, cancel } = input;
-		const o = typeof opts === 'function' ? opts(formData) : opts;
+		const { formData, formElement, submitter, cancel, action } = input;
+		const o = typeof opts === 'function' ? opts(formData, action) : opts;
 		if (!approved.has(formElement)) {
 			cancel();
 			void confirmDialog(o).then((ok) => {

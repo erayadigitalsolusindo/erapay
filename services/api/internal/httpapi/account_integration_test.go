@@ -480,3 +480,55 @@ func TestVerifyEmailManuallyHTTP(t *testing.T) {
 		t.Fatalf("audit = %d, want 1 (idempoten)", n)
 	}
 }
+
+// Tangguhkan: dari antrean atau approved -> suspended (alasan wajib, hanya merchant:approve);
+// aktifkan kembali -> approved bila pernah disetujui, selain itu under_review.
+func TestSuspendAndReactivateHTTP(t *testing.T) {
+	w := setup(t)
+	mid := register(t, w, "tangguh@toko.test")
+	verifyOwner(t, w, "tangguh@toko.test")
+	fin := w.client(t, "finance@erapay.test")
+	root := w.client(t, "root@erapay.test")
+	act := func(c *http.Client, action, body string) *http.Response {
+		return w.do(t, c, "POST", "/v1/admin/merchants/"+mid+"/"+action, body, nil)
+	}
+	status := func() string {
+		var s string
+		_ = w.db.QueryRow(t.Context(), `SELECT onboarding_status FROM merchants WHERE id = $1`, mid).Scan(&s)
+		return s
+	}
+	if r := act(fin, "suspend", `{"note":"indikasi fraud"}`); r.StatusCode != 403 {
+		t.Fatalf("finance suspend: %d", r.StatusCode)
+	}
+	if r := act(root, "suspend", `{"note":" "}`); r.StatusCode != 400 {
+		t.Fatalf("tanpa alasan: %d", r.StatusCode)
+	}
+	if r := act(root, "reactivate", `{"note":"salah status"}`); r.StatusCode != 409 {
+		t.Fatalf("reactivate bukan suspended: %d", r.StatusCode)
+	}
+	// Belum pernah disetujui: ditangguhkan dari antrean -> aktif kembali ke under_review.
+	if r := act(root, "suspend", `{"note":"indikasi fraud"}`); r.StatusCode != 200 || status() != "suspended" {
+		t.Fatalf("suspend antrean: %d %s", r.StatusCode, status())
+	}
+	if r := act(root, "reactivate", `{"note":"sudah klarifikasi"}`); r.StatusCode != 200 || status() != "under_review" {
+		t.Fatalf("reactivate -> %s", status())
+	}
+	// Pernah disetujui: kembali approved dengan plan harga yang sama.
+	if r := act(root, "approve", `{"mdr_bps":70,"platform_bps":100}`); r.StatusCode != 200 {
+		t.Fatalf("approve: %d", r.StatusCode)
+	}
+	if r := act(root, "suspend", `{"note":"audit internal"}`); r.StatusCode != 200 || status() != "suspended" {
+		t.Fatalf("suspend approved: %d %s", r.StatusCode, status())
+	}
+	if r := act(root, "suspend", `{"note":"dua kali"}`); r.StatusCode != 409 {
+		t.Fatalf("suspend dua kali: %d", r.StatusCode)
+	}
+	if r := act(root, "reactivate", `{"note":"audit selesai"}`); r.StatusCode != 200 || status() != "approved" {
+		t.Fatalf("reactivate -> %s", status())
+	}
+	var n int
+	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM audit_logs WHERE entity_id=$1 AND action IN ('merchant.suspended','merchant.reactivated')`, mid).Scan(&n)
+	if n != 4 {
+		t.Fatalf("audit = %d, want 4", n)
+	}
+}

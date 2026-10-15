@@ -208,6 +208,7 @@
 	.adm .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition focus-visible:ring-4 focus-visible:ring-emas/60; }
 	.adm .btn-red { @apply bg-merah text-white hover:bg-merah-tua; }
 	.adm .btn-light { @apply border border-ink/10 bg-surface hover:bg-ink/5; }
+	.adm .btn-warn { @apply border border-amber-600 bg-surface text-amber-700 hover:bg-amber-500/10; }
 	.adm .btn-danger { @apply border border-red-700 bg-surface text-red-700 hover:bg-red-500/10; }
 	.adm .pill { @apply inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold; }
 	.adm .muted { color: var(--muted); }

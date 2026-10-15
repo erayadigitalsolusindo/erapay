@@ -29,7 +29,8 @@
 	const showChanges = $derived(canReview && ['submitted', 'under_review'].includes(m.status));
 	const showDecide = $derived(canApprove && reviewable.includes(m.status));
 	const showRevoke = $derived(canApprove && m.status === 'approved');
-	const any = $derived(showVerify || showStart || showChanges || showDecide || showRevoke);
+	const showReactivate = $derived(canApprove && m.status === 'suspended');
+	const any = $derived(showVerify || showStart || showChanges || showDecide || showRevoke || showReactivate);
 
 	const pct = (bps: FormDataEntryValue | null) => (Number(bps) / 100).toString();
 	// Aksi tanpa dialog konfirmasi (mulai review, minta perbaikan, tolak sudah punya alasan wajib).
@@ -123,18 +124,29 @@
 					</div>
 					<p class="muted">{t('onb.bpsHint')}</p>
 				</form>
-				<form method="POST" action="?/reject" use:enhance={withConfirm((fd) => ({ variant: 'danger', title: 'Tolak merchant?', message: `Tolak ${m.display_name}? Alasan penolakan akan dibaca merchant.`, confirmText: 'Ya, tolak', successMessage: 'Merchant ditolak.' }), busyWrap)} class="space-y-2">
-					<h4 class="font-bold">{t('fin.reject')}</h4>
+				<form
+					method="POST"
+					action="?/reject"
+					use:enhance={withConfirm((fd, action) => (action.search.includes('suspend')
+						? { variant: 'warning', title: 'Tangguhkan merchant?', message: `Tangguhkan ${m.display_name}? Transaksi baru berhenti dan data terkunci sampai kamu mengaktifkannya kembali.`, confirmText: 'Ya, tangguhkan', successMessage: 'Merchant ditangguhkan.' }
+						: { variant: 'danger', title: 'Tolak merchant?', message: `Tolak ${m.display_name}? Alasan penolakan akan dibaca merchant.`, confirmText: 'Ya, tolak', successMessage: 'Merchant ditolak.' }), busyWrap)}
+					class="space-y-2"
+				>
+					<h4 class="font-bold">{t('fin.reject')} / Tangguhkan</h4>
+					<p class="muted">Tolak = pengajuan ditutup (merchant boleh memperbaiki). Tangguhkan = transaksi dihentikan sementara dan data dikunci.</p>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">
 						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder={t('onb.noteRequired')} minlength="3" maxlength="500" required />
 						<button class="btn btn-danger" type="submit" disabled={busy}>{t('fin.reject')}</button>
+						<button class="btn btn-warn" type="submit" formaction="?/suspend" disabled={busy}>Tangguhkan</button>
 					</div>
 				</form>
 			{/if}
 
 			{#if showRevoke}
-				<form method="POST" action="?/revoke" use:enhance={withConfirm({ variant: 'danger', title: t('onb.revokeBtn'), message: t('onb.revokeConfirm', { name: m.display_name }), confirmText: 'Ya, cabut', successMessage: 'Persetujuan dicabut.' }, busyWrap)} class="space-y-2">
+				<form method="POST" action="?/revoke" use:enhance={withConfirm((fd, action) => (action.search.includes('suspend')
+						? { variant: 'warning', title: 'Tangguhkan merchant?', message: `Tangguhkan ${m.display_name}? Transaksi baru berhenti dan data terkunci sampai kamu mengaktifkannya kembali.`, confirmText: 'Ya, tangguhkan', successMessage: 'Merchant ditangguhkan.' }
+						: { variant: 'danger', title: t('onb.revokeBtn'), message: t('onb.revokeConfirm', { name: m.display_name }), confirmText: 'Ya, cabut', successMessage: 'Persetujuan dicabut.' }), busyWrap)} class="space-y-2">
 					<h4 class="font-bold">{t('onb.revokeBtn')}</h4>
 					<p class="muted">{t('onb.revokeHint')}</p>
 					<input type="hidden" name="id" value={m.id} />
@@ -145,6 +157,24 @@
 						]} />
 						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder={t('onb.noteRequired')} minlength="3" maxlength="500" required />
 						<button class="btn btn-danger" type="submit" disabled={busy}>{t('onb.revokeBtn')}</button>
+						<button class="btn btn-warn" type="submit" formaction="?/suspend" disabled={busy}>Tangguhkan</button>
+					</div>
+				</form>
+			{/if}
+
+			{#if showReactivate}
+				<form
+					method="POST"
+					action="?/reactivate"
+					use:enhance={withConfirm({ variant: 'info', title: 'Aktifkan kembali?', message: `Aktifkan kembali ${m.display_name}? Transaksi dapat berjalan lagi bila merchant sudah pernah disetujui.`, confirmText: 'Ya, aktifkan', successMessage: 'Merchant diaktifkan kembali.' }, busyWrap)}
+					class="space-y-2"
+				>
+					<h4 class="font-bold">Aktifkan kembali</h4>
+					<p class="muted">Merchant sedang ditangguhkan. Mengaktifkan kembali mengembalikannya ke status sebelumnya (disetujui bila pernah disetujui, jika tidak kembali ke peninjauan).</p>
+					<input type="hidden" name="id" value={m.id} />
+					<div class="flex flex-wrap gap-2">
+						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder="Alasan pengaktifan kembali" minlength="3" maxlength="500" required />
+						<button class="btn btn-red" type="submit" disabled={busy}>Aktifkan kembali</button>
 					</div>
 				</form>
 			{/if}
