@@ -35,9 +35,9 @@ export function withConfirm(
 			const { result, update } = args;
 			if (result.type === 'failure') {
 				const msg = (result.data as { message?: string } | undefined)?.message;
-				notify('danger', msg ?? 'Permintaan gagal. Coba lagi.', 'Gagal');
+				notify('danger', msg ?? 'Terjadi kesalahan di server. Coba lagi sebentar lagi.', `Gagal: ${o.title ?? 'aksi tidak dijalankan'}`);
 			} else if (result.type === 'success' && o.successMessage) {
-				notify('success', o.successMessage);
+				notify('success', o.successMessage, `Berhasil: ${o.title ?? 'aksi dijalankan'}`);
 			}
 			if (typeof inner === 'function') await inner(args);
 			else await update();

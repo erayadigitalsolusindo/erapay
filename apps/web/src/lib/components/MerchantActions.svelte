@@ -34,7 +34,7 @@
 	const pct = (bps: FormDataEntryValue | null) => (Number(bps) / 100).toString();
 	// Aksi tanpa dialog konfirmasi (mulai review, minta perbaikan, tolak sudah punya alasan wajib).
 	const plain =
-		(successMessage: string): SubmitFunction =>
+		(title: string, successMessage: string): SubmitFunction =>
 		() => {
 			busy = true;
 			err = '';
@@ -42,9 +42,10 @@
 				busy = false;
 				if (result.type === 'failure') {
 					err = (result.data as { message?: string })?.message ?? t('c.loadFail');
+					notify('danger', err, `Gagal: ${title}`);
 					return;
 				}
-				notify('success', successMessage);
+				notify('success', successMessage, `Berhasil: ${title}`);
 				await update();
 				open = false;
 			};
@@ -87,7 +88,7 @@
 			{/if}
 
 			{#if showStart}
-				<form method="POST" action="?/startReview" use:enhance={plain('Review dimulai.')} class="flex items-center justify-between gap-3">
+				<form method="POST" action="?/startReview" use:enhance={plain('mulai review', 'Merchant kini berstatus Sedang ditinjau.')} class="flex items-center justify-between gap-3">
 					<div><h4 class="font-bold">{t('onb.startReview')}</h4><p class="muted">Tandai bahwa kamu sedang meninjau data ini.</p></div>
 					<input type="hidden" name="id" value={m.id} />
 					<button class="btn" type="submit" disabled={busy}>{t('onb.startReview')}</button>
@@ -95,7 +96,7 @@
 			{/if}
 
 			{#if showChanges}
-				<form method="POST" action="?/requestChanges" use:enhance={plain('Permintaan perbaikan terkirim ke merchant.')} class="space-y-2">
+				<form method="POST" action="?/requestChanges" use:enhance={plain('minta perbaikan', 'Catatan perbaikan sudah dikirim ke merchant.')} class="space-y-2">
 					<h4 class="font-bold">{t('onb.requestChanges')}</h4>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">

@@ -104,16 +104,19 @@
 <div class="pointer-events-none fixed top-4 right-4 z-[110] flex w-[min(92vw,24rem)] flex-col gap-3" aria-live="polite">
 	{#each ui.toasts as t (t.id)}
 		{@const k = TOAST[t.variant]}
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div
-			class="dh-toast pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-md py-3 pr-12 pl-4 shadow-md"
+			class="dh-toast pointer-events-auto relative flex cursor-pointer items-center gap-3 overflow-hidden rounded-md py-3 pr-4 pl-4 shadow-md"
 			role="status"
+			title="Klik untuk menutup"
 			style="background:{k.bg};color:{k.fg};border-left:5px solid {k.edge}"
+			onclick={() => dismissToast(t.id)}
 		>
-			<span class="grid size-6 shrink-0 place-items-center rounded-full" style="background:{k.fg}">{@render glyph(k.glyph)}</span>
-			<p class="min-w-0 text-[13px] leading-snug font-semibold break-words"><b class="font-extrabold">{t.title}:</b> {t.message}</p>
-			<button type="button" class="absolute top-1/2 right-3 grid size-6 -translate-y-1/2 place-items-center rounded-full border-2 transition hover:opacity-70" style="border-color:{k.fg}" aria-label="Tutup" onclick={() => dismissToast(t.id)}>
-				<svg viewBox="0 0 24 24" class="size-3" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><path d="m7 7 10 10M17 7 7 17" /></svg>
-			</button>
+			<span class="grid size-7 shrink-0 place-items-center rounded-full" style="background:{k.fg}">{@render glyph(k.glyph)}</span>
+			<div class="min-w-0">
+				<p class="text-[13px] leading-tight font-extrabold">{t.title}</p>
+				<p class="mt-0.5 text-xs leading-snug font-semibold break-words opacity-90">{t.message}</p>
+			</div>
 			<span class="dh-bar absolute inset-x-0 bottom-0 h-0.5" style="background:{k.fg};opacity:.35"></span>
 		</div>
 	{/each}

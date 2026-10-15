@@ -67,13 +67,15 @@
 					});
 					if (yes) r = await postAction('kycSave', { section, payload, confirm_sensitive: true });
 				}
-				if (r.ok) notify('success', 'Data tersimpan.');
+				if (r.ok) notify('success', 'Isian bagian ini sudah tersimpan.', 'Berhasil: simpan data');
+				else notify('danger', r.fields && Object.keys(r.fields).length ? 'Periksa kembali isian yang ditandai merah.' : (r.message ?? 'Terjadi kesalahan, coba lagi.'), 'Gagal: simpan data');
 				if (r.ok) void invalidateAll();
 				return { ok: r.ok, fields: r.fields, message: r.message };
 			},
 			submit: async () => {
 				const r = await postAction('kycSubmit');
-				if (r.ok) notify('success', 'Data kamu sudah dikirim dan menunggu verifikasi.', 'Terkirim');
+				if (!r.ok) notify('danger', r.message ?? 'Pastikan semua bagian sudah lengkap.', 'Gagal: kirim verifikasi');
+				if (r.ok) notify('success', 'Data kamu sudah dikirim dan menunggu verifikasi admin.', 'Berhasil: kirim verifikasi');
 				if (r.ok) void invalidateAll();
 				return { ok: r.ok, fields: r.fields, message: r.message };
 			},
