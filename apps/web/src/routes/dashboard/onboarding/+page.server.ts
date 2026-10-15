@@ -25,9 +25,9 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 
 // Terjemahkan hasil panggilan Go menjadi respons action: {ok:true, profile} atau fail().
 // Semua aturan (validasi, izin, batas) tetap di Go; di sini hanya meneruskan sesi.
-function done(r: { ok: boolean; message?: string; fields?: Record<string, string>; value?: Profile }, status = 400) {
+function done(r: { ok: boolean; message?: string; code?: string; fields?: Record<string, string>; value?: Profile }, status = 400) {
 	if (r.ok) return { ok: true, profile: r.value ?? null };
-	return fail(status, { message: r.message ?? 'Gagal.', fields: r.fields });
+	return fail(status, { message: r.message ?? 'Gagal.', fields: r.fields, code: r.code });
 }
 
 export const actions: Actions = {

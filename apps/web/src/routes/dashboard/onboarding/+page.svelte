@@ -43,7 +43,7 @@
 		}
 		if (result.type === 'failure') {
 			const d: any = result.data ?? {};
-			return { ok: false, message: d.message ?? 'Permintaan gagal.', status: result.status, fields: d.fields };
+			return { ok: false, message: d.message ?? 'Permintaan gagal.', status: result.status, fields: d.fields, code: d.code };
 		}
 		if (result.type !== 'success') return { ok: false, message: 'Terjadi kesalahan server.', status: res.status };
 		return { ok: true, ...((result.data as object) ?? {}) };
@@ -54,7 +54,14 @@
 	function buildApi(prof: Profile): SectionApi {
 		return {
 			save: async (section, payload) => {
-				const r = await postAction('kycSave', { section, payload });
+				let r = await postAction('kycSave', { section, payload });
+				// Akun sudah disetujui: ubah data sensitif (jenis entitas, nama badan, NIK) butuh konfirmasi eksplisit.
+				if (!r.ok && r.code === 'SENSITIVE_CONFIRM_REQUIRED') {
+					const yes = window.confirm(
+						'Akun ini sudah terverifikasi. Mengubah data sensitif (mis. jenis entitas, nama badan usaha, NIK) akan menandai akun "Perlu Tinjau Ulang" dan menunggu persetujuan admin lagi. ' + 'Lanjutkan menyimpan?'
+					);
+					if (yes) r = await postAction('kycSave', { section, payload, confirm_sensitive: true });
+				}
 				if (r.ok) void invalidateAll();
 				return { ok: r.ok, fields: r.fields, message: r.message };
 			},
