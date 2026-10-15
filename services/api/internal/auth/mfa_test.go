@@ -10,6 +10,20 @@ import (
 	"github.com/pquerna/otp/totp"
 )
 
+// A user who never enrolled has mfa_secret NULL; status must report "not enrolled", not fail.
+func TestMFAStatusNotEnrolled(t *testing.T) {
+	db := testdb.New(t)
+	s := NewService(db, DefaultConfig())
+	uid, err := s.CreateUser(context.Background(), "plain@erapay.test", pw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := s.GetMFAEnrollmentStatus(context.Background(), uid)
+	if err != nil || info.MFAEnrolled {
+		t.Fatalf("status for non-enrolled user: %+v err=%v", info, err)
+	}
+}
+
 func TestMFAEnrollmentAndLoginFlow(t *testing.T) {
 	db := testdb.New(t)
 	s := NewService(db, DefaultConfig())

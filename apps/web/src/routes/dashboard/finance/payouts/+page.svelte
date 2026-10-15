@@ -26,6 +26,7 @@
 	</section>
 {/if}
 
+{#if !data.tenant}
 <section class="card mb-6 overflow-hidden">
 	<div class="p-5">
 		<h2 class="text-sm font-bold">{t('fin.bankPending')}</h2>
@@ -62,6 +63,7 @@
 		</div>
 	{/if}
 </section>
+{/if}
 
 <section class="card overflow-hidden">
 	<div class="flex flex-wrap items-center justify-between gap-3 p-5">

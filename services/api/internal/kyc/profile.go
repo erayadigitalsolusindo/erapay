@@ -169,13 +169,19 @@ func (s *Service) revealOwner(p *Profile, m *rawMerchant, merchantID string) {
 
 // ============================ BANGUN TAMPILAN ============================
 
+// intlPhone shows a stored phone as +62…; the column holds either the national number
+// ("81234567890") or the sign-up form "+6281234567890".
+func intlPhone(stored string) string {
+	return "+62" + strings.TrimPrefix(strings.TrimPrefix(stored, "+"), "62")
+}
+
 func buildCompany(m *rawMerchant, notes []Note) Company {
 	c := Company{Notes: notesFor(notes, "company"), NeedsRevision: sectionMarked(notes, "company")}
 	c.BusinessID = val(m.BusinessID)
 	c.EntityType = val(m.EntityType)
 	c.CompanyName = m.CompanyName
 	if m.Phone != nil && *m.Phone != "" {
-		c.Phone = "+62" + strings.TrimPrefix(*m.Phone, "62")
+		c.Phone = intlPhone(*m.Phone)
 	}
 	c.Email = val(m.Email)
 	c.PostalCode, c.Kelurahan, c.Kecamatan = val(m.PostalCode), val(m.Kelurahan), val(m.Kecamatan)
@@ -192,7 +198,7 @@ func buildRepresentative(m *rawMerchant, docs []docRow, notes []Note) Representa
 		r.Position = *m.OwnerPosition
 	}
 	if m.OwnerPhone != nil && *m.OwnerPhone != "" {
-		r.Phone = "+62" + strings.TrimPrefix(*m.OwnerPhone, "62")
+		r.Phone = intlPhone(*m.OwnerPhone)
 	}
 	r.Email = val(m.OwnerEmail)
 	r.Nationality = "Indonesia"

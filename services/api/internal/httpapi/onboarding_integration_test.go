@@ -496,6 +496,23 @@ func TestRegisterIdentityValidationHTTP(t *testing.T) {
 	}
 }
 
+// A merchant that completed the KYC wizard has NIK, NPWP and NIB but no birth data, gender or
+// personal address (the wizard never asks for them); it must still be approvable.
+func TestApproveMerchantFromKYCWizardData(t *testing.T) {
+	w := setup(t)
+	mid := register(t, w, "wizard@toko.test")
+	verifyOwner(t, w, "wizard@toko.test")
+	root := w.client(t, "root@erapay.test")
+	if _, err := w.db.Exec(t.Context(), `UPDATE merchants SET
+		owner_place_of_birth=NULL, owner_date_of_birth=NULL, owner_gender=NULL, owner_address=NULL
+		WHERE id = $1`, mid); err != nil {
+		t.Fatal(err)
+	}
+	if r := w.do(t, root, "POST", "/v1/admin/merchants/"+mid+"/approve", `{"mdr_bps":70,"platform_bps":100}`, nil); r.StatusCode != 200 {
+		t.Fatalf("approve wizard-style merchant: %d %s", r.StatusCode, errCode(t, r))
+	}
+}
+
 // Approval cannot happen until the data diri is complete. A merchant that signed up without it
 // (pre-existing row, ARUS-provisioned) completes it from its own session; the reviewer detail view
 // is the only place the plaintext NIK/NPWP appear.

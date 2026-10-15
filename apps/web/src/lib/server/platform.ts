@@ -149,6 +149,39 @@ export function guardPlatform(locals: App.Locals, cookies: Cookies): string {
 	return token;
 }
 
+export type ImpersonateResult =
+	| { ok: true; token: string; maxAge: number }
+	| { ok: false; message: string; status: number };
+
+/** DEWA masuk sebagai tenant: Go membuat sesi merchant (alasan wajib) dan mengirimnya via Set-Cookie. */
+export async function platformImpersonate(
+	f: typeof fetch,
+	clientIp: string,
+	platformToken: string,
+	merchantId: string,
+	reason: string
+): Promise<ImpersonateResult> {
+	let res: Response;
+	try {
+		res = await f(`${BASE}/v1/platform/impersonate`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', 'x-forwarded-for': clientIp, cookie: `${PLATFORM_COOKIE}=${platformToken}` },
+			body: JSON.stringify({ merchant_id: merchantId, reason })
+		});
+	} catch {
+		return { ok: false, message: 'Layanan tidak dapat dihubungi.', status: 0 };
+	}
+	if (!res.ok) {
+		const b = await res.json().catch(() => null);
+		return { ok: false, message: b?.error?.message ?? 'Gagal masuk sebagai tenant.', status: res.status };
+	}
+	for (const line of res.headers.getSetCookie()) {
+		const c = cookieWithToken(line, 'erapay_session');
+		if (c) return { ok: true, token: c.token, maxAge: c.maxAge };
+	}
+	return { ok: false, message: 'Sesi tenant tidak diterima.', status: 502 };
+}
+
 /** Jalur API panel platform (RBAC di /v1/platform/admin/*, bukan /v1/admin/*). */
 export const platformApi = <T = unknown>(f: typeof fetch, token: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<PlatformResult<T>> =>
 	callPlatform<T>(f, token, method, path, body);

@@ -312,7 +312,7 @@ func (s *Service) CancelMFAEnrollment(ctx context.Context, userID string) error 
 
 // GetMFAEnrollmentStatus returns the current MFA status for a user.
 func (s *Service) GetMFAEnrollmentStatus(ctx context.Context, userID string) (*MFASessionInfo, error) {
-	var secret string
+	var secret *string // NULL until the user enrolls
 	var enrolledAt *time.Time
 	err := s.db.QueryRow(ctx,
 		`SELECT mfa_secret, mfa_enrolled_at FROM users WHERE id = $1`,
@@ -324,7 +324,7 @@ func (s *Service) GetMFAEnrollmentStatus(ctx context.Context, userID string) (*M
 		return nil, err
 	}
 
-	enrolled := secret != ""
+	enrolled := secret != nil && *secret != ""
 	return &MFASessionInfo{
 		UserID:          userID,
 		MFAEnrolled:     enrolled,

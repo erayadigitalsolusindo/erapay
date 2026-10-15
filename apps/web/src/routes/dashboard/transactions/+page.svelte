@@ -106,7 +106,7 @@
 							<td><StatusBadge status={p.status} /></td>
 							<td>{#if p.settlement_status && p.settlement_status !== 'not_expected'}<StateBadge kind="settle" value={p.settlement_status} />{:else}<span class="muted">—</span>{/if}</td>
 							<td class="text-right">
-								{#if p.status === 'pending' || p.status === 'unknown'}
+								{#if p.status === 'created' || p.status === 'pending' || p.status === 'unknown'}
 									<form method="POST" action="?/inquiry" use:enhance={inquiryEnhance}>
 										<input type="hidden" name="id" value={p.id} />
 										<button type="submit" class="btn btn-light" disabled={submitting === p.id}>🔄 {t('trx.inquiryBtn')}</button>

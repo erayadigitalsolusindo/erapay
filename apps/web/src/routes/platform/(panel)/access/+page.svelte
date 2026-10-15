@@ -14,6 +14,8 @@
 		rolePermissions.some((p) => p.role_id === roleId && p.permission_code === code);
 	const menuAllowed = (menuId: string, roleId: string) =>
 		(menu.access ?? []).some((a: any) => a.menu_id === menuId && a.role_id === roleId && a.allowed === true);
+	const menuAssignable = (menuId: string, roleId: string) =>
+		(menu.access ?? []).some((a: any) => a.menu_id === menuId && a.role_id === roleId && a.assignable === true);
 </script>
 
 <section class="space-y-6">
@@ -140,6 +142,9 @@
 								<td class="text-xs">{m.label}<div class="muted font-mono text-[10px]">{m.href}</div></td>
 								{#each roles as r (r.id)}
 									<td class="text-center">
+										{#if !menuAssignable(m.id, r.id)}
+											<span class="muted text-xs" title="Scope menu tidak cocok dengan scope role">—</span>
+										{:else}
 										<form method="POST" action="?/toggleMenu" use:enhance>
 											<input type="hidden" name="menu_id" value={m.id} />
 											<input type="hidden" name="role_id" value={r.id} />
@@ -156,6 +161,7 @@
 												{menuAllowed(m.id, r.id) ? '×' : '+'}
 											</button>
 										</form>
+										{/if}
 									</td>
 								{/each}
 							</tr>

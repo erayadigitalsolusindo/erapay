@@ -22,8 +22,18 @@ export type Bank = { code: string; name: string };
 const STATUSES = ['pending_approval', 'approved', 'submitted', 'unknown', 'paid', 'failed', 'returned', 'cancelled'];
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
-	const token = guard(locals, cookies, 'payout:review', 'platform');
 	const status = url.searchParams.get('status') ?? '';
+	// Sesi merchant: tampilan baca-saja atas payout miliknya sendiri (endpoint tenant /v1/payouts); tanpa aksi review.
+	if (locals.user?.merchantId) {
+		const token = guard(locals, cookies, 'payout:read', 'merchant');
+		const mine = await read<{ data: Omit<AdminPayout, 'merchant_id' | 'requested_by'>[] }>(fetch, token, '/v1/payouts?limit=100');
+		const rows = mine?.data
+			? mine.data.filter((r) => !STATUSES.includes(status) || r.status === status).map((r) => ({ ...r, merchant_id: locals.user!.merchantId, requested_by: '' }))
+			: null;
+		const banks = await read<{ data: Bank[] }>(fetch, token, '/v1/banks');
+		return { tenant: true, payouts: rows, accounts: [] as PendingAccount[], banks: banks?.data ?? [], status, me: locals.user.id, canVerify: false, canApprove: false, canExecute: false };
+	}
+	const token = guard(locals, cookies, 'payout:review', 'platform');
 	const q = STATUSES.includes(status) ? `&status=${status}` : '';
 	const p = locals.user!.permissions;
 	const [payouts, accounts, banks] = await Promise.all([
@@ -32,6 +42,7 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 		read<{ data: Bank[] }>(fetch, token, '/v1/banks')
 	]);
 	return {
+		tenant: false,
 		payouts: payouts?.data ?? null,
 		accounts: accounts?.data ?? null,
 		banks: banks?.data ?? [],

@@ -255,6 +255,10 @@ func (d Deps) mountPlatform(r chi.Router) {
 			r.Use(d.requirePlatformAdmin)
 			r.Get("/auth/me", d.platformMe)
 			r.Post("/auth/logout", d.platformLogout)
+			// Impersonasi tenant + jejak audit (lihat impersonate.go).
+			r.Get("/merchants", d.platformMerchants)
+			r.Post("/impersonate", d.platformImpersonate)
+			r.Get("/audit-logs", d.platformAudit)
 			// MFA for the panel (DEWA), using the platform session.
 			r.Get("/auth/mfa/status", d.mfaStatus)
 			r.Post("/auth/mfa/enroll", d.mfaEnroll)

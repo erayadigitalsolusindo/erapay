@@ -303,6 +303,21 @@ func TestInquiryAppliesConfirmedStatus(t *testing.T) {
 	}
 }
 
+func TestInquiryWithoutGatewayReference(t *testing.T) {
+	e := osetup(t)
+	ctx := context.Background()
+	p := e.pending(t, "key-inq-noref-01", 10000)
+	if _, err := e.db.Exec(ctx, `UPDATE payments SET status='created', gateway_reference=NULL WHERE id=$1`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.orch.Inquire(ctx, p.ID); !errors.Is(err, ErrNotSentToGateway) {
+		t.Fatalf("want ErrNotSentToGateway, got %v", err)
+	}
+	if e.gw.queryCalls.Load() != 0 {
+		t.Fatal("gateway must not be queried without a reference")
+	}
+}
+
 func TestInquirySafetyRails(t *testing.T) {
 	e := osetup(t)
 	ctx := context.Background()

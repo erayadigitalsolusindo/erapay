@@ -18,12 +18,22 @@ export type AdminRefund = {
 const STATUSES = ['pending_approval', 'approved', 'refunded', 'failed', 'cancelled'];
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
-	const token = guard(locals, cookies, 'refund:review', 'platform');
 	const status = url.searchParams.get('status') ?? '';
+	// Sesi merchant: tampilan baca-saja atas refund miliknya sendiri (endpoint tenant /v1/refunds); tanpa aksi review.
+	if (locals.user?.merchantId) {
+		const token = guard(locals, cookies, 'refund:read', 'merchant');
+		const mine = await read<{ data: Omit<AdminRefund, 'merchant_id' | 'requested_by'>[] }>(fetch, token, '/v1/refunds?limit=100');
+		const rows = mine?.data
+			? mine.data.filter((r) => !STATUSES.includes(status) || r.status === status).map((r) => ({ ...r, merchant_id: locals.user!.merchantId, requested_by: '' }))
+			: null;
+		return { tenant: true, refunds: rows, status, me: locals.user.id, canApprove: false, canExecute: false };
+	}
+	const token = guard(locals, cookies, 'refund:review', 'platform');
 	const q = STATUSES.includes(status) ? `&status=${status}` : '';
 	const p = locals.user!.permissions;
 	const refunds = await read<{ data: AdminRefund[] }>(fetch, token, `/v1/admin/refunds?limit=100${q}`);
 	return {
+		tenant: false,
 		refunds: refunds?.data ?? null,
 		status,
 		me: locals.user!.id,
