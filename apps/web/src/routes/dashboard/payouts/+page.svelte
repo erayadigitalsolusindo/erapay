@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withConfirm } from '../../../lib/ui/confirm';
 	import Combobox from '../../../lib/components/Combobox.svelte';
 	import { enhance } from '$app/forms';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
@@ -82,9 +83,7 @@
 								<form
 									method="POST"
 									action="?/disableAccount"
-									use:enhance={({ cancel }) => {
-										if (!confirm(t('bank.disableConfirm'))) cancel();
-									}}
+									use:enhance={withConfirm({ variant: 'warning', title: 'Nonaktifkan rekening', successMessage: 'Rekening dinonaktifkan.', confirmText: 'Ya, nonaktifkan', message: t('bank.disableConfirm') })}
 								>
 									<input type="hidden" name="id" value={a.id} />
 									<button type="submit" class="btn btn-danger">{t('bank.disable')}</button>
@@ -136,9 +135,7 @@
 									<form
 										method="POST"
 										action="?/cancel"
-										use:enhance={({ cancel }) => {
-											if (!confirm(t('po.cancelConfirm'))) cancel();
-										}}
+										use:enhance={withConfirm({ variant: 'danger', title: 'Batalkan payout', successMessage: 'Payout dibatalkan.', confirmText: 'Ya, batalkan', message: t('po.cancelConfirm') })}
 									>
 										<input type="hidden" name="id" value={p.id} />
 										<button type="submit" class="btn btn-danger">{t('po.cancel')}</button>

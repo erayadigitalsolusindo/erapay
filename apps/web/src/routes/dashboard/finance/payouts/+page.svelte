@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withConfirm } from '../../../../lib/ui/confirm';
 	import { enhance } from '$app/forms';
 	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
 	import StateBadge from '../../../../lib/components/StateBadge.svelte';
@@ -121,9 +122,7 @@
 										<form
 											method="POST"
 											action="?/execute"
-											use:enhance={({ cancel }) => {
-												if (!confirm(t('fin.executeConfirm'))) cancel();
-											}}
+											use:enhance={withConfirm({ variant: 'warning', title: 'Jalankan transfer', successMessage: 'Transfer dijalankan.', confirmText: 'Ya, jalankan', message: t('fin.executeConfirm') })}
 										>
 											<input type="hidden" name="id" value={p.id} />
 											<button class="btn btn-red" type="submit" title={t('fin.executeHint')}>{t('fin.execute')}</button>

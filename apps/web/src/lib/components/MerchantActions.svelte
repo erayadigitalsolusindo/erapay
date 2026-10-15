@@ -5,6 +5,8 @@
 	import Modal from './Modal.svelte';
 	import Combobox from './Combobox.svelte';
 	import { getI18n } from '../i18n/i18n.svelte';
+	import { notify } from '../ui/dialog.svelte';
+	import { withConfirm } from '../ui/confirm';
 
 	let {
 		m,
@@ -30,10 +32,10 @@
 	const any = $derived(showVerify || showStart || showChanges || showDecide || showRevoke);
 
 	const pct = (bps: FormDataEntryValue | null) => (Number(bps) / 100).toString();
-	const submit =
-		(confirmMsg?: (fd: FormData) => string): SubmitFunction =>
-		({ formData, cancel }) => {
-			if (confirmMsg && !confirm(confirmMsg(formData))) return cancel();
+	// Aksi tanpa dialog konfirmasi (mulai review, minta perbaikan, tolak sudah punya alasan wajib).
+	const plain =
+		(successMessage: string): SubmitFunction =>
+		() => {
 			busy = true;
 			err = '';
 			return async ({ result, update }) => {
@@ -42,10 +44,22 @@
 					err = (result.data as { message?: string })?.message ?? t('c.loadFail');
 					return;
 				}
+				notify('success', successMessage);
 				await update();
 				open = false;
 			};
 		};
+	// Aksi berisiko: dialog konfirmasi dulu; hasil tampil sebagai toast.
+	const busyWrap: SubmitFunction = () => {
+		busy = true;
+		err = '';
+		return async ({ result, update }) => {
+			busy = false;
+			if (result.type === 'failure') return; // toast gagal sudah ditampilkan withConfirm
+			await update();
+			open = false;
+		};
+	};
 </script>
 
 {#if any}
@@ -61,7 +75,7 @@
 			{#if err}<p class="rounded-lg bg-red-50 px-3 py-2 font-semibold text-red-700" role="alert">{err}</p>{/if}
 
 			{#if showVerify}
-				<form method="POST" action="?/verifyEmail" use:enhance={submit(() => 'Tandai email pemilik sebagai terverifikasi secara manual?')} class="space-y-2">
+				<form method="POST" action="?/verifyEmail" use:enhance={withConfirm({ variant: 'info', title: 'Verifikasi email manual', message: 'Tandai email pemilik sebagai terverifikasi secara manual? Alasanmu akan tercatat di audit.', confirmText: 'Ya, verifikasi', successMessage: 'Email pemilik ditandai terverifikasi.' }, busyWrap)} class="space-y-2">
 					<h4 class="font-bold">Verifikasi email manual</h4>
 					<p class="muted">{t('onb.emailNo')}. Gunakan bila email verifikasi tidak sampai; catat bukti verifikasinya.</p>
 					<input type="hidden" name="id" value={m.id} />
@@ -73,7 +87,7 @@
 			{/if}
 
 			{#if showStart}
-				<form method="POST" action="?/startReview" use:enhance={submit()} class="flex items-center justify-between gap-3">
+				<form method="POST" action="?/startReview" use:enhance={plain('Review dimulai.')} class="flex items-center justify-between gap-3">
 					<div><h4 class="font-bold">{t('onb.startReview')}</h4><p class="muted">Tandai bahwa kamu sedang meninjau data ini.</p></div>
 					<input type="hidden" name="id" value={m.id} />
 					<button class="btn" type="submit" disabled={busy}>{t('onb.startReview')}</button>
@@ -81,7 +95,7 @@
 			{/if}
 
 			{#if showChanges}
-				<form method="POST" action="?/requestChanges" use:enhance={submit()} class="space-y-2">
+				<form method="POST" action="?/requestChanges" use:enhance={plain('Permintaan perbaikan terkirim ke merchant.')} class="space-y-2">
 					<h4 class="font-bold">{t('onb.requestChanges')}</h4>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">
@@ -96,7 +110,7 @@
 				<form
 					method="POST"
 					action="?/approve"
-					use:enhance={submit((fd) => t('onb.approveConfirm', { name: m.display_name, mdr: pct(fd.get('mdr_bps')), platform: pct(fd.get('platform_bps')) }))}
+					use:enhance={withConfirm((fd) => ({ variant: 'info', title: t('onb.approveBtn'), message: t('onb.approveConfirm', { name: m.display_name, mdr: pct(fd.get('mdr_bps')), platform: pct(fd.get('platform_bps')) }), confirmText: 'Ya, setujui', successMessage: 'Merchant disetujui. Tarif sudah ditetapkan.' }), busyWrap)}
 					class="space-y-2"
 				>
 					<h4 class="font-bold">{t('onb.approveBtn')}</h4>
@@ -108,7 +122,7 @@
 					</div>
 					<p class="muted">{t('onb.bpsHint')}</p>
 				</form>
-				<form method="POST" action="?/reject" use:enhance={submit()} class="space-y-2">
+				<form method="POST" action="?/reject" use:enhance={withConfirm((fd) => ({ variant: 'danger', title: 'Tolak merchant?', message: `Tolak ${m.display_name}? Alasan penolakan akan dibaca merchant.`, confirmText: 'Ya, tolak', successMessage: 'Merchant ditolak.' }), busyWrap)} class="space-y-2">
 					<h4 class="font-bold">{t('fin.reject')}</h4>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">
@@ -119,7 +133,7 @@
 			{/if}
 
 			{#if showRevoke}
-				<form method="POST" action="?/revoke" use:enhance={submit(() => t('onb.revokeConfirm', { name: m.display_name }))} class="space-y-2">
+				<form method="POST" action="?/revoke" use:enhance={withConfirm({ variant: 'danger', title: t('onb.revokeBtn'), message: t('onb.revokeConfirm', { name: m.display_name }), confirmText: 'Ya, cabut', successMessage: 'Persetujuan dicabut.' }, busyWrap)} class="space-y-2">
 					<h4 class="font-bold">{t('onb.revokeBtn')}</h4>
 					<p class="muted">{t('onb.revokeHint')}</p>
 					<input type="hidden" name="id" value={m.id} />

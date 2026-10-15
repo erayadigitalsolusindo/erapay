@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withConfirm } from '../../../lib/ui/confirm';
 	import { enhance } from '$app/forms';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import StateBadge from '../../../lib/components/StateBadge.svelte';
@@ -36,9 +37,7 @@
 									<form
 										method="POST"
 										action="?/cancel"
-										use:enhance={({ cancel }) => {
-											if (!confirm(t('rf.cancelConfirm'))) cancel();
-										}}
+										use:enhance={withConfirm({ variant: 'danger', title: 'Batalkan refund', successMessage: 'Refund dibatalkan.', confirmText: 'Ya, batalkan', message: t('rf.cancelConfirm') })}
 									>
 										<input type="hidden" name="id" value={r.id} />
 										<button type="submit" class="btn btn-danger">{t('rf.cancel')}</button>

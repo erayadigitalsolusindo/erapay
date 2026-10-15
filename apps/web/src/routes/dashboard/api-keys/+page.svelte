@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withConfirm } from '../../../lib/ui/confirm';
 	import Combobox from '../../../lib/components/Combobox.svelte';
 	import { enhance } from '$app/forms';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
@@ -82,9 +83,7 @@
 										<form
 											method="POST"
 											action="?/revoke"
-											use:enhance={({ cancel }) => {
-												if (!confirm(t('keys.revokeConfirm', { name: k.name }))) cancel();
-											}}
+											use:enhance={withConfirm({ variant: 'danger', title: 'Cabut key', successMessage: 'Key dicabut.', confirmText: 'Ya, cabut', message: t('keys.revokeConfirm', { name: k.name }) })}
 										>
 											<input type="hidden" name="id" value={k.id} />
 											<button type="submit" class="btn btn-danger">{t('keys.revoke')}</button>

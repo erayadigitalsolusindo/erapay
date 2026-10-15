@@ -3,6 +3,7 @@
 	import { enhance, deserialize } from '$app/forms';
 
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
+	import { confirmDialog, notify } from '../../../lib/ui/dialog.svelte';
 	import KycWizard from '../../../lib/components/kyc/KycWizard.svelte';
 	import StatusAkun from '../../../lib/components/kyc/StatusAkun.svelte';
 	import type { Profile, Region } from '../../../lib/server/kyc';
@@ -57,16 +58,22 @@
 				let r = await postAction('kycSave', { section, payload });
 				// Akun sudah disetujui: ubah data sensitif (jenis entitas, nama badan, NIK) butuh konfirmasi eksplisit.
 				if (!r.ok && r.code === 'SENSITIVE_CONFIRM_REQUIRED') {
-					const yes = window.confirm(
-						'Akun ini sudah terverifikasi. Mengubah data sensitif (mis. jenis entitas, nama badan usaha, NIK) akan menandai akun "Perlu Tinjau Ulang" dan menunggu persetujuan admin lagi. ' + 'Lanjutkan menyimpan?'
-					);
+					const yes = await confirmDialog({
+						variant: 'warning',
+						title: 'Ubah data sensitif?',
+						message:
+							'Akun ini sudah terverifikasi. Mengubah data sensitif (mis. jenis entitas, nama badan usaha, NIK) akan menandai akun "Perlu Tinjau Ulang" dan menunggu persetujuan admin lagi.',
+						confirmText: 'Ya, simpan perubahan'
+					});
 					if (yes) r = await postAction('kycSave', { section, payload, confirm_sensitive: true });
 				}
+				if (r.ok) notify('success', 'Data tersimpan.');
 				if (r.ok) void invalidateAll();
 				return { ok: r.ok, fields: r.fields, message: r.message };
 			},
 			submit: async () => {
 				const r = await postAction('kycSubmit');
+				if (r.ok) notify('success', 'Data kamu sudah dikirim dan menunggu verifikasi.', 'Terkirim');
 				if (r.ok) void invalidateAll();
 				return { ok: r.ok, fields: r.fields, message: r.message };
 			},

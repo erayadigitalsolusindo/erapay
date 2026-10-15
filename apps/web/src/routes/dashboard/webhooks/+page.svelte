@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withConfirm } from '../../../lib/ui/confirm';
 	import { enhance } from '$app/forms';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import StateBadge from '../../../lib/components/StateBadge.svelte';
@@ -65,9 +66,7 @@
 										<form
 											method="POST"
 											action="?/rotate"
-											use:enhance={({ cancel }) => {
-												if (!confirm(t('wh.rotateConfirm'))) cancel();
-											}}
+											use:enhance={withConfirm({ variant: 'warning', title: 'Rotasi secret', successMessage: 'Secret berhasil dirotasi.', confirmText: 'Ya, rotasi', message: t('wh.rotateConfirm') })}
 										>
 											<input type="hidden" name="id" value={e.id} />
 											<button type="submit" class="btn btn-light">{t('wh.rotate')}</button>
@@ -75,9 +74,7 @@
 										<form
 											method="POST"
 											action="?/disable"
-											use:enhance={({ cancel }) => {
-												if (!confirm(t('wh.disableConfirm'))) cancel();
-											}}
+											use:enhance={withConfirm({ variant: 'danger', title: 'Nonaktifkan endpoint', successMessage: 'Endpoint dinonaktifkan.', confirmText: 'Ya, nonaktifkan', message: t('wh.disableConfirm') })}
 										>
 											<input type="hidden" name="id" value={e.id} />
 											<button type="submit" class="btn btn-danger">{t('wh.disable')}</button>
