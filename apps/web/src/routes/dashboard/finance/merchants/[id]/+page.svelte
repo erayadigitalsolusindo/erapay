@@ -85,7 +85,6 @@
 				{@render row(t('onb.detailBizNpwp'), m.identity.business_npwp ?? m.identity.business_npwp_masked, true)}
 				{@render row(t('onb.detailNib'), m.identity.business_nib, true)}
 			</div>
-			<p class="muted mt-2 text-[11px]">{t('onb.detailRaw')}</p>
 		{:else}
 			<div class="mt-3 text-xs">
 				{@render row(t('onb.detailIdNumber'), '', true)}
