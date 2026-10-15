@@ -36,6 +36,17 @@
 	<div class="min-w-0">
 		<Header user={data.user} bind:theme />
 		<TabBar user={data.user} menus={data.menus} />
+		{#if data.user.impersonating}
+			<div class="flex flex-wrap items-center justify-between gap-3 bg-merah px-5 py-2.5 text-xs font-bold text-white" role="alert">
+				<span>
+					MODE DEWA — Anda beroperasi sebagai tenant ini. Semua aksi dicatat di audit log atas nama {data.user.email}.
+					<span class="font-medium opacity-90">Alasan: {data.user.impersonationReason ?? '—'}</span>
+				</span>
+				<form method="POST" action="/logout">
+					<button type="submit" class="rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-merah-gelap transition hover:bg-white/90">Keluar dari tenant</button>
+				</form>
+			</div>
+		{/if}
 		<main class="border-t border-ink/10 bg-page p-5 lg:p-8">
 			{#if data.user.merchantId && !data.user.emailVerified}
 				<p class="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900" role="status">

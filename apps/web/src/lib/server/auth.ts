@@ -5,7 +5,16 @@ import type { Cookies } from '@sveltejs/kit';
 const BASE = process.env.ERAPAY_API_URL ?? 'http://localhost:8080';
 export const SESSION_COOKIE = 'erapay_session';
 
-export type Me = { id: string; email: string; merchantId: string; emailVerified: boolean; permissions: string[] };
+export type Me = {
+	id: string;
+	email: string;
+	merchantId: string;
+	emailVerified: boolean;
+	permissions: string[];
+	/** true bila sesi ini dibuka DEWA lewat "masuk sebagai tenant" (semua aksi diaudit). */
+	impersonating?: boolean;
+	impersonationReason?: string;
+};
 
 export type LoginResult =
 	| { ok: true; token: string; maxAge: number }
@@ -146,7 +155,15 @@ export async function fetchMe(f: typeof fetch, token: string): Promise<Me | null
 		if (res.status === 401 || res.status === 403) return null;
 		if (!res.ok) return 'unavailable';
 		const b = await res.json();
-		return { id: b.user_id, email: b.email, merchantId: b.merchant_id, emailVerified: b.email_verified === true, permissions: b.permissions };
+		return {
+			id: b.user_id,
+			email: b.email,
+			merchantId: b.merchant_id,
+			emailVerified: b.email_verified === true,
+			permissions: b.permissions,
+			impersonating: b.impersonating === true,
+			impersonationReason: b.impersonation_reason
+		};
 	} catch {
 		return 'unavailable';
 	}

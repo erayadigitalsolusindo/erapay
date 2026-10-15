@@ -13,8 +13,7 @@ jalur panel.
   permission via migrasi `0016` (pola Super Admin++). Bukan role dalam dashboard merchant.
 - Hanya `dewa` yang pindah ke panel. `super_admin`, `finance`, `ops_support` TETAP di
   dashboard (`/dashboard/finance/…`) memakai sesi `erapay_session` biasa.
-- Initiate impersonasi "masuk sebagai tenant" (aciraba-style) = fase berikut, TIDAK bagian
-  dari panel ini.
+- Impersonasi "masuk sebagai tenant" (15 Okt 2026): lihat bagian *Impersonasi DEWA* di bawah.
 - Bootstrap DEWA pertama via `/platform/setup` + env `ERAPAY_PLATFORM_SETUP_TOKEN`
   (≥ 32 karakter), menggantikan/sekali-sekali di samping `cmd/bootstrap platform-admin`.
 
@@ -48,7 +47,20 @@ jalur panel.
   helper `apps/web/src/lib/server/platform.ts`, `hooks.server.ts` mengisi
   `locals.platformUser` dari `/v1/platform/auth/me`.
 
-## Terbuka (fase berikut, bukan bagian panel ini)
-- Impersonasi "masuk sebagai" tenant dari panel.
-- Penonaktifan/rotasi DEWA dari dalam panel (saat ini satu DEWA di bootstrap; DEWA lain
+## Terbuka- Penonaktifan/rotasi DEWA dari dalam panel (saat ini satu DEWA di bootstrap; DEWA lain
   bisa ditambah/turun di halaman Hak akses).
+
+## Impersonasi DEWA (migrasi 0024)
+- `POST /v1/platform/impersonate {merchant_id, reason}` (DEWA saja). Alasan 10–500 karakter WAJIB.
+  Membuat sesi merchant (`erapay_session`, TTL 60 menit) atas nama user DEWA; kolom `sessions.impersonator_id`.
+  Izin = role `merchant_owner`, dicek ulang tiap request: DEWA yang dicabut perannya langsung kehilangan sesi tenant.
+- Audit (`audit_logs`, aktor = id DEWA, bukan tenant): `impersonation.start` (alasan, IP), `impersonation.request`
+  untuk tiap request (method, path, mutating; polling `/auth/me` & `/menus` dilewati), `impersonation.end`
+  (logout / digantikan impersonasi baru). Request yang MENGUBAH data ditulis ke audit SEBELUM handler jalan;
+  bila audit gagal ditulis, request ditolak 500 (fail closed). Audit bawaan handler (mis. `api_key.created`) ikut
+  memakai id DEWA sebagai aktor, terhubung lewat `request_id`.
+- Dibatasi: `/v1/auth/mfa/*` (akun DEWA sendiri) tertutup saat impersonasi; sesi ini tidak bisa membuka panel
+  maupun rute `/v1/admin/*` lintas-tenant. Satu impersonasi aktif per DEWA.
+- Panel: `/platform/tenants` (pilih merchant + alasan), `/platform/audit` (baca `GET /v1/platform/audit-logs`).
+  Dashboard menampilkan banner merah "MODE DEWA" + tombol keluar yang mengembalikan ke panel.
+- Belum: tenant belum bisa melihat sendiri catatan akses DEWA (transparansi); daftar ini hanya di panel DEWA.

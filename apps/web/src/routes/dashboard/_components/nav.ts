@@ -2,7 +2,7 @@
 import type { Key } from '../../../lib/i18n/messages';
 
 // platform: true = menu staf EraPay (Finance/Ops, tanpa merchant); selain itu menu merchant.
-export type NavItem = { href: string; icon: string; label: Key; desc: Key; permission?: string; platform?: boolean };
+export type NavItem = { href: string; icon: string; label: Key; desc: Key; permission?: string; platform?: boolean; tenantPermission?: string };
 
 export const nav: NavItem[] = [
 	{
@@ -46,6 +46,13 @@ export const nav: NavItem[] = [
 		permission: 'webhook:manage'
 	},
 	{
+		href: '/dashboard/merchant',
+		icon: '<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9v11h16V9"/>',
+		label: 'nav.myMerchant',
+		desc: 'nav.myMerchant.desc',
+		permission: 'merchant:read'
+	},
+	{
 		href: '/dashboard/onboarding',
 		icon: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6"/><path d="m16 19 2 2 4-4"/>',
 		label: 'nav.account',
@@ -66,6 +73,7 @@ export const nav: NavItem[] = [
 		label: 'nav.fPayouts',
 		desc: 'nav.fPayouts.desc',
 		permission: 'payout:review',
+		tenantPermission: 'payout:read',
 		platform: true
 	},
 	{
@@ -74,6 +82,7 @@ export const nav: NavItem[] = [
 		label: 'nav.fRefunds',
 		desc: 'nav.fRefunds.desc',
 		permission: 'refund:review',
+		tenantPermission: 'refund:read',
 		platform: true
 	},
 	{
@@ -92,7 +101,12 @@ type NavUser = { merchantId: string; permissions?: string[] };
 export function visible(user: NavUser, allowed?: string[] | null): NavItem[] {
 	const set = allowed && allowed.length ? new Set(allowed) : null;
 	return nav.filter((n) => {
-		if (set && !set.has(n.href)) return false;
+		// Daftar dari server (menu_role_access + izin + scope) adalah sumber kebenaran; platform/permission
+		// di bawah hanya cadangan saat daftar tidak tersedia.
+		if (set) {
+			const need = (user.merchantId && n.tenantPermission) || n.permission;
+			return set.has(n.href) && (!need || !!user.permissions?.includes(need));
+		}
 		if (!n.permission) return !n.platform || !user.merchantId;
 		if (!user.permissions?.includes(n.permission)) return false;
 		return n.platform ? !user.merchantId : !!user.merchantId;

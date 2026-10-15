@@ -17,6 +17,13 @@ export type Batch = { id: string; gateway: string; batch_ref: string; currency: 
 export type Exception = { id: string; gateway: string; reference: string; details: { reported_net: number; expected_net: number; difference: number; payment_count: number }; status: string; created_at: string };
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
+	// Dinamis menurut scope sesi: merchant melihat hanya pembayarannya sendiri (/v1/settlement/unsettled),
+	// staf platform melihat lintas tenant beserta batch & exception rekonsiliasi.
+	if (locals.user?.merchantId) {
+		const token = guard(locals, cookies, 'settlement:read', 'merchant');
+		const mine = await read<{ data: Unsettled[] }>(fetch, token, '/v1/settlement/unsettled?limit=200');
+		return { tenant: true, unsettled: mine?.data ?? null, batches: [] as Batch[], exceptions: [] as Exception[], canManage: false, gateway: '' };
+	}
 	const token = guard(locals, cookies, 'settlement:read', 'platform');
 	const gateway = (url.searchParams.get('gateway') ?? '').replace(/[^a-z0-9_-]/gi, '').slice(0, 32);
 	const q = gateway ? `&gateway=${gateway}` : '';

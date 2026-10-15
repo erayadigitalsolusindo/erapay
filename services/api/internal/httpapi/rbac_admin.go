@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -221,6 +222,10 @@ func (d Deps) adminSetMenuPermissions(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := d.Auth.SetMenuAccess(r.Context(), it.MenuID, it.RoleID, it.Allowed, p.UserID, middleware.GetReqID(r.Context())); err != nil {
+			if errors.Is(err, auth.ErrMenuScope) {
+				writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Menu staf platform tidak bisa diberikan ke role merchant (atau sebaliknya).", false)
+				return
+			}
 			d.Log.Error("rbac.menu_access.set", "err", err)
 			writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
 			return

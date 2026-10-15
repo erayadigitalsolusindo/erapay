@@ -44,7 +44,13 @@ type MenuAccess struct {
 	RoleID   string `json:"role_id"`
 	RoleCode string `json:"role_code"`
 	Allowed  bool   `json:"allowed"`
+	// Assignable false: scope menu (platform_only) tidak cocok dengan scope role, jadi tidak bisa diberikan.
+	Assignable bool `json:"assignable"`
 }
+
+// ErrMenuScope: menu staf platform tidak boleh diberikan ke role merchant (dan sebaliknya),
+// karena halamannya membaca data lintas-tenant atau data satu tenant.
+var ErrMenuScope = errors.New("menu scope does not match role scope")
 
 func (s *Service) ListRoles(ctx context.Context) ([]RBACRole, error) {
 	rows, err := s.db.Query(ctx, `SELECT id::text, code, scope FROM roles ORDER BY scope, code`)
@@ -301,7 +307,8 @@ func (s *Service) ListMenuItems(ctx context.Context) ([]MenuItem, error) {
 
 func (s *Service) ListMenuAccess(ctx context.Context) ([]MenuAccess, error) {
 	rows, err := s.db.Query(ctx, `
-		SELECT mi.id, r.id::text, r.code, COALESCE(mra.allowed, false)
+		SELECT mi.id, r.id::text, r.code, COALESCE(mra.allowed, false) AND (mi.platform_only = (r.scope = 'platform') OR (mi.merchant_view AND r.scope = 'merchant')),
+		       (mi.platform_only = (r.scope = 'platform') OR (mi.merchant_view AND r.scope = 'merchant'))
 		FROM menu_items mi CROSS JOIN roles r
 		LEFT JOIN menu_role_access mra ON mra.menu_id = mi.id AND mra.role_id = r.id
 		ORDER BY mi.sort_order, mi.id, r.scope, r.code`)
@@ -312,7 +319,7 @@ func (s *Service) ListMenuAccess(ctx context.Context) ([]MenuAccess, error) {
 	out := []MenuAccess{}
 	for rows.Next() {
 		var ma MenuAccess
-		if err := rows.Scan(&ma.MenuID, &ma.RoleID, &ma.RoleCode, &ma.Allowed); err != nil {
+		if err := rows.Scan(&ma.MenuID, &ma.RoleID, &ma.RoleCode, &ma.Allowed, &ma.Assignable); err != nil {
 			return nil, err
 		}
 		out = append(out, ma)
@@ -321,6 +328,17 @@ func (s *Service) ListMenuAccess(ctx context.Context) ([]MenuAccess, error) {
 }
 
 func (s *Service) SetMenuAccess(ctx context.Context, menuID, roleID string, allowed bool, actor, requestID string) error {
+	if allowed {
+		var ok bool
+		if err := s.db.QueryRow(ctx, `
+			SELECT (mi.platform_only = (r.scope = 'platform') OR (mi.merchant_view AND r.scope = 'merchant'))
+			FROM menu_items mi, roles r WHERE mi.id = $1 AND r.id = $2`, menuID, roleID).Scan(&ok); err != nil {
+			return err
+		}
+		if !ok {
+			return ErrMenuScope
+		}
+	}
 	_, err := s.db.Exec(ctx, `
 		INSERT INTO menu_role_access (menu_id, role_id, allowed) VALUES ($1,$2,$3)
 		ON CONFLICT (menu_id, role_id) DO UPDATE SET allowed = EXCLUDED.allowed`,
@@ -348,6 +366,12 @@ func (s *Service) AllowedMenuHrefs(ctx context.Context, p *Principal) ([]string,
 			return nil, err
 		}
 		roleIDs = ids
+	} else if p.ImpersonatorID != "" {
+		// DEWA bukan anggota merchant; menu mengikuti role yang dipakai untuk izinnya (merchant_owner).
+		var rid string
+		if err := s.db.QueryRow(ctx, `SELECT id::text FROM roles WHERE code = 'merchant_owner'`).Scan(&rid); err == nil {
+			roleIDs = append(roleIDs, rid)
+		}
 	} else {
 		var rid string
 		err := s.db.QueryRow(ctx, `SELECT role_id::text FROM merchant_users WHERE user_id = $1 AND merchant_id = $2`, p.UserID, p.MerchantID).Scan(&rid)
@@ -360,7 +384,12 @@ func (s *Service) AllowedMenuHrefs(ctx context.Context, p *Principal) ([]string,
 	}
 	q := `SELECT mi.href FROM menu_items mi
 	      JOIN menu_role_access mra ON mra.menu_id = mi.id
-	      WHERE mra.role_id = ANY($1::uuid[]) AND mra.allowed = true`
+	      JOIN roles r ON r.id = mra.role_id
+	      WHERE mra.role_id = ANY($1::uuid[]) AND mra.allowed = true
+	        AND (mi.platform_only = (r.scope = 'platform') OR (mi.merchant_view AND r.scope = 'merchant'))
+	        AND (COALESCE(CASE WHEN r.scope = 'merchant' THEN mi.merchant_permission END, mi.permission_code) IS NULL OR EXISTS (
+	              SELECT 1 FROM role_permissions rp WHERE rp.role_id = mra.role_id
+	                AND rp.permission_code = COALESCE(CASE WHEN r.scope = 'merchant' THEN mi.merchant_permission END, mi.permission_code)))`
 	rows, err := s.db.Query(ctx, q, roleIDs)
 	if err != nil {
 		return nil, err

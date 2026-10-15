@@ -44,11 +44,11 @@
 		{:else}
 			<div class="overflow-x-auto">
 				<table>
-					<thead><tr><th>{t('fin.pick')}</th><th>{t('fin.col.payment')}</th><th>{t('fin.gateway')}</th><th>{t('fin.col.gross')}</th><th>{t('fin.col.mdr')}</th><th>{t('fin.col.net')}</th><th>{t('fin.col.final')}</th></tr></thead>
+					<thead><tr>{#if !data.tenant}<th>{t('fin.pick')}</th>{/if}<th>{t('fin.col.payment')}</th><th>{t('fin.gateway')}</th><th>{t('fin.col.gross')}</th><th>{t('fin.col.mdr')}</th><th>{t('fin.col.net')}</th><th>{t('fin.col.final')}</th></tr></thead>
 					<tbody>
 						{#each data.unsettled as u (u.payment_id)}
 							<tr>
-								<td><input type="checkbox" class="accent-merah" form="batch" name="payment_ids" value={u.payment_id} bind:group={selected} aria-label={u.payment_id} /></td>
+								{#if !data.tenant}<td><input type="checkbox" class="accent-merah" form="batch" name="payment_ids" value={u.payment_id} bind:group={selected} aria-label={u.payment_id} /></td>{/if}
 								<td><code>{u.gateway_reference || u.payment_id.slice(0, 8)}</code></td>
 								<td>{u.gateway}</td>
 								<td>{formatIDR(u.gross)}</td>
@@ -101,6 +101,7 @@
 	{/if}
 </div>
 
+{#if !data.tenant}
 <section class="card mb-6 overflow-hidden">
 	<div class="p-5"><h2 class="text-sm font-bold">{t('fin.exceptions')}</h2></div>
 	{#if data.exceptions === null}
@@ -153,3 +154,4 @@
 		</div>
 	{/if}
 </section>
+{/if}

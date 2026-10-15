@@ -125,6 +125,20 @@ func (d Deps) listUnsettled(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": rows})
 }
 
+// listMyUnsettled: tampilan tenant; tenant hanya dari principal, tidak pernah dari query.
+func (d Deps) listMyUnsettled(w http.ResponseWriter, r *http.Request) {
+	limit, ok := d.intQuery(w, r, "limit", settlement.MaxBatchPayments)
+	if !ok {
+		return
+	}
+	rows, err := d.Settlement.ListUnsettledFor(r.Context(), PrincipalFrom(r.Context()).MerchantID, r.URL.Query().Get("currency"), limit)
+	if err != nil {
+		d.internalErr(w, r, "list my unsettled", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": rows})
+}
+
 func (d Deps) listSettlementBatches(w http.ResponseWriter, r *http.Request) {
 	limit, ok := d.intQuery(w, r, "limit", 200)
 	if !ok {

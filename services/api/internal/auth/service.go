@@ -68,13 +68,16 @@ func DefaultConfig() Config {
 // Principal is the authenticated identity. MerchantID is the ONLY source of
 // tenant identity for requests (PRD §0 #7); it is empty for platform sessions.
 type Principal struct {
-	UserID        string
-	Email         string
-	SessionID     string
-	KeyID         string // set when authenticated by API key (UserID/SessionID empty)
-	MerchantID    string
-	EmailVerified bool
-	Permissions   map[string]struct{}
+	UserID     string
+	Email      string
+	SessionID  string
+	KeyID      string // set when authenticated by API key (UserID/SessionID empty)
+	MerchantID string
+	// ImpersonatorID is the DEWA operating this tenant session ("masuk sebagai"); empty for normal sessions.
+	ImpersonatorID      string
+	ImpersonationReason string
+	EmailVerified       bool
+	Permissions         map[string]struct{}
 }
 
 func (p *Principal) Has(perm string) bool { _, ok := p.Permissions[perm]; return ok }
@@ -468,15 +471,22 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		return nil, ErrUnauthenticated
 	}
 	now := s.now()
-	var sid, uid, mid, email string
+	var sid, uid, mid, email, imp, impReason string
 	var verified bool
 	var lastSeen time.Time
 	var perms []string
 	// Satu round-trip untuk sesi + izin (sebelumnya dua query per request terautentikasi).
 	// Izin tetap dibaca segar tiap panggilan, jadi pencabutan peran langsung berlaku.
+	// Sesi impersonasi: izin = role merchant_owner, hanya selama pemiliknya masih DEWA (rbac:manage);
+	// DEWA yang dicabut perannya langsung kehilangan sesi tenant-nya juga.
 	err := s.db.QueryRow(ctx, `
 		SELECT s.id::text, s.user_id::text, COALESCE(s.merchant_id::text,''), s.last_seen_at, u.email, u.email_verified_at IS NOT NULL,
-		       CASE WHEN s.merchant_id IS NULL THEN
+		       COALESCE(s.impersonator_id::text,''), COALESCE(s.impersonation_reason,''),
+		       CASE WHEN s.impersonator_id IS NOT NULL THEN
+		         CASE WHEN EXISTS (SELECT 1 FROM user_roles ur JOIN role_permissions rp ON rp.role_id = ur.role_id
+		                           WHERE ur.user_id = s.user_id AND rp.permission_code = 'rbac:manage')
+		              THEN `+impersonationRoleSQL+` ELSE ARRAY[]::text[] END
+		       WHEN s.merchant_id IS NULL THEN
 		         ARRAY(SELECT rp.permission_code FROM user_roles ur JOIN role_permissions rp ON rp.role_id = ur.role_id
 		               WHERE ur.user_id = s.user_id)
 		       ELSE
@@ -486,7 +496,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > $2
 		  AND s.last_seen_at > $3 AND u.status = 'active'`,
-		hashToken(token), now, now.Add(-s.cfg.IdleTTL)).Scan(&sid, &uid, &mid, &lastSeen, &email, &verified, &perms)
+		hashToken(token), now, now.Add(-s.cfg.IdleTTL)).Scan(&sid, &uid, &mid, &lastSeen, &email, &verified, &imp, &impReason, &perms)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrUnauthenticated
 	}
@@ -496,7 +506,8 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 	if len(perms) == 0 {
 		return nil, ErrUnauthenticated // role/membership removed since login
 	}
-	p := &Principal{UserID: uid, Email: email, SessionID: sid, MerchantID: mid, EmailVerified: verified, Permissions: map[string]struct{}{}}
+	p := &Principal{UserID: uid, Email: email, SessionID: sid, MerchantID: mid, EmailVerified: verified,
+		ImpersonatorID: imp, ImpersonationReason: impReason, Permissions: map[string]struct{}{}}
 	for _, c := range perms {
 		p.Permissions[c] = struct{}{}
 	}
@@ -521,6 +532,13 @@ func (s *Service) Logout(ctx context.Context, p *Principal, requestID string) er
 	if err := audit.Record(ctx, tx, audit.Entry{ActorID: p.UserID, Action: "auth.logout",
 		EntityType: "session", EntityID: p.SessionID, RequestID: requestID}); err != nil {
 		return err
+	}
+	if p.ImpersonatorID != "" {
+		if err := audit.Record(ctx, tx, audit.Entry{ActorID: p.UserID, Action: "impersonation.end",
+			EntityType: "merchant", EntityID: p.MerchantID, RequestID: requestID,
+			Metadata: map[string]any{"session_id": p.SessionID, "cause": "logout"}}); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

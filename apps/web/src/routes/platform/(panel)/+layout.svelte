@@ -1,4 +1,5 @@
 <script lang="ts">
+	import '../../../app.css';
 	import { page } from '$app/state';
 	import { createI18n, setI18n, getI18n } from '../../../lib/i18n/i18n.svelte';
 	import Logo from '../../../lib/components/auth/Logo.svelte';
@@ -11,6 +12,8 @@
 
 	const items = [
 		{ href: '/platform', label: 'Ringkasan' },
+		{ href: '/platform/tenants', label: 'Masuk sebagai tenant' },
+		{ href: '/platform/audit', label: 'Audit log' },
 		{ href: '/platform/access', label: 'Hak akses (RBAC)' }
 	];
 	const current = $derived(items.find((n) => page.url.pathname === n.href || page.url.pathname.startsWith(n.href === '/platform' ? '/platform/' : n.href + '/')));

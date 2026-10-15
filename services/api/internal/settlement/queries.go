@@ -88,6 +88,28 @@ func (s *Service) ListUnsettled(ctx context.Context, gateway, currency string, l
 	})
 }
 
+// ListUnsettledFor is the tenant view of ListUnsettled: only the merchant's own payments.
+// merchantID comes from the session principal, never from the request.
+func (s *Service) ListUnsettledFor(ctx context.Context, merchantID, currency string, limit int) ([]Unsettled, error) {
+	if limit < 1 || limit > MaxBatchPayments {
+		limit = 200
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT p.id::text, p.merchant_id::text, p.gateway, COALESCE(p.gateway_reference,''), p.currency,
+		       p.amount, p.mdr_fee, p.amount - p.mdr_fee, p.final_at
+		FROM payments p
+		WHERE p.merchant_id = $1 AND p.status = 'succeeded' AND ($2 = '' OR p.currency = $2)
+		  AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)
+		ORDER BY p.final_at, p.id LIMIT $3`, merchantID, currency, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Unsettled, error) {
+		var u Unsettled
+		return u, r.Scan(&u.PaymentID, &u.MerchantID, &u.Gateway, &u.GatewayReference, &u.Currency, &u.Gross, &u.MDRFee, &u.ExpectedNet, &u.FinalAt)
+	})
+}
+
 func (s *Service) ListBatches(ctx context.Context, gateway string, limit int) ([]Batch, error) {
 	if limit < 1 || limit > 200 {
 		limit = 50

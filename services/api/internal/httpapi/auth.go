@@ -61,6 +61,9 @@ func (d Deps) requireAuth(next http.Handler) http.Handler {
 			writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
 			return
 		}
+		if p.ImpersonatorID != "" && !d.guardImpersonation(w, r, p) {
+			return
+		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, p)))
 	})
 }
@@ -369,7 +372,12 @@ func meResponse(p *auth.Principal) map[string]any {
 	for c := range p.Permissions {
 		perms = append(perms, c)
 	}
-	return map[string]any{"user_id": p.UserID, "email": p.Email, "merchant_id": p.MerchantID, "email_verified": p.EmailVerified, "permissions": perms}
+	m := map[string]any{"user_id": p.UserID, "email": p.Email, "merchant_id": p.MerchantID, "email_verified": p.EmailVerified, "permissions": perms}
+	if p.ImpersonatorID != "" {
+		m["impersonating"] = true
+		m["impersonation_reason"] = p.ImpersonationReason
+	}
+	return m
 }
 
 func (d Deps) me(w http.ResponseWriter, r *http.Request) {
@@ -446,6 +454,7 @@ func (d Deps) mountV1(r chi.Router) {
 		}
 		if d.APIKeys != nil && d.Settlement != nil {
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("report:read")).Get("/balance", d.getBalance)
+			r.With(d.requireAnyAuth, requireTenant, requirePerm("settlement:read")).Get("/settlement/unsettled", d.listMyUnsettled)
 		}
 		d.mountPlatform(r) // panel DEWA (/platform), auth terpisah dari dashboard (/v1)
 		r.Group(func(r chi.Router) {
@@ -462,6 +471,9 @@ func (d Deps) mountV1(r chi.Router) {
 			r.Post("/auth/mfa/regenerate-recovery-codes", d.mfaRegenerateRecoveryCodes)
 			// Platform (Finance / Ops) endpoints: cross-tenant by design, gated by permission only.
 			r.Route("/admin", func(r chi.Router) {
+				// Seluruh /admin lintas-tenant: sesi merchant ditolak walau role-nya punya izin yang sama
+				// (mis. settlement:read dipakai juga oleh tampilan tenant).
+				r.Use(requirePlatform)
 				if d.Onboarding != nil {
 					r.Group(func(r chi.Router) {
 						r.Use(requirePlatform)
