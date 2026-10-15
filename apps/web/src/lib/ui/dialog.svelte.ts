@@ -1,4 +1,6 @@
 // Dialog konfirmasi & toast global (pengganti window.confirm/alert). Dirender oleh DialogHost di layout root.
+import type { Key } from '../i18n/messages';
+
 export type Variant = 'info' | 'success' | 'warning' | 'danger';
 /** Toast punya dua varian tambahan: abu-abu (default) dan gelap. */
 export type ToastVariant = Variant | 'default' | 'dark';
@@ -11,24 +13,25 @@ export type ConfirmOptions = {
 	cancelText?: string;
 };
 
-export type Toast = { id: number; variant: ToastVariant; title: string; message: string };
+export type Toast = { id: number; variant: ToastVariant; title?: string; message: string };
 
-const TOAST_TITLE: Record<ToastVariant, string> = {
-	default: 'Pemberitahuan',
-	dark: 'Pemberitahuan',
-	info: 'Info',
-	success: 'Berhasil',
-	warning: 'Perhatian',
-	danger: 'Gagal'
+/** Judul bawaan toast/dialog berupa kunci kamus; diterjemahkan saat ditampilkan agar mengikuti bahasa aktif. */
+export const TOAST_TITLE: Record<ToastVariant, Key> = {
+	default: 'dlg.title.default',
+	dark: 'dlg.title.default',
+	info: 'toast.info',
+	success: 'dlg.title.success',
+	warning: 'toast.warning',
+	danger: 'toast.danger'
 };
 
-export const DEFAULT_TITLE: Record<ToastVariant, string> = {
-	default: 'Pemberitahuan',
-	dark: 'Pemberitahuan',
-	info: 'Informasi',
-	success: 'Berhasil',
-	warning: 'Konfirmasi dulu ya',
-	danger: 'Yakin melanjutkan?'
+export const DEFAULT_TITLE: Record<ToastVariant, Key> = {
+	default: 'dlg.title.default',
+	dark: 'dlg.title.default',
+	info: 'dlg.title.info',
+	success: 'dlg.title.success',
+	warning: 'dlg.title.warning',
+	danger: 'dlg.title.danger'
 };
 
 export const ui = $state<{ confirm: (ConfirmOptions & { resolve: (ok: boolean) => void }) | null; toasts: Toast[] }>({
@@ -56,7 +59,7 @@ export function closeConfirm(ok: boolean) {
 /** Toast singkat (hilang sendiri). */
 export function notify(variant: ToastVariant, message: string, title?: string, ms = 4200) {
 	const id = ++seq;
-	ui.toasts = [...ui.toasts, { id, variant, title: title ?? TOAST_TITLE[variant], message }].slice(-4);
+	ui.toasts = [...ui.toasts, { id, variant, title, message }].slice(-4);
 	setTimeout(() => dismissToast(id), ms);
 }
 

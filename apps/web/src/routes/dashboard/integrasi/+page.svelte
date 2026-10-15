@@ -46,7 +46,7 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 	<div class="relative">
 		<div class="flex items-center gap-1.5" aria-hidden="true"><span class="size-2.5 rounded-full bg-red-400/80"></span><span class="size-2.5 rounded-full bg-amber-300/80"></span><span class="size-2.5 rounded-full bg-emerald-400/80"></span><span class="ml-3 text-[11px] text-slate-500">erapay — integrasi</span></div>
 		<h1 class="mt-4 text-2xl font-bold tracking-tight text-white sm:text-3xl"><span class="text-emerald-400">$</span> integrasi<span class="cursor">▍</span></h1>
-		<p class="mt-2 max-w-2xl text-[12px] leading-relaxed text-slate-400">Hubungkan aplikasi Anda ke EraPay: kredensial API untuk membuat pembayaran, dan webhook bertanda tangan untuk menerima status final.</p>
+		<p class="mt-2 max-w-2xl text-[12px] leading-relaxed text-slate-400">{t('ig.intro')}</p>
 		<dl class="mt-5 grid grid-cols-3 gap-2 text-[11px] sm:max-w-lg">
 			<div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2"><dt class="text-slate-500">api_keys.active</dt><dd class="mt-0.5 text-xl font-bold text-emerald-300">{data.canKeys ? activeKeys : '—'}</dd></div>
 			<div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2"><dt class="text-slate-500">endpoints.active</dt><dd class="mt-0.5 text-xl font-bold text-sky-300">{data.canHooks ? activeHooks : '—'}</dd></div>
@@ -58,7 +58,7 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 <!-- tab -->
 <div class="mb-5 flex gap-1 border-b border-ink/10 font-mono text-xs font-bold" role="tablist">
 	{#if data.canKeys}
-		<button type="button" role="tab" aria-selected={tab === 'keys'} class="tab" class:on={tab === 'keys'} onclick={() => (tab = 'keys')}>{'{ }'} Kunci API</button>
+		<button type="button" role="tab" aria-selected={tab === 'keys'} class="tab" class:on={tab === 'keys'} onclick={() => (tab = 'keys')}>{'{ }'} {t('ig.tabKeys')}</button>
 	{/if}
 	{#if data.canHooks}
 		<button type="button" role="tab" aria-selected={tab === 'webhooks'} class="tab" class:on={tab === 'webhooks'} onclick={() => (tab = 'webhooks')}>↯ Webhook</button>
@@ -81,7 +81,7 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 {#if tab === 'keys' && data.canKeys}
 	<p class="muted mb-4 max-w-2xl text-xs">{t('keys.note')}</p>
 	{#if form?.createdKey}
-		{@render secretBox('key', t('keys.copyNow'), `${t('keys.copyWarn')} · ${t('keys.meta', { env: form.createdKey.environment, scopes: form.createdKey.scopes.join(', ') })}`, form.createdKey.secret)}
+		{@render secretBox('key', t('keys.copyNow'), `${t('keys.copyWarn')} · ${t('keys.meta', { env: i18n.tx(`env.${form.createdKey.environment}`, form.createdKey.environment), scopes: form.createdKey.scopes.join(', ') })}`, form.createdKey.secret)}
 	{/if}
 
 	<div class="mb-5 grid gap-4 lg:grid-cols-[minmax(0,26rem)_1fr]">
@@ -94,7 +94,7 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 			<fieldset class="rounded-xl border border-ink/10 px-3 py-2">
 				<legend class="px-1 text-xs font-bold">{t('keys.scopes')}</legend>
 				{#each data.scopes as s (s.id)}
-					<label class="flex items-center gap-2 py-1 text-xs"><input type="checkbox" class="accent-merah" name="scopes" value={s.id} checked={s.id !== 'report:read'} /> {s.label} <code class="muted text-[11px]">{s.id}</code></label>
+					<label class="flex items-center gap-2 py-1 text-xs"><input type="checkbox" class="accent-merah" name="scopes" value={s.id} checked={s.id !== 'report:read'} /> {i18n.tx(`scope.${s.id}`, s.label)} <code class="muted text-[11px]">{s.id}</code></label>
 				{/each}
 			</fieldset>
 			<button type="submit" class="btn btn-red">{t('keys.createBtn')}</button>
@@ -104,7 +104,7 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 			<div class="flex items-center justify-between border-b border-white/10 px-4 py-2 text-slate-500"><span>quickstart.sh</span>
 				<button type="button" class="rounded px-2 py-0.5 font-bold text-slate-300 hover:bg-white/10" onclick={() => copy('curl', curl)}>{copied === 'curl' ? t('keys.copied') : t('keys.copy')}</button></div>
 			<pre class="overflow-x-auto p-4 leading-relaxed"><code>{curl}</code></pre>
-			<p class="border-t border-white/10 px-4 py-2 text-slate-500"># Idempotency-Key wajib. Sandbox: epk_sbx_… · Production: epk_prd_…</p>
+			<p class="border-t border-white/10 px-4 py-2 text-slate-500">{t('ig.idemNote')}</p>
 		</div>
 	</div>
 
@@ -172,7 +172,7 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 			<div class="flex items-center justify-between border-b border-white/10 px-4 py-2 text-slate-500"><span>verifikasi-tanda-tangan</span>
 				<button type="button" class="rounded px-2 py-0.5 font-bold text-slate-300 hover:bg-white/10" onclick={() => copy('sig', sig)}>{copied === 'sig' ? t('keys.copied') : t('keys.copy')}</button></div>
 			<pre class="overflow-x-auto p-4 leading-relaxed"><code>{sig}</code></pre>
-			<p class="border-t border-white/10 px-4 py-2 text-slate-500"># Hitung ulang dari body mentah, bandingkan constant-time, tolak timestamp kedaluwarsa.</p>
+			<p class="border-t border-white/10 px-4 py-2 text-slate-500">{t('ig.sigNote')}</p>
 		</div>
 	</div>
 

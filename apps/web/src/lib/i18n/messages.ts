@@ -1,8 +1,12 @@
 // Kamus panel admin. Kunci sama di semua bahasa; Indonesia = bahasa default.
-export const LANGS = ['id', 'en'] as const;
+import { idExtra } from './extra.id';
+import { enExtra } from './extra.en';
+import { ja } from './ja';
+
+export const LANGS = ['id', 'en', 'ja'] as const;
 export type Lang = (typeof LANGS)[number];
 
-const id = {
+const idBase = {
 	'nav.workspace': 'Workspace',
 	'nav.main': 'Menu utama',
 	'tabs.label': 'Tab halaman terbuka',
@@ -543,7 +547,9 @@ const id = {
 	'ov.day': '{date}: {n} transaksi, {amount}'
 };
 
-const en: Record<keyof typeof id, string> = {
+const id = { ...idBase, ...idExtra };
+
+const enBase: Record<keyof typeof idBase, string> = {
 	'nav.workspace': 'Workspace',
 	'nav.main': 'Main menu',
 	'tabs.label': 'Open page tabs',
@@ -1085,6 +1091,12 @@ const en: Record<keyof typeof id, string> = {
 	'ov.day': '{date}: {n} transactions, {amount}'
 };
 
+const en: Record<keyof typeof id, string> = { ...enBase, ...enExtra };
+
 export type Key = keyof typeof id;
-export const messages: Record<Lang, Record<Key, string>> = { id, en };
+export const messages: Record<Lang, Record<Key, string>> = { id, en, ja };
+
+/** Nama bahasa dalam bahasanya sendiri (untuk pemilih bahasa). */
+export const LANG_NAMES: Record<Lang, string> = { id: 'Bahasa Indonesia', en: 'English', ja: '日本語' };
+export const LOCALES: Record<Lang, string> = { id: 'id-ID', en: 'en-US', ja: 'ja-JP' };
 export const isLang = (v: unknown): v is Lang => LANGS.includes(v as Lang);

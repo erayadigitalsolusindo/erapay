@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Dialog modal sederhana: klik latar / tombol tutup / Esc untuk menutup; fokus awal ke dialog.
 	import type { Snippet } from 'svelte';
+	import { tNow } from '../i18n/i18n.svelte';
 	let { title, onclose, wide = false, children }: { title: string; onclose: () => void; wide?: boolean; children: Snippet } = $props();
 	let dlg = $state<HTMLDivElement>();
 	$effect(() => dlg?.focus());
@@ -19,7 +20,7 @@
 	>
 		<div class="mb-4 flex items-start justify-between gap-3">
 			<h3 class="text-sm font-bold">{title}</h3>
-			<button type="button" aria-label="Tutup" class="grid size-7 place-items-center rounded-full hover:bg-ink/10" onclick={onclose}>
+			<button type="button" aria-label={tNow('c.close')} class="grid size-7 place-items-center rounded-full hover:bg-ink/10" onclick={onclose}>
 				<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
 			</button>
 		</div>

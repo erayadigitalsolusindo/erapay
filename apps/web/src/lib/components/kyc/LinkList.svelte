@@ -1,5 +1,8 @@
 <script lang="ts">
 	// Daftar tautan jualan (maks 5): tambah/hapus, urutan sesuai isian.
+	import { getI18n } from '../../i18n/i18n.svelte';
+	const { t } = getI18n();
+
 	let {
 		links = [],
 		locked = false,
@@ -25,7 +28,7 @@
 
 <div class="w-full">
 	<div class="mb-1.5 flex items-baseline justify-between">
-		<label class="text-[13px] font-semibold text-[#1A2530]">Tautan tempat berjualan</label>
+		<label class="text-[13px] font-semibold text-[#1A2530]">{t('ky.lnk.title')}</label>
 		<span class="text-[11px] text-[#9AA6B2]">{links.length}/{max}</span>
 	</div>
 	<div class="space-y-2">
@@ -38,7 +41,7 @@
 						onchange(links.map((l, j) => (j === i ? v : l)));
 					}}
 					disabled={locked}
-					placeholder="https://tokoanda.com"
+					placeholder={t('ky.lnk.ph')}
 					inputmode="url"
 					class="h-10 w-full rounded-md border bg-white px-3 text-[14px] text-[#1A2530] outline-none transition
 						placeholder:text-[#9AA6B2] focus:border-[#D32F2F] focus:ring-2 focus:ring-[#D32F2F]/15 border-[#CBD2D9]
@@ -47,7 +50,7 @@
 				{#if !locked}
 					<button
 						type="button"
-						aria-label="Hapus tautan"
+						aria-label={t('ky.lnk.remove')}
 						class="grid size-10 shrink-0 place-items-center rounded-md border border-[#CBD2D9] bg-white text-[#7A8894] transition hover:border-[#D32F2F] hover:text-[#D32F2F]"
 						onclick={() => remove(i)}
 					>
@@ -63,7 +66,7 @@
 			class="mt-2 text-[13px] font-semibold text-[#D32F2F] hover:text-[#B02424]"
 			onclick={add}
 		>
-			+ Tambah tautan
+			{t('ky.lnk.add')}
 		</button>
 	{/if}
 	{#if error}

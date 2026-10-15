@@ -86,7 +86,7 @@
 				<rect x="240" y="62" width="190" height="60" rx="16" fill="#fff8f0" stroke="#e8b84a" stroke-width="2" />
 				<circle cx="268" cy="92" r="15" fill="#16a34a" />
 				<path d="M261,92 l5,6 l10,-12" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-				<text x="292" y="88" font-size="11.5" font-weight="700" fill="#4a0510" font-family="Plus Jakarta Sans, sans-serif">Pembayaran berhasil</text>
+				<text x="292" y="88" font-size="11.5" font-weight="700" fill="#4a0510" font-family="Plus Jakarta Sans, sans-serif">{t('status.succeeded')}</text>
 				<text x="292" y="108" font-size="15" font-weight="800" fill="#c8102e" font-family="Fraunces, serif">Rp25.000</text>
 			</g>
 

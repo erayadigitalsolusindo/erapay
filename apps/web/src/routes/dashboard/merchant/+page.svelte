@@ -26,7 +26,7 @@
 			<span class="grid size-20 shrink-0 place-items-center rounded-3xl bg-white/15 font-display text-3xl font-extrabold shadow-inner backdrop-blur">{initials(data.profile.display_name)}</span>
 			<div class="min-w-0 flex-1">
 				<span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold tracking-wide backdrop-blur">
-					<span class="size-1.5 animate-denyut rounded-full bg-emas"></span> Merchant saya
+					<span class="size-1.5 animate-denyut rounded-full bg-emas"></span> {t('nav.myMerchant')}
 				</span>
 				<h1 class="mt-3 truncate font-display text-3xl font-extrabold leading-tight sm:text-4xl">{data.profile.display_name}</h1>
 				<p class="mt-1 truncate text-[13px] text-white/75">{data.profile.legal_name}</p>
@@ -40,7 +40,7 @@
 
 	{#if data.profile.review_note}
 		<p class="mb-5 rounded-2xl border-l-4 border-emas bg-emas/10 px-4 py-3 text-xs leading-relaxed">
-			<b>Catatan dari tim review:</b> {data.profile.review_note}
+			<b>{t('mp.reviewNote')}</b> {data.profile.review_note}
 		</p>
 	{/if}
 
@@ -65,7 +65,7 @@
 				<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6l-8-3Z M9 12l2.2 2.2L15.5 10" /></svg>
 			</span>
 			<div class="mt-3 truncate text-sm font-extrabold leading-tight">{t(`onb.st.${data.profile.onboarding_status}` as never)}</div>
-			<div class="muted mt-1 text-[11px] font-bold">Status verifikasi</div>
+			<div class="muted mt-1 text-[11px] font-bold">{t('mp.verifStatus')}</div>
 		</div>
 	</div>
 {/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Bagian 2 — Perwakilan Bisnis. NIK ditampilkan ter-mask; penuh hanya saat mode edit
 	// (profil edit dari /v1/kyc/profile/edit). KTP diunggah sebagai dokumen pasangan.
+	import { getI18n } from '../../i18n/i18n.svelte';
 	import TextField from './TextField.svelte';
 	import SelectField from './SelectField.svelte';
 	import PhoneField from './PhoneField.svelte';
@@ -32,16 +33,9 @@
 		register?: (fn: () => Promise<{ ok: boolean; message?: string }>) => void;
 	} = $props();
 
-	const POSITIONS = [
-		{ value: 'Pemilik', label: 'Pemilik' },
-		{ value: 'Direktur', label: 'Direktur' },
-		{ value: 'Komisaris', label: 'Komisaris' },
-		{ value: 'Manajer', label: 'Manajer' }
-	];
-	const NATIONS = [
-		{ value: 'Indonesia', label: 'Indonesia' },
-		{ value: 'WNA', label: 'Warga Negara Asing' }
-	];
+	const { t, tx } = getI18n();
+	const POSITIONS = $derived(['Pemilik', 'Direktur', 'Komisaris', 'Manajer'].map((v) => ({ value: v, label: t(`ky.pos.${v}` as 'ky.pos.Pemilik') })));
+	const NATIONS = $derived(['Indonesia', 'WNA'].map((v) => ({ value: v, label: t(`ky.nat.${v}` as 'ky.nat.WNA') })));
 
 	// id_number omitempty di Go = undefined; bind:value pada TextField akan crash (halaman 500) bila undefined.
 	let form = $state({ ...data, id_number: data.id_number ?? '' });
@@ -66,7 +60,7 @@
 		if (form.id_number) payload.id_number = form.id_number;
 		const r = await api.save('representative', payload);
 		fieldErr = r.fields ?? {};
-		msg = r.ok ? '' : (r.message ?? 'Gagal menyimpan.');
+		msg = r.ok ? '' : (r.message ?? t('ky.saveFail'));
 		saving = false;
 		return r;
 	}
@@ -78,7 +72,7 @@
 		if (side === 'ktp') ktpBusy = true;
 		else ktpBackBusy = true;
 		const r = await api.uploadDoc(side, file);
-		docErrors = { ...docErrors, [side]: r.ok ? '' : (r.message ?? 'Unggahan gagal.') };
+		docErrors = { ...docErrors, [side]: r.ok ? '' : (r.message ?? t('ky.uploadFail')) };
 		if (side === 'ktp') ktpBusy = false;
 		else ktpBackBusy = false;
 	}
@@ -87,27 +81,27 @@
 <div class="space-y-5">
 	<ReviewNote notes={notes} section="representative" />
 	{#if locked}
-		<p class="text-[13px] text-[#7A8894]">Bagian ini terkunci saat verifikasi berjalan.</p>
+		<p class="text-[13px] text-[#7A8894]">{t('ky.locked')}</p>
 	{/if}
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-		<TextField id="kyc-rep-name" label="Nama lengkap (sesuai KTP)" bind:value={form.name} error={errs.name} />
-		<SelectField id="kyc-rep-position" label="Jabatan" options={POSITIONS} bind:value={form.position} error={errs.position} />
-		<PhoneField id="kyc-rep-phone" label="Nomor telepon pribadi" bind:value={form.phone} error={errs.phone} />
-		<TextField id="kyc-rep-email" label="Email pribadi" type="email" bind:value={form.email} error={errs.email} />
-		<SelectField id="kyc-rep-nation" label="Kewarganegaraan" options={NATIONS} bind:value={form.nationality} error={errs.nationality} />
+		<TextField id="kyc-rep-name" label={t('ky.rep.name')} bind:value={form.name} error={errs.name} />
+		<SelectField id="kyc-rep-position" label={t('ky.rep.position')} options={POSITIONS} bind:value={form.position} error={errs.position} />
+		<PhoneField id="kyc-rep-phone" label={t('ky.rep.phone')} bind:value={form.phone} error={errs.phone} />
+		<TextField id="kyc-rep-email" label={t('ky.rep.email')} type="email" bind:value={form.email} error={errs.email} />
+		<SelectField id="kyc-rep-nation" label={t('ky.rep.nation')} options={NATIONS} bind:value={form.nationality} error={errs.nationality} />
 		{#if form.id_masked}
-			<TextField id="kyc-rep-nik-masked" label="NIK perwakilan" value={form.id_masked} masked hint="tersimpan — tulis ulang hanya jika berubah" />
-			<TextField id="kyc-rep-nik-new" label="NIK baru (opsional)" inputmode="numeric" bind:value={form.id_number} hint="16 digit; dibiarkan kosong = tidak berubah" error={errs.id_number} />
+			<TextField id="kyc-rep-nik-masked" label={t('ky.rep.nik')} value={form.id_masked} masked hint={t('ky.rep.nikMaskedHint')} />
+			<TextField id="kyc-rep-nik-new" label={t('ky.rep.nikNew')} inputmode="numeric" bind:value={form.id_number} hint={t('ky.rep.nikNewHint')} error={errs.id_number} />
 		{:else}
 			<div class="sm:col-span-2">
-				<TextField id="kyc-rep-nik" label="NIK perwakilan" inputmode="numeric" bind:value={form.id_number}
-					hint="16 digit sesuai KTP; disegel (tidak tampil penuh setelah disimpan)" error={errs.id_number} />
+				<TextField id="kyc-rep-nik" label={t('ky.rep.nik')} inputmode="numeric" bind:value={form.id_number}
+					hint={t('ky.rep.nikHint')} error={errs.id_number} />
 			</div>
 		{/if}
 		<div class="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
 			<FileCard
-				label="KTP perwakilan — sisi depan"
-				hint="PDF/JPG/PNG, maks 15 MB"
+				label={t('ky.rep.ktpFront')}
+				hint={t('ky.file.hint15')}
 				file={ktp}
 				uploading={ktpBusy}
 				locked={locked}
@@ -116,8 +110,8 @@
 				onfile={(f) => uploadKtp('ktp', f)}
 			/>
 			<FileCard
-				label="KTP perwakilan — sisi belakang"
-				hint="PDF/JPG/PNG, maks 15 MB"
+				label={t('ky.rep.ktpBack')}
+				hint={t('ky.file.hint15')}
 				file={ktpBack}
 				uploading={ktpBackBusy}
 				locked={locked}
@@ -134,6 +128,6 @@
 		class="h-10 rounded-md bg-[#D32F2F] px-5 text-[13px] font-bold tracking-wide text-white transition hover:bg-[#B02424] disabled:cursor-not-allowed disabled:opacity-50"
 		onclick={save}
 	>
-		{saving ? 'Menyimpan…' : 'Simpan Perwakilan'}
+		{saving ? t('ky.saving') : t('ky.rep.save')}
 	</button>
 </div>

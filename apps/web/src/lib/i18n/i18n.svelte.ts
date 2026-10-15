@@ -1,5 +1,10 @@
 import { getContext, setContext } from 'svelte';
-import { messages, type Key, type Lang } from './messages';
+import { messages, LOCALES, isLang, type Key, type Lang } from './messages';
+
+function fill(s: string, params?: Record<string, string | number>) {
+	for (const [k, v] of Object.entries(params ?? {})) s = s.replaceAll(`{${k}}`, String(v));
+	return s;
+}
 
 // Dibuat per-layout lewat context (bukan singleton modul) supaya state tidak bocor antar request SSR.
 export function createI18n(initial: Lang) {
@@ -12,14 +17,23 @@ export function createI18n(initial: Lang) {
 			lang = v;
 		},
 		get locale() {
-			return lang === 'en' ? 'en-US' : 'id-ID';
+			return LOCALES[lang];
 		},
 		t(key: Key, params?: Record<string, string | number>): string {
-			let s = messages[lang][key];
-			for (const [k, v] of Object.entries(params ?? {})) s = s.replaceAll(`{${k}}`, String(v));
-			return s;
+			return fill(messages[lang][key], params);
+		},
+		/** Untuk nilai dari server (status, enum) yang kuncinya dibentuk dinamis; jika tak ada terjemahan, pakai `fallback`. */
+		tx(key: string, fallback: string, params?: Record<string, string | number>): string {
+			const m = messages[lang] as Record<string, string>;
+			return key in m ? fill(m[key], params) : fallback;
 		}
 	};
+}
+
+/** Terjemahan di luar komponen (mis. dialog global): bahasa dibaca dari <html lang>. */
+export function tNow(key: Key, params?: Record<string, string | number>): string {
+	const l = typeof document !== 'undefined' ? document.documentElement.lang : '';
+	return fill(messages[isLang(l) ? l : 'id'][key], params);
 }
 
 export type I18n = ReturnType<typeof createI18n>;

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getI18n } from '../../i18n/i18n.svelte';
+	const { t } = getI18n();
 	// Pratinjau gambar layar penuh: klik latar / tombol tutup / Esc untuk menutup.
 	let { src, alt = '', onclose }: { src: string; alt?: string; onclose: () => void } = $props();
 </script>
@@ -9,14 +11,14 @@
 	class="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4"
 	role="dialog"
 	aria-modal="true"
-	aria-label={alt || 'Pratinjau gambar'}
+	aria-label={alt || t('ky.light.preview')}
 	tabindex="-1"
 	onclick={onclose}
 	onkeydown={(e) => e.key === 'Enter' && onclose()}
 >
 	<button
 		type="button"
-		aria-label="Tutup"
+		aria-label={t('c.close')}
 		class="absolute right-4 top-4 grid size-9 place-items-center rounded-full bg-white/90 text-[#1A2530] hover:bg-white"
 		onclick={onclose}
 	>

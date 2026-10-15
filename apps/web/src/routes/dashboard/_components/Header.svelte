@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
-	import { LANGS } from '../../../lib/i18n/messages';
-	import { visible } from './nav';
+	import LangSwitch from '../../../lib/components/LangSwitch.svelte';
 
 	type Theme = 'light' | 'dark' | 'system';
 	let {
@@ -11,14 +10,12 @@
 
 	const i18n = getI18n();
 	const { t } = i18n;
-	const pintas = $derived(visible(user));
 	const nama = $derived(user.email.split('@')[0]);
 	const inisial = $derived(nama.slice(0, 2).toUpperCase());
 
-	let menu = $state<'' | 'pintas' | 'profil'>('');
-	let pintasMenu = $state<HTMLDivElement | null>(null);
+	let menu = $state<'' | 'profil'>('');
 	let profilMenu = $state<HTMLDivElement | null>(null);
-	const toggle = (m: 'pintas' | 'profil') => (e: Event) => {
+	const toggle = (m: 'profil') => (e: Event) => {
 		e.stopPropagation();
 		menu = menu === m ? '' : m;
 	};
@@ -34,10 +31,6 @@
 		theme = gelapSekarang() ? 'light' : 'dark';
 		simpan('erapay_theme', theme);
 	}
-	function gantiBahasa() {
-		i18n.lang = LANGS[(LANGS.indexOf(i18n.lang) + 1) % LANGS.length];
-		simpan('erapay_lang', i18n.lang);
-	}
 	function layarPenuh() {
 		if (document.fullscreenElement) document.exitFullscreen();
 		else document.documentElement.requestFullscreen?.();
@@ -50,7 +43,7 @@
 <svelte:window
 	onclick={(e) => {
 		const t = e.target as Node | null;
-		if (t && (pintasMenu?.contains(t) || profilMenu?.contains(t))) return;
+		if (t && profilMenu?.contains(t)) return;
 		menu = '';
 	}}
 	onkeydown={(e) => e.key === 'Escape' && (menu = '')}
@@ -58,21 +51,7 @@
 
 <header class="relative bg-surface">
 	<div class="flex items-center justify-between gap-3 px-5 py-3.5 lg:px-8">
-		<div class="relative">
-			<button type="button" onclick={toggle('pintas')} aria-expanded={menu === 'pintas'} class="flex items-center gap-2.5 rounded-full border border-ink/10 bg-surface px-4 py-2.5 text-sm font-semibold tracking-wide uppercase shadow-sm hover:bg-ink/5 focus-visible:ring-4 focus-visible:ring-emas/60">
-				<svg class="size-4 text-merah" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-				{t('hdr.shortcuts')}
-				<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-			</button>
-			{#if menu === 'pintas'}
-				<div bind:this={pintasMenu} class="card absolute top-full left-0 z-30 mt-2 w-56 p-1.5 shadow-lg">
-					{#each pintas as n (n.href)}
-						<a href={n.href} class="block rounded-lg px-3 py-2 text-xs font-semibold hover:bg-ink/5">{t(n.label)}</a>
-					{/each}
-					{#if user.merchantId}<a href="/dashboard/transactions/new" class="block rounded-lg px-3 py-2 text-xs font-semibold hover:bg-ink/5">{t('hdr.newQris')}</a>{/if}
-				</div>
-			{/if}
-		</div>
+		<div></div>
 
 		<div class="flex items-center gap-3">
 			<button
@@ -90,10 +69,7 @@
 			</button>
 
 			<div class="hidden items-center gap-1 rounded-full border border-ink/10 bg-surface p-1 shadow-sm sm:flex">
-				<button type="button" onclick={gantiBahasa} title={t('hdr.language')} aria-label="{t('hdr.language')}: {i18n.lang.toUpperCase()}" class="{tombolBulat} relative">
-					<svg class="size-[18px] text-merah" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h8M8 3v2m3 0c-.5 4-3 7-6 8m2-4c1 2 3 4 5 5M13 20l4-9 4 9m-1.5-3h-5"/></svg>
-					<span class="absolute -right-0.5 -bottom-0.5 rounded-full bg-merah px-1 text-[8px] leading-4 font-bold text-white">{i18n.lang.toUpperCase()}</span>
-				</button>
+				<LangSwitch btnClass={tombolBulat} />
 				<button type="button" onclick={layarPenuh} title={t('hdr.fullscreen')} aria-label={t('hdr.fullscreen')} class={tombolBulat}>
 					<svg class="size-[18px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
 				</button>

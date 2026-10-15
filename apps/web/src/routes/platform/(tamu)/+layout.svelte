@@ -2,11 +2,16 @@
 	import '../../../app.css';
 	import { createI18n, setI18n } from '../../../lib/i18n/i18n.svelte';
 	import Logo from '../../../lib/components/auth/Logo.svelte';
+	import LangSwitch from '../../../lib/components/LangSwitch.svelte';
 
 	let { data, children } = $props();
 	// svelte-ignore state_referenced_locally
 	const i18n = createI18n(data.lang);
 	setI18n(i18n);
+	const { t } = i18n;
+	$effect(() => {
+		document.documentElement.lang = i18n.lang;
+	});
 </script>
 
 <svelte:head>
@@ -23,11 +28,12 @@
 		<main class="card w-full max-w-md rounded-2xl bg-gading p-7 text-neutral-800 shadow-2xl shadow-black/40">
 			<div class="flex flex-col items-center text-center">
 				<Logo class="h-12" />
-				<h1 class="font-display mt-5 text-2xl font-extrabold text-merah-gelap">Panel Platform · DEWA</h1>
+				<h1 class="font-display mt-5 text-2xl font-extrabold text-merah-gelap">{t('pf.guest.title')}</h1>
 				<p class="muted mt-1 text-xs">EraPay · Platform Admin</p>
 			</div>
 			<div class="mt-6">{@render children()}</div>
 		</main>
+		<div class="fixed top-4 right-5 z-10"><LangSwitch btnClass="size-9 rounded-full border border-white/25 bg-white/10 text-gading hover:bg-white/20" badgeClass="bg-emas text-merah-gelap" /></div>
 		<p class="pointer-events-none fixed top-4 left-5 text-[10px] tracking-widest text-gading/40">ERAPAY · /platform</p>
 	</div>
 </div>

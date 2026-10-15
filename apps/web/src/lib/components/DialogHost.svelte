@@ -2,11 +2,12 @@
 	// Host dialog konfirmasi + toast beranimasi (pengganti confirm/alert bawaan browser).
 	// Setiap varian punya ikon dan gerak sendiri: info (berayun), success (centang digambar + percikan),
 	// warning (segitiga bergetar), danger (tong sampah, tutup terangkat).
-	import { ui, closeConfirm, dismissToast, DEFAULT_TITLE, type Variant, type ToastVariant } from '../ui/dialog.svelte';
+	import { ui, closeConfirm, dismissToast, DEFAULT_TITLE, type Variant, type ToastVariant, TOAST_TITLE } from '../ui/dialog.svelte';
+	import { tNow } from '../i18n/i18n.svelte';
 
 	const c = $derived(ui.confirm);
 	const variant = $derived<Variant>(c?.variant ?? 'warning');
-	const okLabel = $derived(c?.confirmText ?? (variant === 'danger' ? 'Ya, lanjutkan' : 'Ya, lanjut'));
+	const okLabel = $derived(c?.confirmText ?? (variant === 'danger' ? tNow('dlg.okDanger') : tNow('dlg.ok')));
 
 	const TONE: Record<Variant, { ring: string; btn: string; soft: string; text: string }> = {
 		info: { ring: '#2563eb', btn: 'bg-blue-600 hover:bg-blue-700', soft: 'bg-blue-50', text: 'text-blue-600' },
@@ -83,10 +84,10 @@
 					{#each [0, 1, 2, 3, 4, 5] as i (i)}<span class="dh-spark" style:--a="{i * 60}deg"></span>{/each}
 				{/if}
 			</div>
-			<h3 id="dh-title" class="mt-4 text-base font-extrabold text-neutral-900">{c.title ?? DEFAULT_TITLE[variant]}</h3>
+			<h3 id="dh-title" class="mt-4 text-base font-extrabold text-neutral-900">{c.title ?? tNow(DEFAULT_TITLE[variant])}</h3>
 			<p id="dh-msg" class="mt-1.5 text-sm leading-relaxed whitespace-pre-line text-neutral-600">{c.message}</p>
 			<div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-center">
-				<button bind:this={cancelBtn} type="button" class="rounded-xl border border-neutral-200 bg-white px-5 py-2.5 text-sm font-bold text-neutral-700 transition hover:bg-neutral-100 focus-visible:ring-4 focus-visible:ring-neutral-300 sm:min-w-28" onclick={() => closeConfirm(false)}>{c.cancelText ?? 'Batal'}</button>
+				<button bind:this={cancelBtn} type="button" class="rounded-xl border border-neutral-200 bg-white px-5 py-2.5 text-sm font-bold text-neutral-700 transition hover:bg-neutral-100 focus-visible:ring-4 focus-visible:ring-neutral-300 sm:min-w-28" onclick={() => closeConfirm(false)}>{c.cancelText ?? tNow('dlg.cancel')}</button>
 				<button bind:this={okBtn} type="button" class="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition focus-visible:ring-4 focus-visible:ring-neutral-300 sm:min-w-28 {TONE[variant].btn}" onclick={() => closeConfirm(true)}>{okLabel}</button>
 			</div>
 		</div>
@@ -108,13 +109,13 @@
 		<div
 			class="dh-toast pointer-events-auto relative flex cursor-pointer items-center gap-2 overflow-hidden rounded py-1.5 pr-3 pl-2.5 shadow"
 			role="status"
-			title="Klik untuk menutup"
+			title={tNow('dlg.dismiss')}
 			style="background:{k.bg};color:{k.fg};border-left:4px solid {k.edge}"
 			onclick={() => dismissToast(t.id)}
 		>
 			<span class="dh-badge relative grid size-5 shrink-0 place-items-center rounded-full" style="background:{k.fg};--tone:{k.fg}"><span class="dh-badge-ring absolute inset-0 rounded-full"></span>{@render glyph(k.glyph)}</span>
 			<div class="min-w-0">
-				<p class="m-0 text-xs leading-tight font-extrabold">{t.title}</p>
+				<p class="m-0 text-xs leading-tight font-extrabold">{t.title ?? tNow(TOAST_TITLE[t.variant])}</p>
 				<p class="m-0 text-[11px] leading-tight font-semibold break-words opacity-90">{t.message}</p>
 			</div>
 			<span class="dh-bar absolute inset-x-0 bottom-0 h-0.5" style="background:{k.fg};opacity:.35"></span>

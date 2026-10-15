@@ -1,5 +1,7 @@
 <script lang="ts">
 	// Catatan reviewer per bagian/field (NEEDS_REVISION). Ditempel di atas kartu bagian terkait.
+	import { getI18n } from '../../i18n/i18n.svelte';
+	const { t } = getI18n();
 	import type { Note } from '../../server/kyc';
 
 	let { notes, section }: { notes: Note[]; section?: string } = $props();
@@ -12,7 +14,7 @@
 			<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2">
 				<path d="M12 9v4" /><path d="M12 17h.01" /><circle cx="12" cy="12" r="9" />
 			</svg>
-			Catatan reviewer — perlu diperbaiki
+			{t('ky.note.title')}
 		</p>
 		<ul class="space-y-1.5">
 			{#each mine as n (n.id)}

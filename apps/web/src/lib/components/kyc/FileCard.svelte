@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { getI18n } from '../../i18n/i18n.svelte';
 	import ImageLightbox from './ImageLightbox.svelte';
+	const { t } = getI18n();
+
 	// Kartu unggah gaya DOKU: zona dashed, ringkasan berkas terunggah, tombol ganti.
 	// Batas: PDF/JPG/PNG, 15 MB (Akta 25 MB). Pengecekan ulang tetap dilakukan server.
 	let {
@@ -43,7 +46,7 @@
 		if (!f) return;
 		localErr = '';
 		if (f.size > maxBytes) {
-			localErr = `Ukuran maksimum ${Math.round(maxBytes / 1024 / 1024)} MB.`;
+			localErr = t('ky.file.maxSize', { n: Math.round(maxBytes / 1024 / 1024) });
 			return;
 		}
 		if (localUrl) URL.revokeObjectURL(localUrl);
@@ -56,7 +59,7 @@
 	<label class="mb-1.5 block text-[13px] font-semibold text-[#1A2530]">{label}</label>
 	{#if locked && !file}
 		<div class="rounded-md border border-dashed border-[#CBD2D9] bg-[#F4F7FA] px-4 py-3 text-[13px] text-[#7A8894]">
-			Terkunci saat proses verifikasi.
+			{t('ky.file.locked')}
 		</div>
 	{:else if file}
 		<div class="overflow-hidden rounded-md border border-[#CBD2D9] bg-white">
@@ -64,10 +67,10 @@
 				<button
 					type="button"
 					class="block w-full cursor-zoom-in bg-[#F4F7FA]"
-					aria-label="Perbesar {label}"
+					aria-label={t('ky.file.zoom', { label })}
 					onclick={() => (zoom = true)}
 				>
-					<img src={thumb} alt="Pratinjau {label}" class="h-32 w-full object-contain" />
+					<img src={thumb} alt={t('ky.file.preview', { label })} class="h-32 w-full object-contain" />
 				</button>
 			{/if}
 			<div class="flex items-center gap-3 px-3 py-2.5">
@@ -83,14 +86,14 @@
 					<p class="text-[12px] text-[#7A8894]">{fmtSize(file.size)}</p>
 				</div>
 				{#if uploading}
-					<span class="text-[12px] font-medium text-[#7A8894]">mengunggah…</span>
+					<span class="text-[12px] font-medium text-[#7A8894]">{t('ky.uploading')}</span>
 				{:else if !locked}
 					<button
 						type="button"
 						class="rounded-md border border-[#CBD2D9] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#D32F2F] transition hover:border-[#D32F2F] hover:text-[#B02424]"
 						onclick={() => input?.click()}
 					>
-						Ganti
+						{t('ky.file.replace')}
 					</button>
 				{/if}
 			</div>
@@ -120,7 +123,7 @@
 				</svg>
 			</span>
 			<span class="text-[13px] font-semibold text-[#1A2530]">
-				{uploading ? 'Mengunggah…' : 'Klik untuk unggah'}
+				{uploading ? t('ky.file.uploadingCap') : t('ky.file.upload')}
 			</span>
 			<span class="text-[11px] text-[#7A8894]">{hint}</span>
 		</button>

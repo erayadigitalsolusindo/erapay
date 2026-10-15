@@ -1,7 +1,10 @@
 <script lang="ts">
 	// Galeri bukti bisnis: thumbnail 72px, tombol hapus, tombol tambah (gambar ≤ 5 MB).
 	import type { Evidence } from '../../server/kyc';
+	import { getI18n } from '../../i18n/i18n.svelte';
 	import ImageLightbox from './ImageLightbox.svelte';
+	const { t } = getI18n();
+
 
 	let {
 		evidences = [],
@@ -40,18 +43,18 @@
 </script>
 
 <div class="w-full">
-	<label class="mb-1.5 block text-[13px] font-semibold text-[#1A2530]">Bukti bisnis (galeri)</label>
-	<p class="mb-2 text-[12px] text-[#7A8894]">Foto kios/pakai produk, katalog, atau materi promosi. JPG/PNG, maks 5 MB; boleh pilih lebih dari satu.</p>
+	<label class="mb-1.5 block text-[13px] font-semibold text-[#1A2530]">{t('ky.gal.title')}</label>
+	<p class="mb-2 text-[12px] text-[#7A8894]">{t('ky.gal.note')}</p>
 	<div class="flex flex-wrap gap-2">
 		{#each evidences as ev (ev.id)}
 			<div class="group relative size-[72px] overflow-hidden rounded-md border border-[#CBD2D9] bg-white">
-				<button type="button" class="size-full cursor-zoom-in" aria-label="Perbesar {ev.name}" onclick={() => (zoomed = ev)}>
+				<button type="button" class="size-full cursor-zoom-in" aria-label={t('ky.gal.zoom', { name: ev.name })} onclick={() => (zoomed = ev)}>
 					<img src={ev.url} alt={ev.name} class="size-full object-cover" />
 				</button>
 				{#if !locked}
 					<button
 						type="button"
-						aria-label="Hapus bukti"
+						aria-label={t('ky.gal.remove')}
 						class="absolute right-1 top-1 hidden size-5 place-items-center rounded-full bg-[#D32F2F] text-white group-hover:grid"
 						onclick={() => ondelete(ev.id)}
 					>
@@ -63,14 +66,14 @@
 		{#each pending as p (p.key)}
 			<div class="relative size-[72px] overflow-hidden rounded-md border border-[#CBD2D9] bg-white">
 				<img src={p.url} alt={p.name} class="size-full object-cover opacity-60" />
-				<span class="absolute inset-0 grid place-items-center bg-white/40 text-[10px] font-semibold text-[#42505C]">mengunggah…</span>
+				<span class="absolute inset-0 grid place-items-center bg-white/40 text-[10px] font-semibold text-[#42505C]">{t('ky.uploading')}</span>
 			</div>
 		{/each}
 		{#if !locked}
 			<button
 				type="button"
 				class="grid size-[72px] place-items-center rounded-md border-2 border-dashed border-[#CBD2D9] text-[#7A8894] transition hover:border-[#D32F2F]/60 hover:text-[#D32F2F]"
-				aria-label="Tambah bukti"
+				aria-label={t('ky.gal.add')}
 				onclick={() => input?.click()}
 			>
 				<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg>
@@ -98,7 +101,7 @@
 		<ImageLightbox src={zoomed.url} alt={zoomed.name} onclose={() => (zoomed = null)} />
 	{/if}
 	{#if busy}
-		<p class="mt-1 text-[12px] text-[#7A8894]">mengunggah…</p>
+		<p class="mt-1 text-[12px] text-[#7A8894]">{t('ky.uploading')}</p>
 	{/if}
 	{#if error}
 		<p class="mt-1 text-[12px] font-medium text-[#D32F2F]">{error}</p>

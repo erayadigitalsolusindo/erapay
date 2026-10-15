@@ -1,7 +1,10 @@
 <script lang="ts">
 	import Combobox from '../../../../lib/components/Combobox.svelte';
+	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
 	let { data } = $props();
-	const fmt = (s: string) => new Date(s).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'medium' });
+	const i18n = getI18n();
+	const { t } = i18n;
+	const fmt = (s: string) => new Date(s).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'medium' });
 	const detail = (md: Record<string, unknown>) =>
 		Object.entries(md)
 			.filter(([k]) => k !== 'session_id')
@@ -9,20 +12,20 @@
 			.join(' · ');
 </script>
 
-<svelte:head><title>Audit Log · Panel Platform</title></svelte:head>
+<svelte:head><title>{t('pf.au.pageTitle')}</title></svelte:head>
 
 <div class="space-y-6">
 	<div class="card p-6">
-		<h1 class="text-xl font-bold">Audit log</h1>
-		<p class="muted mt-1 text-sm">Append-only. Default menampilkan jejak impersonasi DEWA (mulai, setiap request, selesai).</p>
+		<h1 class="text-xl font-bold">{t('pf.nav.audit')}</h1>
+		<p class="muted mt-1 text-sm">{t('pf.au.sub')}</p>
 		<form method="GET" class="mt-4 flex flex-wrap gap-2">
 			<Combobox id="audit-prefix" name="prefix" class="w-52" value={data.prefix} options={[
-				{ value: 'impersonation.', label: 'Impersonasi DEWA' },
-				{ value: '', label: 'Semua aksi' },
-				{ value: 'auth.', label: 'Autentikasi' }
+				{ value: 'impersonation.', label: t('pf.au.f.imp') },
+				{ value: '', label: t('pf.au.f.all') },
+				{ value: 'auth.', label: t('pf.au.f.auth') }
 			]} />
-			<input name="merchant_id" value={data.merchant} placeholder="ID merchant (opsional)" class="w-72 rounded-xl border border-ink/15 bg-surface px-3 py-2 text-sm" />
-			<button class="rounded-full bg-merah px-4 py-2 text-xs font-bold text-white">Filter</button>
+			<input name="merchant_id" value={data.merchant} placeholder={t('pf.au.merchantPh')} class="w-72 rounded-xl border border-ink/15 bg-surface px-3 py-2 text-sm" />
+			<button class="rounded-full bg-merah px-4 py-2 text-xs font-bold text-white">{t('pf.au.filter')}</button>
 		</form>
 	</div>
 
@@ -31,7 +34,7 @@
 	<div class="card overflow-x-auto">
 		<table class="w-full text-left text-xs">
 			<thead class="muted border-b border-ink/10 uppercase">
-				<tr><th class="p-3">Waktu</th><th class="p-3">Aktor</th><th class="p-3">Aksi</th><th class="p-3">Tenant</th><th class="p-3">Detail</th></tr>
+				<tr><th class="p-3">{t('pf.au.col.time')}</th><th class="p-3">{t('pf.au.col.actor')}</th><th class="p-3">{t('pf.au.col.action')}</th><th class="p-3">{t('pf.au.col.tenant')}</th><th class="p-3">{t('pf.au.col.detail')}</th></tr>
 			</thead>
 			<tbody class="divide-y divide-ink/10">
 				{#each data.rows as r (r.id)}
@@ -43,12 +46,12 @@
 						<td class="p-3 break-all">{detail(r.metadata)}{r.request_id ? ` · req=${r.request_id}` : ''}</td>
 					</tr>
 				{:else}
-					<tr><td colspan="5" class="muted p-6">Belum ada catatan.</td></tr>
+					<tr><td colspan="5" class="muted p-6">{t('pf.au.none')}</td></tr>
 				{/each}
 			</tbody>
 		</table>
 	</div>
 	{#if data.next}
-		<a href={`?prefix=${encodeURIComponent(data.prefix)}&merchant_id=${encodeURIComponent(data.merchant)}&before=${data.next}`} class="inline-block rounded-full border border-ink/15 px-4 py-2 text-xs font-bold">Lebih lama →</a>
+		<a href={`?prefix=${encodeURIComponent(data.prefix)}&merchant_id=${encodeURIComponent(data.merchant)}&before=${data.next}`} class="inline-block rounded-full border border-ink/15 px-4 py-2 text-xs font-bold">{t('pf.au.older')}</a>
 	{/if}
 </div>

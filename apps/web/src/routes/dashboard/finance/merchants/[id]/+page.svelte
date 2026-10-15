@@ -13,6 +13,8 @@
 		iso ? new Date(iso + 'T00:00:00').toLocaleDateString(i18n.locale, { dateStyle: 'medium' }) : '—';
 	const gender = (g?: string) => (g === 'male' ? t('reg.male') : g === 'female' ? t('reg.female') : '—');
 	const rupiah = (n: number) => new Intl.NumberFormat('id-ID').format(n);
+	const { tx } = i18n;
+	const DOC: Record<string, 'ky.doc.npwp' | 'ky.doc.akta' | 'ky.doc.sk' | 'ky.doc.nib' | 'ky.doc.izin'> = { npwp_badan: 'ky.doc.npwp', akta: 'ky.doc.akta', sk_kemenkumham: 'ky.doc.sk', nib: 'ky.doc.nib', izin_usaha: 'ky.doc.izin' };
 	const m = $derived(data.merchant);
 	const kyc = $derived(data.kyc);
 	const isImg = (f: KycFileRef) => f.mime.startsWith('image/');
@@ -41,17 +43,17 @@
 		<p class="muted mb-1 text-[11px] font-semibold">{label}</p>
 		{#if f}
 			{#if isImg(f)}
-				<button type="button" class="block w-full cursor-zoom-in overflow-hidden rounded-lg border border-ink/15 bg-ink/5" aria-label={`Perbesar ${label}`} onclick={() => open(f)}>
+				<button type="button" class="block w-full cursor-zoom-in overflow-hidden rounded-lg border border-ink/15 bg-ink/5" aria-label={t('ky.file.zoom', { label })} onclick={() => open(f)}>
 					<img src={f.url} alt={label} class="h-36 w-full object-contain" loading="lazy" />
 				</button>
 			{:else}
 				<a href={f.url} target="_blank" rel="noopener" class="flex items-center gap-2 rounded-lg border border-ink/15 px-3 py-3 text-xs font-bold text-merah hover:bg-ink/5">
-					📄 {f.name || label} <span class="muted font-normal">· buka</span>
+					📄 {f.name || label} <span class="muted font-normal">{t('fd.open')}</span>
 				</a>
 			{/if}
 			{#if number}<p class="mt-1 text-[11px] font-semibold">{number}</p>{/if}
 		{:else}
-			<p class="rounded-lg border border-dashed border-ink/20 px-3 py-3 text-[11px] text-amber-700">Belum diunggah</p>
+			<p class="rounded-lg border border-dashed border-ink/20 px-3 py-3 text-[11px] text-amber-700">{t('fd.notUploaded')}</p>
 		{/if}
 	</div>
 {/snippet}
@@ -113,37 +115,37 @@
 {#if kyc}
 	<div class="mt-5 grid gap-5 lg:grid-cols-2">
 		<section class="card p-5">
-			<h2 class="text-sm font-bold">1 · Perusahaan</h2>
+			<h2 class="text-sm font-bold">{t('fd.s1')}</h2>
 			<div class="mt-3 text-xs">
 				{@render row('Business ID', kyc.company.business_id as string)}
-				{@render row('Jenis entitas', kyc.company.entity_type as string)}
-				{@render row('Nama badan usaha', kyc.company.company_name as string)}
-				{@render row('Telepon', kyc.company.phone as string)}
+				{@render row(t('ky.co.entity'), tx(`ky.ent.${kyc.company.entity_type}`, kyc.company.entity_type as string))}
+				{@render row(t('ky.co.name'), kyc.company.company_name as string)}
+				{@render row(t('fd.phone'), kyc.company.phone as string)}
 				{@render row('Email', kyc.company.email as string)}
-				{@render row('Alamat', [kyc.company.address_detail, kyc.company.kelurahan, kyc.company.kecamatan, kyc.company.kota, kyc.company.provinsi, kyc.company.postal_code].filter(Boolean).join(', '))}
+				{@render row(t('onb.detailAddress'), [kyc.company.address_detail, kyc.company.kelurahan, kyc.company.kecamatan, kyc.company.kota, kyc.company.provinsi, kyc.company.postal_code].filter(Boolean).join(', '))}
 			</div>
 			<!-- Ringkasan kelengkapan: mengisi ruang kartu dan memberi gambaran cepat sebelum memutuskan -->
 			<div class="mt-4 rounded-xl border border-ink/10 bg-ink/[0.03] p-3">
-				<p class="muted mb-2 text-[11px] font-bold uppercase tracking-wider">Kelengkapan data</p>
+				<p class="muted mb-2 text-[11px] font-bold uppercase tracking-wider">{t('fd.completeness')}</p>
 				<ul class="space-y-1.5 text-xs">
 					{#each kyc.checklist ?? [] as c (c.section)}
 						<li class="flex items-center gap-2">
 							<span class="grid size-4 shrink-0 place-items-center rounded-full text-[9px] font-bold text-white {c.needs_revision ? 'bg-amber-500' : c.complete ? 'bg-emerald-600' : 'bg-ink/30'}">{c.needs_revision ? '!' : c.complete ? '✓' : '·'}</span>
-							<span class="font-medium">{c.label}</span>
-							<span class="muted ml-auto text-[11px]">{c.needs_revision ? 'perlu revisi' : c.complete ? 'lengkap' : 'belum lengkap'}</span>
+							<span class="font-medium">{tx(`kw.${c.section}`, c.label)}</span>
+							<span class="muted ml-auto text-[11px]">{c.needs_revision ? t('fd.needsRevision') : c.complete ? t('fd.complete') : t('fd.incomplete')}</span>
 						</li>
 					{/each}
 				</ul>
 				{#if kyc.submitted_at || kyc.reviewed_at}
 					<div class="mt-2 border-t border-ink/10 pt-2 text-[11px]">
-						{#if kyc.submitted_at}<p class="muted">Dikirim: <span class="font-semibold text-ink">{fmt(kyc.submitted_at)}</span></p>{/if}
-						{#if kyc.reviewed_at}<p class="muted">Ditinjau: <span class="font-semibold text-ink">{fmt(kyc.reviewed_at)}</span></p>{/if}
+						{#if kyc.submitted_at}<p class="muted">{t('fd.sent')} <span class="font-semibold text-ink">{fmt(kyc.submitted_at)}</span></p>{/if}
+						{#if kyc.reviewed_at}<p class="muted">{t('fd.reviewed')} <span class="font-semibold text-ink">{fmt(kyc.reviewed_at)}</span></p>{/if}
 					</div>
 				{/if}
 			</div>
 			{#if kyc.notes?.some((n) => !n.resolved)}
 				<div class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-					<p class="mb-1 text-[11px] font-bold uppercase tracking-wider">Catatan revisi aktif</p>
+					<p class="mb-1 text-[11px] font-bold uppercase tracking-wider">{t('fd.activeNotes')}</p>
 					<ul class="list-disc space-y-0.5 pl-4">
 						{#each kyc.notes.filter((n) => !n.resolved) as n (n.id)}<li>{n.note}</li>{/each}
 					</ul>
@@ -152,46 +154,46 @@
 		</section>
 
 		<section class="card p-5">
-			<h2 class="text-sm font-bold">2 · Perwakilan bisnis</h2>
+			<h2 class="text-sm font-bold">{t('fd.s2')}</h2>
 			<div class="mt-3 text-xs">
-				{@render row('Nama', kyc.representative.name)}
-				{@render row('Jabatan', kyc.representative.position)}
-				{@render row('Telepon', kyc.representative.phone)}
+				{@render row(t('fd.name'), kyc.representative.name)}
+				{@render row(t('ky.rep.position'), tx(`ky.pos.${kyc.representative.position}`, kyc.representative.position))}
+				{@render row(t('fd.phone'), kyc.representative.phone)}
 				{@render row('Email', kyc.representative.email)}
-				{@render row('Kewarganegaraan', kyc.representative.nationality)}
-				{@render row('NIK (tersamar)', kyc.representative.id_masked)}
+				{@render row(t('ky.rep.nation'), tx(`ky.nat.${kyc.representative.nationality}`, kyc.representative.nationality))}
+				{@render row(t('fd.nikMasked'), kyc.representative.id_masked)}
 			</div>
 			<div class="mt-3 grid grid-cols-2 gap-3">
-				{@render file('KTP — depan', kyc.representative.ktp)}
-				{@render file('KTP — belakang', kyc.representative.ktp_back)}
+				{@render file(t('fd.ktpFront'), kyc.representative.ktp)}
+				{@render file(t('fd.ktpBack'), kyc.representative.ktp_back)}
 			</div>
 		</section>
 
 		<section class="card p-5">
-			<h2 class="text-sm font-bold">3 · Merek</h2>
+			<h2 class="text-sm font-bold">{t('fd.s3')}</h2>
 			<div class="mt-3 text-xs">
-				{@render row('Brand ID', kyc.brand.brand_id)}
-				{@render row('Nama merek', kyc.brand.name)}
-				{@render row('Kategori', kyc.brand.category)}
-				{@render row('Deskripsi', kyc.brand.description)}
-				{@render row('Perkiraan nilai / bulan', kyc.brand.monthly_amount ? `Rp ${rupiah(kyc.brand.monthly_amount)}` : '')}
-				{@render row('Perkiraan transaksi / bulan', kyc.brand.monthly_count ? rupiah(kyc.brand.monthly_count) : '')}
+				{@render row(t('ky.br.id'), kyc.brand.brand_id)}
+				{@render row(t('ky.br.name'), kyc.brand.name)}
+				{@render row(t('ky.br.cat'), tx(`ky.cat.${kyc.brand.category}`, kyc.brand.category))}
+				{@render row(t('fd.desc'), kyc.brand.description)}
+				{@render row(t('fd.estValue'), kyc.brand.monthly_amount ? `Rp ${rupiah(kyc.brand.monthly_amount)}` : '')}
+				{@render row(t('fd.estCount'), kyc.brand.monthly_count ? rupiah(kyc.brand.monthly_count) : '')}
 			</div>
-			<div class="mt-3">{@render file('Logo merek', kyc.brand.logo)}</div>
-			<p class="muted mb-1 mt-3 text-[11px] font-semibold">Bukti bisnis ({kyc.brand.evidences.length})</p>
+			<div class="mt-3">{@render file(t('ky.br.logo'), kyc.brand.logo)}</div>
+			<p class="muted mb-1 mt-3 text-[11px] font-semibold">{t('fd.evidence', { n: kyc.brand.evidences.length })}</p>
 			{#if kyc.brand.evidences.length}
 				<div class="grid grid-cols-3 gap-2 sm:grid-cols-4">
 					{#each kyc.brand.evidences as ev (ev.id)}
-						<button type="button" class="aspect-square cursor-zoom-in overflow-hidden rounded-lg border border-ink/15" aria-label={`Perbesar ${ev.name}`} onclick={() => open(ev)}>
+						<button type="button" class="aspect-square cursor-zoom-in overflow-hidden rounded-lg border border-ink/15" aria-label={t('ky.gal.zoom', { name: ev.name })} onclick={() => open(ev)}>
 							<img src={ev.url} alt={ev.name} class="size-full object-cover" loading="lazy" />
 						</button>
 					{/each}
 				</div>
 			{:else}
-				<p class="text-[11px] text-amber-700">Belum ada bukti.</p>
+				<p class="text-[11px] text-amber-700">{t('fd.noEvidence')}</p>
 			{/if}
 			{#if kyc.brand.links?.length}
-				<p class="muted mb-2 mt-4 text-[11px] font-semibold">Tautan jualan ({kyc.brand.links.length})</p>
+				<p class="muted mb-2 mt-4 text-[11px] font-semibold">{t('fd.links', { n: kyc.brand.links.length })}</p>
 				<ul class="grid list-none gap-2">
 					{#each kyc.brand.links as l (l.id)}
 						{@const u = linkParts(l.url)}
@@ -213,27 +215,27 @@
 		</section>
 
 		<section class="card p-5">
-			<h2 class="text-sm font-bold">4 · Dokumen legal</h2>
+			<h2 class="text-sm font-bold">{t('fd.s4')}</h2>
 			{#if kyc.company.entity_type === 'Perorangan'}
 				<div class="empty mt-4 grid place-items-center gap-3 rounded-xl border border-dashed border-ink/20 px-4 py-8 text-center">
 					<span class="empty-ring relative grid size-16 place-items-center rounded-full bg-emerald-50 text-emerald-600">
 						<svg viewBox="0 0 24 24" class="empty-float size-8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.2 8 8 9 4.8-1 8-4.5 8-9V6l-8-3Z" /><path d="m9 12 2.2 2.2L15.5 10" /></svg>
 					</span>
 					<div>
-						<p class="text-sm font-bold">Tidak ada dokumen badan usaha</p>
-						<p class="muted mt-1 text-xs">Entitas <b>Perorangan</b> tidak diwajibkan mengunggah NPWP badan, akta, SK, NIB, maupun izin usaha. Cukup periksa KTP perwakilan.</p>
+						<p class="text-sm font-bold">{t('fd.noBizTitle')}</p>
+						<p class="muted mt-1 text-xs">{t('fd.noBizBody')}</p>
 					</div>
 				</div>
 			{:else}
 				<div class="mt-3 grid grid-cols-2 gap-3">
-					{#each data.docs as d (d.key)}{@render file(d.label, d.file, d.number)}{/each}
+					{#each data.docs as d (d.key)}{@render file(DOC[d.key] ? t(DOC[d.key]) : d.label, d.file, d.number)}{/each}
 				</div>
-				{#if data.docs.length === 0}<p class="text-[11px] text-amber-700">Belum ada dokumen.</p>{/if}
+				{#if data.docs.length === 0}<p class="text-[11px] text-amber-700">{t('fd.noDocs')}</p>{/if}
 			{/if}
 		</section>
 	</div>
 {:else}
-	<p class="muted mt-5 text-xs">Data KYC wizard belum tersedia untuk merchant ini.</p>
+	<p class="muted mt-5 text-xs">{t('fd.noKyc')}</p>
 {/if}
 
 {#if zoom}<ImageLightbox src={zoom.url} alt={zoom.name} onclose={() => (zoom = null)} />{/if}

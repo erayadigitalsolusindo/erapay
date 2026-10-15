@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Bagian 3 — Merek. Brand ID dibuat server. Logo & bukti diunggah langsung
 	// (multipart), tautan jualan disimpan bersama bagian ini.
+	import { getI18n } from '../../i18n/i18n.svelte';
 	import TextField from './TextField.svelte';
 	import SelectField from './SelectField.svelte';
 	import TextareaField from './TextareaField.svelte';
@@ -30,13 +31,8 @@
 		register?: (fn: () => Promise<{ ok: boolean; message?: string }>) => void;
 	} = $props();
 
-	const CATEGORIES = [
-		{ value: 'retail', label: 'Ritel / Toko' },
-		{ value: 'kuliner', label: 'Kuliner' },
-		{ value: 'jasa', label: 'Jasa' },
-		{ value: 'digital', label: 'Produk Digital' },
-		{ value: 'lainnya', label: 'Lainnya' }
-	];
+	const { t, tx } = getI18n();
+	const CATEGORIES = $derived(['retail', 'kuliner', 'jasa', 'digital', 'lainnya'].map((v) => ({ value: v, label: t(`ky.cat.${v}` as 'ky.cat.retail') })));
 
 	let form = $state({ ...data });
 	let links: string[] = $state((data.links ?? []).map((l) => l.url));
@@ -61,7 +57,7 @@
 			links: links.map((l) => l.trim()).filter(Boolean)
 		});
 		fieldErr = r.fields ?? {};
-		msg = r.ok ? '' : (r.message ?? 'Gagal menyimpan.');
+		msg = r.ok ? '' : (r.message ?? t('ky.saveFail'));
 		saving = false;
 		return r;
 	}
@@ -72,13 +68,13 @@
 	async function onLogo(file: File) {
 		logoBusy = true;
 		const r = await api.uploadLogo(file);
-		if (!r.ok) uploadErrors = { ...uploadErrors, logo: r.message ?? 'Unggahan gagal.' };
+		if (!r.ok) uploadErrors = { ...uploadErrors, logo: r.message ?? t('ky.uploadFail') };
 		logoBusy = false;
 	}
 	async function onAddEvidence(file: File) {
 		evBusy = true;
 		const r = await api.addEvidence(file);
-		if (!r.ok) uploadErrors = { ...uploadErrors, evidence: r.message ?? 'Unggahan gagal.' };
+		if (!r.ok) uploadErrors = { ...uploadErrors, evidence: r.message ?? t('ky.uploadFail') };
 		evBusy = false;
 	}
 	async function onDeleteEvidence(id: string) {
@@ -89,36 +85,36 @@
 <div class="space-y-5">
 	<ReviewNote notes={notes} section="brand" />
 	{#if locked}
-		<p class="text-[13px] text-[#7A8894]">Bagian ini terkunci saat verifikasi berjalan.</p>
+		<p class="text-[13px] text-[#7A8894]">{t('ky.locked')}</p>
 	{/if}
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-		<TextField id="kyc-brand-id" label="Brand ID" value={form.brand_id} hint="dibuat sistem" />
-		<TextField id="kyc-brand-name" label="Nama merek" bind:value={form.name} error={errs.name} />
-		<SelectField id="kyc-brand-cat" label="Kategori" options={CATEGORIES} bind:value={form.category} error={errs.category} />
+		<TextField id="kyc-brand-id" label={t('ky.br.id')} value={form.brand_id} hint={t('ky.br.idHint')} />
+		<TextField id="kyc-brand-name" label={t('ky.br.name')} bind:value={form.name} error={errs.name} />
+		<SelectField id="kyc-brand-cat" label={t('ky.br.cat')} options={CATEGORIES} bind:value={form.category} error={errs.category} />
 		<div class="grid grid-cols-2 gap-4 sm:col-span-2">
 			<TextField
 				id="kyc-brand-amount"
-				label="Perkiraan nilai transaksi / bulan (Rp)"
+				label={t('ky.br.amount')}
 				inputmode="numeric"
 				bind:value={amount}
 				error={errs.monthly_amount}
 			/>
 			<TextField
 				id="kyc-brand-count"
-				label="Perkiraan jumlah transaksi / bulan"
+				label={t('ky.br.count')}
 				inputmode="numeric"
 				bind:value={count}
 				error={errs.monthly_count}
 			/>
 		</div>
 		<div class="sm:col-span-2">
-			<TextareaField id="kyc-brand-desc" label="Deskripsi singkat usaha" bind:value={form.description} error={errs.description} />
+			<TextareaField id="kyc-brand-desc" label={t('ky.br.desc')} bind:value={form.description} error={errs.description} />
 		</div>
 		<div>
 			<FileCard
-				label="Logo merek"
+				label={t('ky.br.logo')}
 				accept=".jpg,.jpeg,.png"
-				hint="JPG/PNG, maks 5 MB — tampil 72×72 px"
+				hint={t('ky.br.logoHint')}
 				maxBytes={5 * 1024 * 1024}
 				file={data.logo ? { name: data.logo.name, size: data.logo.size, url: data.logo.url, mime: data.logo.mime } : null}
 				uploading={logoBusy}
@@ -141,6 +137,6 @@
 		class="h-10 rounded-md bg-[#D32F2F] px-5 text-[13px] font-bold tracking-wide text-white transition hover:bg-[#B02424] disabled:cursor-not-allowed disabled:opacity-50"
 		onclick={save}
 	>
-		{saving ? 'Menyimpan…' : 'Simpan Merek'}
+		{saving ? t('ky.saving') : t('ky.br.save')}
 	</button>
 </div>

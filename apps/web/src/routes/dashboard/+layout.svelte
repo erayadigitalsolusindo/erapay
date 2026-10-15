@@ -39,11 +39,11 @@
 		{#if data.user.impersonating}
 			<div class="flex flex-wrap items-center justify-between gap-3 bg-merah px-5 py-2.5 text-xs font-bold text-white" role="alert">
 				<span>
-					MODE DEWA — Anda beroperasi sebagai tenant ini. Semua aksi dicatat di audit log atas nama {data.user.email}.
-					<span class="font-medium opacity-90">Alasan: {data.user.impersonationReason ?? '—'}</span>
+					{i18n.t('x.dewaBanner', { email: data.user.email })}
+					<span class="font-medium opacity-90">{i18n.t('x.reason', { reason: data.user.impersonationReason ?? '—' })}</span>
 				</span>
 				<form method="POST" action="/logout">
-					<button type="submit" class="rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-merah-gelap transition hover:bg-white/90">Keluar dari tenant</button>
+					<button type="submit" class="rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-merah-gelap transition hover:bg-white/90">{i18n.t('x.exitTenant')}</button>
 				</form>
 			</div>
 		{/if}

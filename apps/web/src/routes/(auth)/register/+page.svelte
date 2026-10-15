@@ -97,13 +97,11 @@
 		{/if}
 
 		<Field compact id="r-nama" name="name" label={t('reg.name')} icon="user" autocomplete="name" placeholder={t('reg.namePh')} bind:value={nama} error={err.nama} />
-		<Field compact id="r-email" name="email" label="Email" icon="mail" type="email" autocomplete="email" placeholder="nama@usaha.co.id" bind:value={email} error={err.email} />
+		<Field compact id="r-email" name="email" label="Email" icon="mail" type="email" autocomplete="email" placeholder={t('fp.emailPh')} bind:value={email} error={err.email} />
 		<Field compact id="r-hp" name="phone" label={t('reg.phone')} icon="phone" prefix="+62" type="tel" autocomplete="tel-national" placeholder="812 3456 7890" bind:value={hp} error={err.hp} />
 
 		<div class="rounded-md bg-[#FDF4F4] p-3 text-[12px] leading-relaxed text-[#6B3A3A]">
-			<b>Data verifikasi dilengkapi setelah login.</b> Sebelumnya akun hanya draft dan belum bisa
-			menerima pembayaran — selesaikan 4 bagian data diri (perusahaan, perwakilan, merek, dokumen)
-			di dashboard agar tim EraPay dapat memverifikasi.
+			<b>{t('reg.afterTitle')}</b> {t('reg.afterBody')}
 		</div>
 
 		<Field

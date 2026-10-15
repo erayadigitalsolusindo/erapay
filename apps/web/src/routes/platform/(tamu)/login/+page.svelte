@@ -2,8 +2,10 @@
 	import { enhance } from '$app/forms';
 	import { untrack } from 'svelte';
 	import Field from '../../../../lib/components/auth/Field.svelte';
+	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
 
 	let { form } = $props();
+	const { t } = getI18n();
 	let email = $state(untrack(() => form?.email ?? ''));
 	let password = $state('');
 	let mfaCode = $state('');
@@ -21,7 +23,7 @@
 	});
 </script>
 
-<svelte:head><title>Login Panel Platform · EraPay</title></svelte:head>
+<svelte:head><title>{t('pf.login.pageTitle')}</title></svelte:head>
 
 {#if form?.error}
 	<div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{form.error}</div>
@@ -30,20 +32,20 @@
 <form method="POST" novalidate class="space-y-4" use:enhance>
 	{#if mfa}
 		<p class="text-sm font-medium text-neutral-600">
-			Login 2FA untuk <b class="text-merah">{email}</b>
+			{t('pf.login.mfaFor', { email })}
 		</p>
 		<input type="hidden" name="email" value={email} />
 		<input type="hidden" name="password" value={password} />
 		<input type="hidden" name="challenge_id" value={challengeId} />
-		<Field id="mfa_code" name="mfa_code" label="Kode OTP / recovery code" icon="lock" autocomplete="one-time-code" placeholder="123456" bind:value={mfaCode} />
+		<Field id="mfa_code" name="mfa_code" label={t('pf.login.otp')} icon="lock" autocomplete="one-time-code" placeholder="123456" bind:value={mfaCode} />
 	{:else}
 		<Field id="email" name="email" label="Email" icon="mail" type="email" autocomplete="username" placeholder="dewa@erapay.test" bind:value={email} />
-		<Field id="password" name="password" label="Kata sandi" icon="lock" type={showPw ? 'text' : 'password'} autocomplete="current-password" placeholder="••••••••" bind:value={password}>
+		<Field id="password" name="password" label={t('login.pw')} icon="lock" type={showPw ? 'text' : 'password'} autocomplete="current-password" placeholder="••••••••" bind:value={password}>
 			{#snippet trailing()}
 				<button
 					type="button"
 					onclick={() => (showPw = !showPw)}
-					aria-label={showPw ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+					aria-label={showPw ? t('auth.pw.hide') : t('auth.pw.show')}
 					class="absolute inset-y-0 right-3 grid place-items-center rounded-lg px-1.5 text-neutral-400 transition hover:text-merah"
 				>
 					<svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -63,10 +65,10 @@
 		disabled={busy}
 		class="w-full rounded-xl bg-gradient-to-b from-merah to-merah-tua px-5 py-3.5 font-bold text-white shadow-lg shadow-merah/40 transition hover:-translate-y-0.5 disabled:opacity-90"
 	>
-		{mfa ? 'Verifikasi 2FA' : 'Masuk ke panel'}
+		{mfa ? t('pf.login.verify') : t('pf.login.submit')}
 	</button>
 </form>
 
 <p class="mt-5 text-center text-xs text-neutral-500">
-	Hanya akun <b>DEWA</b> (Platform Admin) yang dapat masuk ke panel ini.
+	{t('pf.login.only')}
 </p>

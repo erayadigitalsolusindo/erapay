@@ -48,14 +48,14 @@
 	<div class="relative flex flex-wrap items-end justify-between gap-5">
 		<div class="max-w-xl">
 			<span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold tracking-wide backdrop-blur">
-				<span class="size-1.5 animate-denyut rounded-full bg-emas"></span> Verifikasi merchant
+				<span class="size-1.5 animate-denyut rounded-full bg-emas"></span> {t('fm.badge')}
 			</span>
 			<h1 class="mt-3 font-display text-3xl font-extrabold leading-tight sm:text-4xl">{t('onb.queue')}</h1>
-			<p class="mt-2 text-[13px] leading-relaxed text-white/75">Tinjau data diri, setujui dan tetapkan tarif, atau tangguhkan merchant. Setiap keputusan tercatat di audit.</p>
+			<p class="mt-2 text-[13px] leading-relaxed text-white/75">{t('fm.hero')}</p>
 		</div>
 		<div class="rounded-2xl bg-white/10 px-5 py-3 text-center backdrop-blur">
 			<div class="font-display text-4xl font-extrabold leading-none">{total}</div>
-			<div class="mt-1 text-[11px] font-semibold uppercase tracking-wider text-white/70">Total merchant</div>
+			<div class="mt-1 text-[11px] font-semibold uppercase tracking-wider text-white/70">{t('fm.total')}</div>
 		</div>
 	</div>
 </section>
@@ -86,14 +86,14 @@
 	<input
 		type="search"
 		bind:value={q}
-		aria-label="Cari merchant"
-		placeholder="Cari nama usaha, nama pemilik, email, telepon, atau ID…"
+		aria-label={t('fm.searchLabel')}
+		placeholder={t('fm.searchPh')}
 		autocomplete="off"
 		class="inp w-full rounded-xl py-2.5 pl-10 pr-24"
 	/>
 	{#if q}
-		<span class="muted pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 text-[11px] font-bold">{shown.length} hasil</span>
-		<button type="button" aria-label="Hapus pencarian" class="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full hover:bg-ink/10" onclick={() => (q = '')}>
+		<span class="muted pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 text-[11px] font-bold">{t('fm.results', { n: shown.length })}</span>
+		<button type="button" aria-label={t('fm.clear')} class="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full hover:bg-ink/10" onclick={() => (q = '')}>
 			<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
 		</button>
 	{/if}
@@ -110,11 +110,11 @@
 		</span>
 		<div>
 			{#if q}
-				<p class="text-sm font-bold">Tidak ada hasil untuk “{q}”</p>
-				<p class="muted mt-1 text-xs">Coba kata kunci lain, atau pilih status berbeda di atas.</p>
+				<p class="text-sm font-bold">{t('fm.noResult', { q })}</p>
+				<p class="muted mt-1 text-xs">{t('fm.tryOther')}</p>
 			{:else}
 				<p class="text-sm font-bold">{t('onb.none')}</p>
-				<p class="muted mt-1 text-xs">Tidak ada merchant berstatus “{t(`onb.st.${data.status as (typeof tiles)[number]["key"]}` as const)}” saat ini.</p>
+				<p class="muted mt-1 text-xs">{t('fm.noneStatus', { status: t(`onb.st.${data.status as (typeof tiles)[number]["key"]}` as const) })}</p>
 			{/if}
 		</div>
 	</div>
@@ -130,7 +130,7 @@
 							<StateBadge kind="onb" value={m.status} />
 						</div>
 						<p class="muted mt-0.5 text-[11px]">
-							{m.account_type ? t(`onb.type.${m.account_type}` as const) : '—'} · <code>{m.id.slice(0, 8)}</code> · Daftar {fmt(m.created_at)}
+							{m.account_type ? t(`onb.type.${m.account_type}` as const) : '—'} · <code>{m.id.slice(0, 8)}</code> · {t('fm.registered', { date: fmt(m.created_at) })}
 						</p>
 					</div>
 				</div>
@@ -141,7 +141,7 @@
 						<dd class="mt-0.5 truncate font-semibold">{m.owner_name ?? '—'}</dd>
 					</div>
 					<div class="min-w-0">
-						<dt class="muted text-[10px] font-bold uppercase tracking-wide">Kontak</dt>
+						<dt class="muted text-[10px] font-bold uppercase tracking-wide">{t('fm.contact')}</dt>
 						<dd class="mt-0.5 truncate">{m.owner_email ?? '—'}</dd>
 						{#if m.contact_phone}<dd class="muted truncate text-[11px]">{m.contact_phone}</dd>{/if}
 					</div>
@@ -158,7 +158,7 @@
 
 				{#if m.review_note}
 					<p class="mt-3 rounded-xl border-l-4 border-emas bg-emas/10 px-3 py-2 text-[11px] leading-relaxed">
-						<b>Catatan:</b> {m.review_note}{#if m.reviewed_at}<span class="muted"> · {fmt(m.reviewed_at)}</span>{/if}
+						<b>{t('fm.note')}</b> {m.review_note}{#if m.reviewed_at}<span class="muted"> · {fmt(m.reviewed_at)}</span>{/if}
 					</p>
 				{/if}
 

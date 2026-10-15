@@ -40,7 +40,7 @@
 		return fd.get(`${key}_unit`) === 'rupiah' ? `Rp ${v}` : `${v}%`;
 	};
 	const flatText = (fd: FormData) =>
-		fd.get('flat_on') === 'on' ? ` Transaksi sampai Rp ${String(fd.get('flat_up_to') ?? '').trim()} dikenai MDR flat Rp ${String(fd.get('flat_fee') ?? '').trim()}.` : '';
+		fd.get('flat_on') === 'on' ? t('ma.flat.summary', { upTo: String(fd.get('flat_up_to') ?? '').trim(), fee: String(fd.get('flat_fee') ?? '').trim() }) : '';
 	// Aksi tanpa dialog konfirmasi (mulai review, minta perbaikan, tolak sudah punya alasan wajib).
 	const plain =
 		(title: string, successMessage: string): SubmitFunction =>
@@ -51,10 +51,10 @@
 				busy = false;
 				if (result.type === 'failure') {
 					err = (result.data as { message?: string })?.message ?? t('c.loadFail');
-					notify('danger', err, `Gagal: ${title}`);
+					notify('danger', err, t('ma.fail', { title }));
 					return;
 				}
-				notify('success', successMessage, `Berhasil: ${title}`);
+				notify('success', successMessage, t('ma.success', { title }));
 				await update();
 				open = false;
 			};
@@ -85,27 +85,27 @@
 			{#if err}<p class="rounded-lg bg-red-50 px-3 py-2 font-semibold text-red-700" role="alert">{err}</p>{/if}
 
 			{#if showVerify}
-				<form method="POST" action="?/verifyEmail" use:enhance={withConfirm({ variant: 'info', title: 'Verifikasi email manual', message: 'Tandai email pemilik sebagai terverifikasi secara manual? Alasanmu akan tercatat di audit.', confirmText: 'Ya, verifikasi', successMessage: 'Email pemilik ditandai terverifikasi.' }, busyWrap)} class="space-y-2">
-					<h4 class="font-bold">Verifikasi email manual</h4>
-					<p class="muted">{t('onb.emailNo')}. Gunakan bila email verifikasi tidak sampai; catat bukti verifikasinya.</p>
+				<form method="POST" action="?/verifyEmail" use:enhance={withConfirm({ variant: 'info', title: t('ma.verify.title'), message: t('ma.verify.msg'), confirmText: t('ma.verify.ok'), successMessage: t('ma.verify.done') }, busyWrap)} class="space-y-2">
+					<h4 class="font-bold">{t('ma.verify.title')}</h4>
+					<p class="muted">{t('onb.emailNo')}. {t('ma.verify.hint')}</p>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">
-						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder="Alasan / bukti (mis. konfirmasi via telepon)" minlength="3" maxlength="500" required />
-						<button class="btn" type="submit" disabled={busy}>Verifikasi email</button>
+						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder={t('ma.verify.ph')} minlength="3" maxlength="500" required />
+						<button class="btn" type="submit" disabled={busy}>{t('ma.verify.btn')}</button>
 					</div>
 				</form>
 			{/if}
 
 			{#if showStart}
-				<form method="POST" action="?/startReview" use:enhance={plain('mulai review', 'Merchant kini berstatus Sedang ditinjau.')} class="flex items-center justify-between gap-3">
-					<div><h4 class="font-bold">{t('onb.startReview')}</h4><p class="muted">Tandai bahwa kamu sedang meninjau data ini.</p></div>
+				<form method="POST" action="?/startReview" use:enhance={plain(t('ma.start.action'), t('ma.start.done'))} class="flex items-center justify-between gap-3">
+					<div><h4 class="font-bold">{t('onb.startReview')}</h4><p class="muted">{t('ma.start.hint')}</p></div>
 					<input type="hidden" name="id" value={m.id} />
 					<button class="btn" type="submit" disabled={busy}>{t('onb.startReview')}</button>
 				</form>
 			{/if}
 
 			{#if showChanges}
-				<form method="POST" action="?/requestChanges" use:enhance={plain('minta perbaikan', 'Catatan perbaikan sudah dikirim ke merchant.')} class="space-y-2">
+				<form method="POST" action="?/requestChanges" use:enhance={plain(t('ma.changes.action'), t('ma.changes.done'))} class="space-y-2">
 					<h4 class="font-bold">{t('onb.requestChanges')}</h4>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">
@@ -120,31 +120,31 @@
 				<form
 					method="POST"
 					action="?/approve"
-					use:enhance={withConfirm((fd) => ({ variant: 'info', title: t('onb.approveBtn'), message: t('onb.approveConfirm', { name: m.display_name, mdr: feeText(fd, 'mdr'), platform: feeText(fd, 'platform') }) + flatText(fd), confirmText: 'Ya, setujui', successMessage: 'Merchant disetujui. Tarif sudah ditetapkan.' }), busyWrap)}
+					use:enhance={withConfirm((fd) => ({ variant: 'info', title: t('onb.approveBtn'), message: t('onb.approveConfirm', { name: m.display_name, mdr: feeText(fd, 'mdr'), platform: feeText(fd, 'platform') }) + flatText(fd), confirmText: t('ma.approve.ok'), successMessage: t('ma.approve.done') }), busyWrap)}
 					class="space-y-2"
 				>
 					<h4 class="font-bold">{t('onb.approveBtn')}</h4>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">
-						<FeeInput name="mdr" label="MDR (biaya gateway)" />
-						<FeeInput name="platform" label="Fee platform EraPay" />
+						<FeeInput name="mdr" label={t('ma.mdr')} />
+						<FeeInput name="platform" label={t('ma.fee')} />
 					</div>
 					<!-- Aturan transaksi kecil (BI): transaksi sampai batas tertentu dikenai MDR flat -->
 					<div class="rounded-xl border border-ink/10 bg-ink/[0.03] p-3">
 						<label class="flex cursor-pointer items-start gap-2">
 							<input type="checkbox" name="flat_on" class="mt-0.5 shrink-0 accent-merah" bind:checked={flatOn} />
 							<span class="min-w-0 flex-1 break-words">
-								<b>Aturan transaksi kecil (BI)</b>
-								<span class="muted block leading-relaxed">Transaksi sampai batas tertentu dikenai MDR flat (menggantikan persen/nominal di atas). Di atas batas tetap memakai tarif di atas.</span>
+								<b>{t('ma.flat.title')}</b>
+								<span class="muted block leading-relaxed">{t('ma.flat.desc')}</span>
 							</span>
 						</label>
 						{#if flatOn}
 							<div class="mt-2 flex flex-wrap items-end gap-2">
-								<label class="min-w-0 flex-1 basis-40"><span class="mb-1 block text-[11px] font-bold">Transaksi sampai (Rp)</span>
-									<input class="inp w-full py-2" name="flat_up_to" inputmode="numeric" autocomplete="off" required placeholder="mis. 100.000" />
+								<label class="min-w-0 flex-1 basis-40"><span class="mb-1 block text-[11px] font-bold">{t('ma.flat.upTo')}</span>
+									<input class="inp w-full py-2" name="flat_up_to" inputmode="numeric" autocomplete="off" required placeholder={t('ma.flat.ph1')} />
 								</label>
-								<label class="min-w-0 flex-1 basis-40"><span class="mb-1 block text-[11px] font-bold">Dikenai MDR flat (Rp)</span>
-									<input class="inp w-full py-2" name="flat_fee" inputmode="numeric" autocomplete="off" required placeholder="mis. 500" />
+								<label class="min-w-0 flex-1 basis-40"><span class="mb-1 block text-[11px] font-bold">{t('ma.flat.fee')}</span>
+									<input class="inp w-full py-2" name="flat_fee" inputmode="numeric" autocomplete="off" required placeholder={t('ma.flat.ph2')} />
 								</label>
 							</div>
 						{/if}
@@ -158,25 +158,25 @@
 					method="POST"
 					action="?/reject"
 					use:enhance={withConfirm((fd, action) => (action.search.includes('suspend')
-						? { variant: 'warning', title: 'Tangguhkan merchant?', message: `Tangguhkan ${m.display_name}? Transaksi baru berhenti dan data terkunci sampai kamu mengaktifkannya kembali.`, confirmText: 'Ya, tangguhkan', successMessage: 'Merchant ditangguhkan.' }
-						: { variant: 'danger', title: 'Tolak merchant?', message: `Tolak ${m.display_name}? Alasan penolakan akan dibaca merchant.`, confirmText: 'Ya, tolak', successMessage: 'Merchant ditolak.' }), busyWrap)}
+						? { variant: 'warning', title: t('ma.suspend.title'), message: t('ma.suspend.msg', { name: m.display_name }), confirmText: t('ma.suspend.ok'), successMessage: t('ma.suspend.done') }
+						: { variant: 'danger', title: t('ma.reject.title'), message: t('ma.reject.msg', { name: m.display_name }), confirmText: t('ma.reject.ok'), successMessage: t('ma.reject.done') }), busyWrap)}
 					class="space-y-2"
 				>
-					<h4 class="font-bold">{t('fin.reject')} / Tangguhkan</h4>
-					<p class="muted">Tolak = pengajuan ditutup (merchant boleh memperbaiki). Tangguhkan = transaksi dihentikan sementara dan data dikunci.</p>
+					<h4 class="font-bold">{t('ma.rejectSuspend')}</h4>
+					<p class="muted">{t('ma.rejectHint')}</p>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">
 						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder={t('onb.noteRequired')} minlength="3" maxlength="500" required />
 						<button class="btn btn-danger" type="submit" disabled={busy}>{t('fin.reject')}</button>
-						<button class="btn btn-warn" type="submit" formaction="?/suspend" disabled={busy}>Tangguhkan</button>
+						<button class="btn btn-warn" type="submit" formaction="?/suspend" disabled={busy}>{t('ma.suspend')}</button>
 					</div>
 				</form>
 			{/if}
 
 			{#if showRevoke}
 				<form method="POST" action="?/revoke" use:enhance={withConfirm((fd, action) => (action.search.includes('suspend')
-						? { variant: 'warning', title: 'Tangguhkan merchant?', message: `Tangguhkan ${m.display_name}? Transaksi baru berhenti dan data terkunci sampai kamu mengaktifkannya kembali.`, confirmText: 'Ya, tangguhkan', successMessage: 'Merchant ditangguhkan.' }
-						: { variant: 'danger', title: t('onb.revokeBtn'), message: t('onb.revokeConfirm', { name: m.display_name }), confirmText: 'Ya, cabut', successMessage: 'Persetujuan dicabut.' }), busyWrap)} class="space-y-2">
+						? { variant: 'warning', title: t('ma.suspend.title'), message: t('ma.suspend.msg', { name: m.display_name }), confirmText: t('ma.suspend.ok'), successMessage: t('ma.suspend.done') }
+						: { variant: 'danger', title: t('onb.revokeBtn'), message: t('onb.revokeConfirm', { name: m.display_name }), confirmText: t('ma.revoke.ok'), successMessage: t('ma.revoke.done') }), busyWrap)} class="space-y-2">
 					<h4 class="font-bold">{t('onb.revokeBtn')}</h4>
 					<p class="muted">{t('onb.revokeHint')}</p>
 					<input type="hidden" name="id" value={m.id} />
@@ -187,19 +187,19 @@
 						]} />
 						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder={t('onb.noteRequired')} minlength="3" maxlength="500" required />
 						<button class="btn btn-danger" type="submit" disabled={busy}>{t('onb.revokeBtn')}</button>
-						<button class="btn btn-warn" type="submit" formaction="?/suspend" disabled={busy}>Tangguhkan</button>
+						<button class="btn btn-warn" type="submit" formaction="?/suspend" disabled={busy}>{t('ma.suspend')}</button>
 					</div>
 				</form>
 			{/if}
 
 			{#if showRevoke}
-				<form method="POST" action="?/unlock" use:enhance={withConfirm({ variant: 'warning', title: 'Buka kunci data?', message: `Buka kunci data ${m.display_name}? Status kembali ke "Perlu Revisi" sehingga merchant bisa memperbaiki data lalu mengirim ulang untuk verifikasi.`, confirmText: 'Ya, buka kunci', successMessage: 'Kunci data dibuka. Merchant dapat memperbaiki data.' }, busyWrap)} class="space-y-2">
-					<h4 class="font-bold">Buka kunci data</h4>
-					<p class="muted">Data terverifikasi terkunci bagi merchant. Buka kunci agar merchant dapat mengubah data dan mengirim ulang untuk verifikasi.</p>
+				<form method="POST" action="?/unlock" use:enhance={withConfirm({ variant: 'warning', title: t('ma.unlock.q'), message: t('ma.unlock.msg', { name: m.display_name }), confirmText: t('ma.unlock.ok'), successMessage: t('ma.unlock.done') }, busyWrap)} class="space-y-2">
+					<h4 class="font-bold">{t('ma.unlock.title')}</h4>
+					<p class="muted">{t('ma.unlock.hint')}</p>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">
-						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder="Alasan membuka kunci (dibaca merchant)" minlength="3" maxlength="500" required />
-						<button class="btn btn-warn" type="submit" disabled={busy}>Buka kunci</button>
+						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder={t('ma.unlock.ph')} minlength="3" maxlength="500" required />
+						<button class="btn btn-warn" type="submit" disabled={busy}>{t('ma.unlock.btn')}</button>
 					</div>
 				</form>
 			{/if}
@@ -208,15 +208,15 @@
 				<form
 					method="POST"
 					action="?/reactivate"
-					use:enhance={withConfirm({ variant: 'info', title: 'Aktifkan kembali?', message: `Aktifkan kembali ${m.display_name}? Transaksi dapat berjalan lagi bila merchant sudah pernah disetujui.`, confirmText: 'Ya, aktifkan', successMessage: 'Merchant diaktifkan kembali.' }, busyWrap)}
+					use:enhance={withConfirm({ variant: 'info', title: t('ma.react.q'), message: t('ma.react.msg', { name: m.display_name }), confirmText: t('ma.react.ok'), successMessage: t('ma.react.done') }, busyWrap)}
 					class="space-y-2"
 				>
-					<h4 class="font-bold">Aktifkan kembali</h4>
-					<p class="muted">Merchant sedang ditangguhkan. Mengaktifkan kembali mengembalikannya ke status sebelumnya (disetujui bila pernah disetujui, jika tidak kembali ke peninjauan).</p>
+					<h4 class="font-bold">{t('ma.react.title')}</h4>
+					<p class="muted">{t('ma.react.hint')}</p>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">
-						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder="Alasan pengaktifan kembali" minlength="3" maxlength="500" required />
-						<button class="btn btn-red" type="submit" disabled={busy}>Aktifkan kembali</button>
+						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder={t('ma.react.ph')} minlength="3" maxlength="500" required />
+						<button class="btn btn-red" type="submit" disabled={busy}>{t('ma.react.title')}</button>
 					</div>
 				</form>
 			{/if}

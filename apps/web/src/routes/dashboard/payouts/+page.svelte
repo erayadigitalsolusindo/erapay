@@ -31,7 +31,7 @@
 {#if data.balance === null}
 	<p class="mb-5 text-xs font-semibold text-red-700" role="alert">{t('c.loadFail')}</p>
 {:else}
-	<section class="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Saldo">
+	<section class="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label={t('ov.balance')}>
 		{#each cards as [label, hint, value, main] (label)}
 			<div class="card p-4 {main ? 'border-emas' : ''}">
 				<div class="muted text-[11px] font-bold uppercase">{t(label)}</div>

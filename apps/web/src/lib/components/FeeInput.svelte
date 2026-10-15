@@ -1,6 +1,8 @@
 <script lang="ts">
 	// Isian tarif: nilai + pilihan satuan per komponen (persen dari transaksi atau nominal rupiah).
 	// Field terkirim sebagai `${name}_value` dan `${name}_unit` ("percent" | "rupiah"); server yang mengonversi.
+	import { getI18n } from '../i18n/i18n.svelte';
+	const { t } = getI18n();
 	let { name, label, hint = '' }: { name: string; label: string; hint?: string } = $props();
 	let unit = $state<'percent' | 'rupiah'>('percent');
 </script>
@@ -15,10 +17,10 @@
 			inputmode="decimal"
 			autocomplete="off"
 			required
-			placeholder={unit === 'percent' ? 'mis. 0,7' : 'mis. 500'}
+			placeholder={unit === 'percent' ? t('fee.phPercent') : t('fee.phRupiah')}
 			aria-describedby={hint ? `${name}-hint` : undefined}
 		/>
-		<div class="flex shrink-0 border-l border-ink/15 text-[11px] font-bold" role="radiogroup" aria-label={`Satuan ${label}`}>
+		<div class="flex shrink-0 border-l border-ink/15 text-[11px] font-bold" role="radiogroup" aria-label={t('fee.unit', { label })}>
 			{#each [['percent', '%'], ['rupiah', 'Rp']] as [v, text] (v)}
 				<label class="cursor-pointer select-none px-3 py-2 transition {unit === v ? 'bg-merah text-white' : 'hover:bg-ink/5'}">
 					<input type="radio" class="sr-only" name={`${name}_unit`} value={v} checked={unit === v} onchange={() => (unit = v as 'percent' | 'rupiah')} />

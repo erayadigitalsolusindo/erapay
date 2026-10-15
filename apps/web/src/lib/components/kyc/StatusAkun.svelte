@@ -2,6 +2,7 @@
 	// Halaman Status Akun: badge status, checklist verifikasi, catatan reviewer, dan
 	// seluruh bagian isian dalam MODE BACA — memakai komponen per-bagian yang SAMA
 	// dengan wizard, cukup di-locked (read-only, tanpa api eksternal).
+	import { getI18n } from '../../i18n/i18n.svelte';
 	import KycStatusBadge from './KycStatusBadge.svelte';
 	import CompanySection from './CompanySection.svelte';
 	import RepresentativeSection from './RepresentativeSection.svelte';
@@ -21,6 +22,7 @@
 		regions: async () => []
 	};
 
+	const { t, tx } = getI18n();
 	let { profile, wizardHref = '/dashboard/onboarding' }: { profile: Profile; wizardHref?: string } = $props();
 
 	const check = $derived(profile.checklist ?? []);
@@ -31,11 +33,11 @@
 	);
 	const ctaLabel = $derived(
 		profile.status === 'draft'
-			? 'Lengkapi Data & Verifikasi'
+			? t('ky.st.cta.draft')
 			: profile.status === 'rejected'
-				? 'Perbaiki & Ajukan Ulang'
+				? t('ky.st.cta.rejected')
 				: profile.status === 'action_required'
-					? 'Perbaiki & Kirim Ulang'
+					? t('ky.st.cta.fix')
 					: ''
 	);
 	const needsAction = $derived(
@@ -48,8 +50,8 @@
 	<!-- header -->
 	<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
 		<div>
-			<h1 class="text-xl font-bold text-[#1A2530]">Status Akun</h1>
-			<p class="text-[13px] text-[#7A8894]">Kelengkapan data diri untuk verifikasi penerima pembayaran.</p>
+			<h1 class="text-xl font-bold text-[#1A2530]">{t('ky.st.title')}</h1>
+			<p class="text-[13px] text-[#7A8894]">{t('ky.st.sub')}</p>
 		</div>
 		<KycStatusBadge status={profile.status} recheck={profile.recheck} />
 	</div>
@@ -57,42 +59,42 @@
 	<!-- banner status -->
 	{#if profile.recheck}
 		<div class="mb-4 rounded-md bg-[#FFF4E0] p-3 text-[13px] leading-relaxed text-[#8A5A00]">
-			Ada bagian yang diubah setelah terverifikasi sehingga akun <b>dalam peninjauan ulang</b>.
+			{t('ky.st.recheck')}
 			{#if profile.recheck_policy === 'closed'}
-				Transaksi dibatasi sampai admin menyetujui kembali.
+				{t('ky.st.recheckClosed')}
 			{:else}
-				Transaksi tetap berjalan (kebijakan sistem terbuka).
+				{t('ky.st.recheckOpen')}
 			{/if}
 		</div>
 	{:else if approved}
 		<div class="mb-4 rounded-md bg-[#E4F5EC] p-3 text-[13px] leading-relaxed text-[#1D7A46]">
-			<b>Akun aktif & terverifikasi.</b> Seluruh data diri disetujui; Anda boleh mulai menerima transaksi.
+			<b>{t('ky.st.okTitle')}</b> {t('ky.st.okBody')}
 		</div>
 	{:else if profile.status === 'rejected'}
 		<div class="mb-4 rounded-md bg-[#FDF4F4] p-3 text-[13px] leading-relaxed text-[#6B3A3A]">
-			<b>Pengajuan ditolak.</b> Periksa catatan penolakan di bawah, lalu
-			<a class="underline" href={wizardHref}>buka form</a> dan ajukan ulang.
+			<b>{t('ky.st.rejTitle')}</b> {t('ky.st.rejBody')}
+			<a class="underline" href={wizardHref}>{t('ky.st.openForm')}</a> {t('ky.st.rejTail')}
 		</div>
 	{:else if profile.status === 'action_required'}
 		<div class="mb-4 rounded-md bg-[#FDF4F4] p-3 text-[13px] leading-relaxed text-[#6B3A3A]">
-			<b>Perlu Revisi.</b> Admin meminta perbaikan. Selesaikan catatan di bawah, lalu
-			<a class="underline" href={wizardHref}>buka form</a> dan kirim ulang.
+			<b>{t('kw.fixTitle')}</b> {t('ky.st.fixBody')}
+			<a class="underline" href={wizardHref}>{t('ky.st.openForm')}</a> {t('ky.st.fixTail')}
 		</div>
 	{:else if profile.locked}
 		<div class="mb-4 rounded-md bg-[#E7F0FB] p-3 text-[13px] leading-relaxed text-[#1D4F91]">
-			Data diri sedang diverifikasi dan terkunci; status diperbarui otomatis.
+			{t('ky.st.locked')}
 		</div>
 	{/if}
 	{#if profile.review_note}
 		<div class="mb-4 rounded-md border border-[#F3C1C1] bg-[#FDF4F4] p-3 text-[13px] text-[#6B3A3A]">
-			<b>Catatan penolakan:</b> {profile.review_note}
+			<b>{t('ky.st.rejNote')}</b> {profile.review_note}
 		</div>
 	{/if}
 
 	<!-- checklist -->
 	<div class="mb-6 rounded-xl border border-[#E5E8ED] bg-white p-5 shadow-sm">
 		<div class="mb-3 flex items-center justify-between">
-			<h2 class="text-base font-bold text-[#1A2530]">Checklist Verifikasi</h2>
+			<h2 class="text-base font-bold text-[#1A2530]">{t('ky.st.checklist')}</h2>
 			<span class="text-[12px] font-semibold text-[#7A8894]">{doneN}/{check.length}</span>
 		</div>
 		<div class="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-[#E5E8ED]">
@@ -114,10 +116,10 @@
 							!
 						{/if}
 					</span>
-					<span class="text-[13px] font-semibold text-[#1A2530]">{c.label}</span>
+					<span class="text-[13px] font-semibold text-[#1A2530]">{tx(`kw.${c.section}`, c.label)}</span>
 					<span class="ml-auto text-[10px] font-bold uppercase tracking-wide
 						{c.complete ? 'text-[#1D7A46]' : c.needs_revision ? 'text-[#D32F2F]' : 'text-[#CBD2D9]'}">
-						{c.complete ? 'Lengkap' : c.needs_revision ? 'Revisi' : 'Belum'}
+						{c.complete ? t('ky.st.complete') : c.needs_revision ? t('ky.st.revision') : t('ky.st.todo')}
 					</span>
 				</li>
 			{/each}
@@ -137,26 +139,26 @@
 	<!-- isian (mode baca) -->
 	<div class="mt-6 space-y-6">
 		<section class="rounded-xl border border-[#E5E8ED] bg-white p-5 shadow-sm">
-			<h2 class="mb-4 text-base font-bold text-[#1A2530]">1. Perusahaan</h2>
+			<h2 class="mb-4 text-base font-bold text-[#1A2530]">{t('ky.st.s1')}</h2>
 			<CompanySection data={profile.company} notes={profile.notes} locked api={NOOP} errors={{}} />
 		</section>
 		<section class="rounded-xl border border-[#E5E8ED] bg-white p-5 shadow-sm">
-			<h2 class="mb-4 text-base font-bold text-[#1A2530]">2. Perwakilan Bisnis</h2>
+			<h2 class="mb-4 text-base font-bold text-[#1A2530]">{t('ky.st.s2')}</h2>
 			<RepresentativeSection data={profile.representative} notes={profile.notes} locked ktp={profile.representative.ktp} ktpBack={profile.representative.ktp_back} api={NOOP} errors={{}} />
 		</section>
 		<section class="rounded-xl border border-[#E5E8ED] bg-white p-5 shadow-sm">
-			<h2 class="mb-4 text-base font-bold text-[#1A2530]">3. Merek & Usaha</h2>
+			<h2 class="mb-4 text-base font-bold text-[#1A2530]">{t('ky.st.s3')}</h2>
 			<BrandSection data={profile.brand} notes={profile.notes} locked api={NOOP} errors={{}} />
 		</section>
 		<section class="rounded-xl border border-[#E5E8ED] bg-white p-5 shadow-sm">
-			<h2 class="mb-4 text-base font-bold text-[#1A2530]">4. Dokumen</h2>
+			<h2 class="mb-4 text-base font-bold text-[#1A2530]">{t('ky.st.s4')}</h2>
 			<DocumentsSection documents={profile.documents} notes={profile.notes} locked api={NOOP} errors={{}} approved={profile.status === 'approved'} personal={profile.company.entity_type === 'Perorangan'} />
 		</section>
 	</div>
 
 	{#if profile.notes.length > 0}
 		<section class="mt-6 rounded-xl border border-[#F3C1C1] bg-[#FDF4F4] p-5 shadow-sm">
-			<h2 class="mb-3 text-base font-bold text-[#B02424]">Catatan Reviewer</h2>
+			<h2 class="mb-3 text-base font-bold text-[#B02424]">{t('ky.st.reviewer')}</h2>
 			<ul class="space-y-2">
 				{#each profile.notes as n (n.id)}
 					{#if !n.resolved}

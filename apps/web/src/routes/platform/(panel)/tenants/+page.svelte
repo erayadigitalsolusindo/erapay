@@ -1,23 +1,26 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
 
 	let { data, form } = $props();
+	const i18n = getI18n();
+	const { t, tx } = i18n;
 	let open = $state<string | null>(null);
-	const fmt = (s: string) => new Date(s).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+	const fmt = (s: string) => new Date(s).toLocaleDateString(i18n.locale, { day: '2-digit', month: 'short', year: 'numeric' });
 </script>
 
-<svelte:head><title>Masuk sebagai Tenant · Panel Platform</title></svelte:head>
+<svelte:head><title>{t('pf.tn.pageTitle')}</title></svelte:head>
 
 <div class="space-y-6">
 	<div class="card p-6">
-		<h1 class="text-xl font-bold">Masuk sebagai tenant</h1>
+		<h1 class="text-xl font-bold">{t('pf.nav.tenants')}</h1>
 		<p class="muted mt-1 text-sm">
-			Operasikan dashboard merchant sebagai pemiliknya. Alasan <b>wajib</b>, sesi berlaku 60 menit, dan setiap aksi
-			tercatat di <a href="/platform/audit" class="underline">Audit log</a> atas nama akun DEWA Anda.
+			{t('pf.tn.sub')}
+			<a href="/platform/audit" class="underline">{t('pf.tn.subLink')}</a>
 		</p>
 		<form method="GET" class="mt-4 flex gap-2">
-			<input name="q" value={data.q} placeholder="Cari nama / ID merchant" class="w-full max-w-sm rounded-xl border border-ink/15 bg-surface px-3 py-2 text-sm" />
-			<button class="rounded-full bg-merah px-4 py-2 text-xs font-bold text-white">Cari</button>
+			<input name="q" value={data.q} placeholder={t('pf.tn.searchPh')} class="w-full max-w-sm rounded-xl border border-ink/15 bg-surface px-3 py-2 text-sm" />
+			<button class="rounded-full bg-merah px-4 py-2 text-xs font-bold text-white">{t('pf.tn.search')}</button>
 		</form>
 	</div>
 
@@ -29,14 +32,14 @@
 				<div class="flex flex-wrap items-center justify-between gap-3">
 					<div class="min-w-0">
 						<div class="truncate text-sm font-bold">{m.display_name}</div>
-						<div class="muted text-xs">{m.legal_name} · {m.onboarding_status} · {fmt(m.created_at)} · <code class="font-mono text-[11px]">{m.id}</code></div>
+						<div class="muted text-xs">{m.legal_name} · {tx(`onb.st.${m.onboarding_status}`, m.onboarding_status)} · {fmt(m.created_at)} · <code class="font-mono text-[11px]">{m.id}</code></div>
 					</div>
 					<button
 						type="button"
 						onclick={() => (open = open === m.id ? null : m.id)}
 						class="rounded-full border border-merah px-3.5 py-1.5 text-xs font-bold text-merah transition hover:bg-merah hover:text-white"
 					>
-						Masuk sebagai…
+						{t('pf.tn.enter')}
 					</button>
 				</div>
 				{#if open === m.id || form?.merchantId === m.id}
@@ -48,9 +51,9 @@
 							minlength="10"
 							maxlength="500"
 							rows="2"
-							placeholder="Alasan (mis. tiket support #123: merchant tidak bisa membuat API key)"
+							placeholder={t('pf.tn.reasonPh')}
 							class="min-w-64 flex-1 rounded-xl border border-ink/15 bg-surface px-3 py-2 text-sm">{form?.merchantId === m.id ? form.reason : ''}</textarea>
-						<button class="rounded-full bg-merah px-4 py-2 text-xs font-bold text-white">Masuk &amp; catat</button>
+						<button class="rounded-full bg-merah px-4 py-2 text-xs font-bold text-white">{t('pf.tn.submit')}</button>
 						{#if form?.merchantId === m.id && form.message}
 							<p class="w-full text-xs font-semibold text-red-700" role="alert">{form.message}</p>
 						{/if}
@@ -58,7 +61,7 @@
 				{/if}
 			</div>
 		{:else}
-			<p class="muted p-6 text-sm">Tidak ada merchant yang cocok.</p>
+			<p class="muted p-6 text-sm">{t('pf.tn.none')}</p>
 		{/each}
 	</div>
 </div>

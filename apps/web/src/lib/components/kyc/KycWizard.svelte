@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Wizard "Data Diri" (4 bagian, gaya DOKU): Perusahaan, Perwakilan, Merek, Dokumen.
 	// Dipakai halaman onboarding / Status Akun. Semua aturan ada di server (lib/server/kyc.ts).
+	import { getI18n } from '../../i18n/i18n.svelte';
 	import KycStatusBadge from './KycStatusBadge.svelte';
 	import CompanySection from './CompanySection.svelte';
 	import RepresentativeSection from './RepresentativeSection.svelte';
@@ -11,18 +12,19 @@
 
 	let { profile, api, ctaHref = '/dashboard/onboarding' }: { profile: Profile; api: SectionApi; ctaHref?: string } = $props();
 
+	const { t } = getI18n();
 	const TABS = [
-		{ key: 'company', label: 'Perusahaan' },
-		{ key: 'representative', label: 'Perwakilan' },
-		{ key: 'brand', label: 'Merek' },
-		{ key: 'documents', label: 'Dokumen' }
+		{ key: 'company', label: 'kw.company' },
+		{ key: 'representative', label: 'kw.representative' },
+		{ key: 'brand', label: 'kw.brand' },
+		{ key: 'documents', label: 'kw.documents' }
 	] as const;
 
 	let active = $state<string>('company');
 	let submitting = $state(false);
 	let sectionErr = $state<Record<string, Record<string, string>>>({});
 	let summary = $state('');
-	let idx = $derived(TABS.findIndex((t) => t.key === active));
+	let idx = $derived(TABS.findIndex((x) => x.key === active));
 	let saveActive: (() => Promise<{ ok: boolean; message?: string }>) | null = null;
 	let moving = $state(false);
 	const register = (fn: () => Promise<{ ok: boolean; message?: string }>) => (saveActive = fn);
@@ -56,7 +58,7 @@
 		submitting = true;
 		summary = '';
 		const r = await api.submit();
-		if (!r.ok) summary = r.message ?? 'Gagal mengirim.';
+		if (!r.ok) summary = r.message ?? t('kw.sendFail');
 		submitting = false;
 	}
 </script>
@@ -67,8 +69,8 @@
 		<div class="pointer-events-none absolute -right-10 -top-12 size-40 rounded-full bg-emas/20 blur-2xl"></div>
 		<div class="relative flex flex-wrap items-center justify-between gap-3">
 			<div>
-				<h1 class="font-display text-2xl font-extrabold text-merah-gelap">Data Diri</h1>
-				<p class="mt-0.5 text-[13px] text-merah-gelap/60">Lengkapi 4 bagian untuk verifikasi penerima pembayaran.</p>
+				<h1 class="font-display text-2xl font-extrabold text-merah-gelap">{t('kw.title')}</h1>
+				<p class="mt-0.5 text-[13px] text-merah-gelap/60">{t('kw.sub')}</p>
 			</div>
 			<KycStatusBadge status={profile.status} recheck={profile.recheck} />
 		</div>
@@ -79,47 +81,46 @@
 					style="width: {pct}%"
 				></div>
 			</div>
-			<span class="text-xs font-bold text-merah-gelap/70">{doneN}/{check.length} bagian</span>
+			<span class="text-xs font-bold text-merah-gelap/70">{t('kw.parts', { n: doneN, total: check.length })}</span>
 		</div>
 	</div>
 
 	{#if profile.recheck}
 		<div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-[13px] text-amber-900">
-			Akun terverifikasi namun ada bagian yang diubah sehingga <b>perlu ditinjau ulang</b>.
-			Transaksi tetap berjalan (kebijakan sistem) sambil menunggu persetujuan admin.
+			{t('kw.recheck')}
 		</div>
 	{/if}
 	{#if flagCount > 0}
 		<div class="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-[13px] text-red-800">
-			<b>Perlu Revisi.</b> Perbaiki bagian bertanda merah lalu tekan <b>Kirim untuk Verifikasi</b>.
+			<b>{t('kw.fixTitle')}</b> {t('kw.fixBody')}
 		</div>
 	{/if}
 
 	<!-- tab bar -->
 	<div class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4" role="tablist">
-		{#each TABS as t, i (t.key)}
+		{#each TABS as tab, i (tab.key)}
 			<button
 				type="button"
 				role="tab"
-				aria-selected={active === t.key}
+				aria-selected={active === tab.key}
 				class="rounded-xl border px-3 py-2.5 text-left transition focus-visible:ring-4 focus-visible:ring-emas/60
-					{active === t.key ? 'border-merah bg-white shadow-sm' : 'border-merah-gelap/10 bg-white/60 hover:bg-white'}"
-				onclick={() => (active = t.key)}
+					{active === tab.key ? 'border-merah bg-white shadow-sm' : 'border-merah-gelap/10 bg-white/60 hover:bg-white'}"
+				onclick={() => (active = tab.key)}
 			>
 				<span class="flex items-center gap-2">
 					<span
 						class="grid size-6 shrink-0 place-items-center rounded-full text-[11px] font-bold
-						{done(t.key) ? 'bg-emerald-600 text-white' : flagged(t.key) ? 'bg-red-600 text-white' : active === t.key ? 'bg-merah text-white' : 'bg-merah-gelap/10 text-merah-gelap/70'}"
+						{done(tab.key) ? 'bg-emerald-600 text-white' : flagged(tab.key) ? 'bg-red-600 text-white' : active === tab.key ? 'bg-merah text-white' : 'bg-merah-gelap/10 text-merah-gelap/70'}"
 					>
-						{#if done(t.key)}
+						{#if done(tab.key)}
 							<svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5L20 7" /></svg>
-						{:else if flagged(t.key)}
+						{:else if flagged(tab.key)}
 							!
 						{:else}
 							{i + 1}
 						{/if}
 					</span>
-					<span class="text-[13px] font-semibold {active === t.key ? 'text-merah-gelap' : 'text-merah-gelap/60'}">{t.label}</span>
+					<span class="text-[13px] font-semibold {active === tab.key ? 'text-merah-gelap' : 'text-merah-gelap/60'}">{t(tab.label)}</span>
 				</span>
 			</button>
 		{/each}
@@ -152,22 +153,20 @@
 					<circle class="valid-ring" cx="36" cy="36" r="32" stroke="#10b981" stroke-width="4" />
 					<path class="valid-tick" d="M22 37l10 10 18-21" stroke="#10b981" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
 				</svg>
-				<h2 class="valid-text mt-4 font-display text-2xl font-extrabold tracking-wide sm:text-3xl">DATA ANDA SUDAH VALID</h2>
-				<p class="mt-1 text-[13px] font-medium text-merah-gelap/70">Seluruh data diri telah diverifikasi dan disetujui.</p>
+				<h2 class="valid-text mt-4 font-display text-2xl font-extrabold tracking-wide sm:text-3xl">{t('kw.valid')}</h2>
+				<p class="mt-1 text-[13px] font-medium text-merah-gelap/70">{t('kw.validNote')}</p>
 				<button
 					type="button"
 					class="mt-4 rounded-xl border border-merah-gelap/15 bg-white px-4 py-2 text-xs font-bold text-merah-gelap transition hover:bg-gading focus-visible:ring-4 focus-visible:ring-emas/60"
 					onclick={() => (reveal = true)}
-				>
-					Tampilkan data
-				</button>
+				>{t('kw.show')}</button>
 			</div>
 		</div>
 	{/if}
 	</div>
 	{#if valid && reveal}
 		<div class="mt-2 text-right">
-			<button type="button" class="text-xs font-bold text-merah underline" onclick={() => (reveal = false)}>Samarkan data</button>
+			<button type="button" class="text-xs font-bold text-merah underline" onclick={() => (reveal = false)}>{t('kw.hide')}</button>
 		</div>
 	{/if}
 
@@ -179,7 +178,7 @@
 			class="h-10 rounded-xl border border-merah-gelap/15 bg-white px-5 text-[13px] font-semibold text-merah-gelap/80 transition hover:bg-gading focus-visible:ring-4 focus-visible:ring-emas/60 disabled:cursor-not-allowed disabled:opacity-40"
 			onclick={() => (active = TABS[idx - 1].key)}
 		>
-			← Sebelumnya
+				{t('kw.prev')}
 		</button>
 		<div class="flex items-center gap-3">
 			{#if summary}
@@ -192,7 +191,7 @@
 					disabled={moving}
 						onclick={next}
 				>
-					Selanjutnya →
+						{t('kw.next')}
 				</button>
 			{:else if showSubmit}
 				<button
@@ -201,12 +200,12 @@
 					class="h-10 rounded-xl bg-emerald-700 px-5 text-[13px] font-bold tracking-wide text-white transition hover:bg-emerald-800 focus-visible:ring-4 focus-visible:ring-emas/60 disabled:cursor-not-allowed disabled:opacity-50"
 					onclick={doSubmit}
 				>
-					{submitting ? 'Mengirim…' : 'Kirim untuk Verifikasi'}
+					{submitting ? t('kw.sending') : t('kw.submit')}
 				</button>
 			{:else if profile.status === 'approved'}
-				<span class="text-[13px] text-merah-gelap/60">Data terverifikasi dan terkunci. Hubungi admin bila perlu perubahan.</span>
+				<span class="text-[13px] text-merah-gelap/60">{t('kw.lockedApproved')}</span>
 			{:else if !editable && profile.status === 'submitted'}
-				<span class="text-[13px] text-merah-gelap/60">Sedang diverifikasi — data terkunci.</span>
+				<span class="text-[13px] text-merah-gelap/60">{t('kw.lockedReview')}</span>
 			{/if}
 		</div>
 	</div>

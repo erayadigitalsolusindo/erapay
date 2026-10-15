@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getI18n } from '../../i18n/i18n.svelte';
+	const { t } = getI18n();
 	import Combobox from '../Combobox.svelte';
 	// Dropdown gaya DOKU: 40px, radius 6px, latar putih; border merah saat error.
 	let {
@@ -6,7 +8,7 @@
 		label,
 		value = $bindable(''),
 		options = [],
-		placeholder = 'Pilih',
+		placeholder = '',
 		hint = '',
 		error = '',
 		disabled = false
@@ -30,7 +32,7 @@
 		{options}
 		bind:value
 		{disabled}
-		{placeholder}
+		placeholder={placeholder || t('ky.sel.pick')}
 		inputClass="h-10 w-full rounded-md border bg-white px-3 text-[14px] text-[#1A2530] outline-none transition focus:border-[#D32F2F] focus:ring-2 focus:ring-[#D32F2F]/15 disabled:opacity-60 {error ? 'border-[#D32F2F]' : 'border-[#CBD2D9]'}"
 	/>
 	{#if error}

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getI18n } from '../../i18n/i18n.svelte';
+	const { t } = getI18n();
 	// Input teks gaya DOKU: 40px, radius 6px; mode baca pakai latar #E5E8ED.
 	// `masked` menampilkan nilai ter-segel (NIK/NPWP) sebagai read-only.
 	let {
@@ -39,7 +41,7 @@
 			class="flex h-10 w-full items-center rounded-md border border-[#CBD2D9] bg-[#E5E8ED] px-3 text-[14px] tracking-widest text-[#42505C]"
 		>
 			{value || '—'}
-			<span class="ml-auto text-[11px] font-medium tracking-normal text-[#7A8894]">tertutup</span>
+			<span class="ml-auto text-[11px] font-medium tracking-normal text-[#7A8894]">{t('ky.tf.closed')}</span>
 		</div>
 	{:else}
 		<input

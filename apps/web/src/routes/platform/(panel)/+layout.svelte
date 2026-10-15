@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { createI18n, setI18n, getI18n } from '../../../lib/i18n/i18n.svelte';
 	import Logo from '../../../lib/components/auth/Logo.svelte';
+	import LangSwitch from '../../../lib/components/LangSwitch.svelte';
 
 	let { data, children } = $props();
 	// svelte-ignore state_referenced_locally
@@ -10,12 +11,16 @@
 	setI18n(i18n);
 	const { t } = getI18n();
 
+	$effect(() => {
+		document.documentElement.lang = i18n.lang;
+	});
+
 	const items = [
-		{ href: '/platform', label: 'Ringkasan' },
-		{ href: '/platform/tenants', label: 'Masuk sebagai tenant' },
-		{ href: '/platform/audit', label: 'Audit log' },
-		{ href: '/platform/access', label: 'Hak akses (RBAC)' }
-	];
+		{ href: '/platform', label: 'pf.nav.overview' },
+		{ href: '/platform/tenants', label: 'pf.nav.tenants' },
+		{ href: '/platform/audit', label: 'pf.nav.audit' },
+		{ href: '/platform/access', label: 'pf.nav.access' }
+	] as const;
 	const current = $derived(items.find((n) => page.url.pathname === n.href || page.url.pathname.startsWith(n.href === '/platform' ? '/platform/' : n.href + '/')));
 	const nama = $derived(data.user.email.split('@')[0]);
 	const inisial = $derived(nama.slice(0, 2).toUpperCase());
@@ -36,21 +41,23 @@
 			<div class="flex items-center gap-3">
 				<Logo class="h-9" />
 				<div class="leading-tight">
-					<div class="text-sm font-extrabold tracking-wide text-merah-gelap">PANEL PLATFORM</div>
+					<div class="text-sm font-extrabold tracking-wide text-merah-gelap">{t('pf.brand')}</div>
 					<div class="-mt-0.5 text-[9px] tracking-[.2em] text-ink-soft uppercase">DEWA · Platform Admin</div>
 				</div>
 			</div>
-			<nav class="flex items-center gap-1" aria-label="Menu panel">
+			<nav class="flex items-center gap-1" aria-label={t('pf.menu')}>
 				{#each items as n (n.href)}
 					<a
 						href={n.href}
 						aria-current={current?.href === n.href ? 'page' : undefined}
 						class="rounded-full px-3.5 py-2 text-xs font-bold text-ink-soft transition hover:bg-ink/5 hover:text-ink aria-[current=page]:bg-merah aria-[current=page]:text-white"
 					>
-						{n.label}
+						{t(n.label)}
 					</a>
 				{/each}
 			</nav>
+			<div class="flex items-center gap-2">
+			<LangSwitch btnClass="size-9 rounded-full border border-ink/10 text-ink-soft hover:bg-ink/5" />
 			<form method="POST" action="/platform/logout" class="flex items-center gap-2">
 				<span class="hidden text-right md:block">
 					<span class="block max-w-44 truncate text-xs font-bold text-ink">{nama}</span>
@@ -61,6 +68,7 @@
 					{t('hdr.logout')}
 				</button>
 			</form>
+			</div>
 		</div>
 	</header>
 	<main class="mx-auto w-full max-w-6xl flex-1 p-5 lg:p-8">
