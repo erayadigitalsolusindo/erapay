@@ -16,9 +16,9 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/account"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/kyc"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/observability"
-	"github.com/erayadigitalsolusindo/erapay/services/api/internal/kyc"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
@@ -61,8 +61,7 @@ func NewRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID) // correlation ID on every request
 	r.Use(middleware.Recoverer)
-	r.Use(accessLog(d.Log))
-	r.Use(instrument(d.Log))
+	r.Use(observe(d.Log))
 
 	// Liveness: process is running (no dependency checks, never 503).
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -113,35 +112,26 @@ func NewRouter(d Deps) http.Handler {
 	return r
 }
 
-func accessLog(log *slog.Logger) func(http.Handler) http.Handler {
+// observe adalah satu middleware untuk access log + metrik (sebelumnya dua, masing-masing
+// membungkus ResponseWriter sendiri). Metrik tidak dicatat untuk /healthz, /readyz, /metrics.
+func observe(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			start := time.Now()
 			next.ServeHTTP(ww, r)
+			elapsed := time.Since(start)
+			status := ww.Status()
 			log.Info("http",
 				"request_id", middleware.GetReqID(r.Context()),
 				"method", r.Method, "path", r.URL.Path,
-				"status", ww.Status(), "ms", time.Since(start).Milliseconds())
-		})
-	}
-}
-
-// instrument records Prometheus-style metrics for every request except /healthz, /readyz, /metrics.
-func instrument(log *slog.Logger) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				"status", status, "ms", elapsed.Milliseconds())
 			if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" || r.URL.Path == "/metrics" {
-				next.ServeHTTP(w, r)
 				return
 			}
-			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-			start := time.Now()
-			next.ServeHTTP(ww, r)
-			code := strconv.Itoa(ww.Status())
-			observability.ObserveHTTP(r.Method, routePattern(r), code, time.Since(start))
-			if ww.Status() >= 500 {
-				log.Error("http 5xx", "method", r.Method, "route", routePattern(r), "status", ww.Status(), "request_id", middleware.GetReqID(r.Context()))
+			observability.ObserveHTTP(r.Method, routePattern(r), strconv.Itoa(status), elapsed)
+			if status >= 500 {
+				log.Error("http 5xx", "method", r.Method, "route", routePattern(r), "status", status, "request_id", middleware.GetReqID(r.Context()))
 			}
 		})
 	}

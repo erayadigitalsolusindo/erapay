@@ -12,8 +12,8 @@ type CompanyInput struct {
 	Kelurahan     string `json:"kelurahan"`
 	Kecamatan     string `json:"kecamatan"`
 	Kota          string `json:"kota"`
-	Provinsi      string  `json:"provinsi"`
-	AddressDetail string  `json:"address_detail"`
+	Provinsi      string `json:"provinsi"`
+	AddressDetail string `json:"address_detail"`
 }
 
 type RepresentativeInput struct {

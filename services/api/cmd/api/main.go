@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -63,6 +65,27 @@ func (b kycReviewerBridge) Approve(ctx context.Context, in kyc.ApproveInput) err
 	return err
 }
 
+// tunePool memberi batas koneksi yang eksplisit. Nilai bisa ditimpa lewat query string DSN
+// (mis. ?pool_max_conns=40) karena ParseConfig dijalankan lebih dulu.
+func tunePool(c *pgxpool.Config) {
+	q := c.ConnString()
+	if !strings.Contains(q, "pool_max_conns") {
+		c.MaxConns = int32(max(10, 4*runtime.GOMAXPROCS(0)))
+	}
+	if !strings.Contains(q, "pool_min_conns") {
+		c.MinConns = 2
+	}
+	if !strings.Contains(q, "pool_max_conn_lifetime") {
+		c.MaxConnLifetime = 30 * time.Minute
+	}
+	if !strings.Contains(q, "pool_max_conn_idle_time") {
+		c.MaxConnIdleTime = 5 * time.Minute
+	}
+	if !strings.Contains(q, "pool_health_check_period") {
+		c.HealthCheckPeriod = time.Minute
+	}
+}
+
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(log); err != nil {
@@ -79,7 +102,12 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pcfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	tunePool(pcfg)
+	pool, err := pgxpool.NewWithConfig(ctx, pcfg)
 	if err != nil {
 		return err
 	}
@@ -185,12 +213,18 @@ func run(log *slog.Logger) error {
 			Log: log, DB: pool, Redis: redisPinger{rdb},
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
-			KYC: kycSvc,
+			KYC:           kycSvc,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 			ARUSProvisionToken: cfg.ARUSProvisionToken,
 			PlatformSetupToken: cfg.PlatformSetupToken,
 		}),
+		// Tanpa batas ini koneksi lambat (slowloris) bisa menahan goroutine tanpa batas waktu.
+		// WriteTimeout > timeout gateway pada Create (30s) supaya respons pembayaran tidak terpotong.
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      75 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    64 << 10,
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()

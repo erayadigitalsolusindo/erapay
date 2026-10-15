@@ -98,10 +98,10 @@ func (d Deps) kycSaveSection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ConfirmSensitive bool                `json:"confirm_sensitive"`
-		Company          *kyc.CompanyInput   `json:"company,omitempty"`
+		ConfirmSensitive bool                     `json:"confirm_sensitive"`
+		Company          *kyc.CompanyInput        `json:"company,omitempty"`
 		Representative   *kyc.RepresentativeInput `json:"representative,omitempty"`
-		Brand            *kyc.BrandInput     `json:"brand,omitempty"`
+		Brand            *kyc.BrandInput          `json:"brand,omitempty"`
 	}
 	if _, ok := decodeStrict(w, r, 16<<10, &body); !ok {
 		return
@@ -166,14 +166,14 @@ func (d Deps) kycUploadDocument(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 	in := kyc.UploadInput{
 		MerchantID: p.MerchantID, ActorID: p.UserID,
-		DocType:   chi.URLParam(r, "doc_type"),
-		Number:    r.FormValue("number"),
-		KBLI:      r.FormValue("kbli"),
-		Name:      head.Filename,
-		Size:      head.Size,
-		Reader:    file,
-		IP:        d.clientIP(r),
-		RequestID: middleware.GetReqID(r.Context()),
+		DocType:          chi.URLParam(r, "doc_type"),
+		Number:           r.FormValue("number"),
+		KBLI:             r.FormValue("kbli"),
+		Name:             head.Filename,
+		Size:             head.Size,
+		Reader:           file,
+		IP:               d.clientIP(r),
+		RequestID:        middleware.GetReqID(r.Context()),
 		ConfirmSensitive: r.FormValue("confirm") == "true",
 	}
 	doc, err := d.KYC.UploadDocument(r.Context(), in)

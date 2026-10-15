@@ -133,14 +133,22 @@ export const verifyEmail = (f: typeof fetch, clientIp: string, token: string) =>
 export const resetPassword = (f: typeof fetch, clientIp: string, token: string, password: string) =>
 	useToken(f, '/v1/auth/reset-password', clientIp, { token, password });
 
-export async function fetchMe(f: typeof fetch, token: string): Promise<Me | null> {
+/**
+ * null = sesi tidak valid (API menjawab 401/403) → cookie boleh dihapus.
+ * 'unavailable' = API lambat/mati/5xx → JANGAN hapus cookie, supaya gangguan sesaat tidak men-logout pengguna.
+ */
+export async function fetchMe(f: typeof fetch, token: string): Promise<Me | null | 'unavailable'> {
 	try {
-		const res = await f(`${BASE}/v1/auth/me`, { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
-		if (!res.ok) return null;
+		const res = await f(`${BASE}/v1/auth/me`, {
+			headers: { cookie: `${SESSION_COOKIE}=${token}` },
+			signal: AbortSignal.timeout(5000)
+		});
+		if (res.status === 401 || res.status === 403) return null;
+		if (!res.ok) return 'unavailable';
 		const b = await res.json();
 		return { id: b.user_id, email: b.email, merchantId: b.merchant_id, emailVerified: b.email_verified === true, permissions: b.permissions };
 	} catch {
-		return null;
+		return 'unavailable';
 	}
 }
 

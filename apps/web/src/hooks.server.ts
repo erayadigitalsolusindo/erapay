@@ -8,14 +8,27 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.user = null;
 	event.locals.platformUser = null;
 	const token = event.cookies.get(SESSION_COOKIE);
-	if (token) {
-		event.locals.user = await fetchMe(event.fetch, token);
-		if (!event.locals.user) event.cookies.delete(SESSION_COOKIE, { path: '/' });
-	}
 	const ptoken = event.cookies.get(PLATFORM_COOKIE);
-	if (ptoken) {
-		event.locals.platformUser = await fetchPlatformMe(event.fetch, ptoken);
-		if (!event.locals.platformUser) event.cookies.delete(PLATFORM_COOKIE, { path: '/platform' });
+
+	// Dua pengecekan sesi independen → jalankan paralel, bukan berurutan.
+	const [me, pme] = await Promise.all([
+		token ? fetchMe(event.fetch, token) : null,
+		ptoken ? fetchPlatformMe(event.fetch, ptoken) : null
+	]);
+
+	// 'unavailable' = API sedang bermasalah: pengguna dianggap belum login untuk request ini,
+	// tetapi cookie dipertahankan agar sesi pulih sendiri saat API kembali.
+	if (me === 'unavailable') {
+		event.locals.user = null;
+	} else {
+		event.locals.user = me;
+		if (token && !me) event.cookies.delete(SESSION_COOKIE, { path: '/' });
+	}
+	if (pme === 'unavailable') {
+		event.locals.platformUser = null;
+	} else {
+		event.locals.platformUser = pme;
+		if (ptoken && !pme) event.cookies.delete(PLATFORM_COOKIE, { path: '/platform' });
 	}
 	return resolve(event);
 };

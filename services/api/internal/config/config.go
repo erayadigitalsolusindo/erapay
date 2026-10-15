@@ -59,10 +59,10 @@ type Config struct {
 
 	// KYC wizard (data diri + dokumen) — ERAPAY_KYC_STORAGE_DIR wajib untuk mengaktifkan
 	// seluruh route /v1/kyc/* (draft & edit). Tanpa penyimpanan, wizard mati total.
-	KYCStorageDir  string // ERAPAY_KYC_STORAGE_DIR: direktori lokal (LocalFS) untuk dokumen & bukti
-	KYCRecheckPolicy string // ERAPAY_KYC_RECHECK_POLICY: open (default) | closed — akses produksi saat re-check
-	KYCDocUploadPerIP int // ERAPAY_KYC_UPLOAD_PER_IP per jam (default 60)
-	KYCSubmitPerIP    int // ERAPAY_KYC_SUBMIT_PER_IP per jam (default 10)
+	KYCStorageDir     string // ERAPAY_KYC_STORAGE_DIR: direktori lokal (LocalFS) untuk dokumen & bukti
+	KYCRecheckPolicy  string // ERAPAY_KYC_RECHECK_POLICY: open (default) | closed — akses produksi saat re-check
+	KYCDocUploadPerIP int    // ERAPAY_KYC_UPLOAD_PER_IP per jam (default 60)
+	KYCSubmitPerIP    int    // ERAPAY_KYC_SUBMIT_PER_IP per jam (default 10)
 }
 
 func Load() (Config, error) {
