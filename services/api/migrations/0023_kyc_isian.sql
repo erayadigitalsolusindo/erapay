@@ -7,28 +7,32 @@
 -- (kebijakan akses produksi dikonfigurasi lewat ERAPAY_KYC_RECHECK_POLICY, default tetap terbuka).
 -- Transisi dicatat di audit_logs yang sudah append-only (PRD §0 #6) lewat paket audit,
 -- jadi TIDAK ada tabel audit kedua.
+-- IDEMPOTEN: semua DDL pakai IF NOT EXISTS agar aman di-re-run bila versi 23 gagal
+-- sebagian (mis. di awal deploy) — goose menjalankan SQL apa adanya, tanpa transaksi.
+-- Waktu dulu gagal: encode(uuid,…) tidak ada. Kini pakai replace(uuid::text,'-','').
 
 ALTER TABLE merchants
-    ADD COLUMN business_id     text UNIQUE, -- "BIZ-XXXXXXXX", dibuat server, tidak bisa diubah
-    ADD COLUMN entity_type     text CHECK (entity_type IN ('PT','CV','Yayasan')),
-    ADD COLUMN contact_email   text,
-    ADD COLUMN addr_postal_code text,
-    ADD COLUMN addr_kelurahan  text,
-    ADD COLUMN addr_kecamatan  text,
-    ADD COLUMN addr_kota       text,
-    ADD COLUMN addr_provinsi   text,
-    ADD COLUMN addr_detail     text,        -- maks 500 karakter
-    ADD COLUMN owner_position  text CHECK (owner_position IN ('Pemilik','Direktur','Komisaris','Manajer')),
-    ADD COLUMN owner_nationality text DEFAULT 'Indonesia',
-    ADD COLUMN owner_phone     text,
-    ADD COLUMN owner_email     text,
-    ADD COLUMN business_kbli   text;         -- 5 digit KBLI (pasangan NIB)
+    ADD COLUMN IF NOT EXISTS business_id     text UNIQUE, -- "BIZ-XXXXXXXX", dibuat server, tidak bisa diubah
+    ADD COLUMN IF NOT EXISTS entity_type     text CHECK (entity_type IN ('PT','CV','Yayasan')),
+    ADD COLUMN IF NOT EXISTS contact_email   text,
+    ADD COLUMN IF NOT EXISTS addr_postal_code text,
+    ADD COLUMN IF NOT EXISTS addr_kelurahan  text,
+    ADD COLUMN IF NOT EXISTS addr_kecamatan  text,
+    ADD COLUMN IF NOT EXISTS addr_kota       text,
+    ADD COLUMN IF NOT EXISTS addr_provinsi   text,
+    ADD COLUMN IF NOT EXISTS addr_detail     text,        -- maks 500 karakter
+    ADD COLUMN IF NOT EXISTS owner_position  text CHECK (owner_position IN ('Pemilik','Direktur','Komisaris','Manajer')),
+    ADD COLUMN IF NOT EXISTS owner_nationality text DEFAULT 'Indonesia',
+    ADD COLUMN IF NOT EXISTS owner_phone     text,
+    ADD COLUMN IF NOT EXISTS owner_email     text,
+    ADD COLUMN IF NOT EXISTS business_kbli   text;         -- 5 digit KBLI (pasangan NIB)
 
 -- Backfill Business ID untuk merchant lama & ARUS; yang baru dibuat oleh kyc.Service.
-UPDATE merchants SET business_id = 'BIZ-' || upper(substring(encode(gen_random_uuid(), 'hex') from 1 for 8))
+-- replace(gen_random_uuid()::text,'-','') = 32 hex tanpa tanda hubung; ambil 8 pertama.
+UPDATE merchants SET business_id = 'BIZ-' || upper(substring(replace(gen_random_uuid()::text,'-','') from 1 for 8))
 WHERE business_id IS NULL;
 
-CREATE TABLE merchant_brands (
+CREATE TABLE IF NOT EXISTS merchant_brands (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     merchant_id    uuid NOT NULL UNIQUE REFERENCES merchants(id),
     brand_id       text NOT NULL UNIQUE,    -- "BRD-XXXXXXXX", dibuat server
@@ -45,7 +49,7 @@ CREATE TABLE merchant_brands (
     updated_at     timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE merchant_brand_evidences (
+CREATE TABLE IF NOT EXISTS merchant_brand_evidences (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     brand_id      uuid NOT NULL REFERENCES merchant_brands(id) ON DELETE CASCADE,
     storage_key   text NOT NULL,
@@ -55,18 +59,18 @@ CREATE TABLE merchant_brand_evidences (
     uploaded_by   uuid REFERENCES users(id),
     created_at    timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX brand_evidences_brand_idx ON merchant_brand_evidences (brand_id);
+CREATE INDEX IF NOT EXISTS brand_evidences_brand_idx ON merchant_brand_evidences (brand_id);
 
-CREATE TABLE merchant_brand_links (
+CREATE TABLE IF NOT EXISTS merchant_brand_links (
     id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     brand_id  uuid NOT NULL REFERENCES merchant_brands(id) ON DELETE CASCADE,
     url       text NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX merchant_brand_links_brand_idx ON merchant_brand_links (brand_id);
+CREATE INDEX IF NOT EXISTS merchant_brand_links_brand_idx ON merchant_brand_links (brand_id);
 
 -- Dokumen KYC. Satu jenis satu file (unggah ulang menimpa); akses dibatasi pemilik + reviewer.
-CREATE TABLE merchant_documents (
+CREATE TABLE IF NOT EXISTS merchant_documents (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     merchant_id   uuid NOT NULL REFERENCES merchants(id),
     doc_type      text NOT NULL CHECK (doc_type IN
@@ -79,10 +83,10 @@ CREATE TABLE merchant_documents (
     created_at    timestamptz NOT NULL DEFAULT now(),
     UNIQUE (merchant_id, doc_type)
 );
-CREATE INDEX merchant_documents_merchant_idx ON merchant_documents (merchant_id);
+CREATE INDEX IF NOT EXISTS merchant_documents_merchant_idx ON merchant_documents (merchant_id);
 
 -- Satu baris per merchant: penanda proses KYC (status tetap di merchants.onboarding_status).
-CREATE TABLE kyc_submissions (
+CREATE TABLE IF NOT EXISTS kyc_submissions (
     merchant_id  uuid PRIMARY KEY REFERENCES merchants(id),
     submitted_at timestamptz,
     reviewed_at  timestamptz,
@@ -95,7 +99,7 @@ CREATE TABLE kyc_submissions (
 );
 
 -- Catatan reviewer per bagian/field (ditandai "perlu revisi" sampai merchant koreksi + submit ulang).
-CREATE TABLE kyc_review_notes (
+CREATE TABLE IF NOT EXISTS kyc_review_notes (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     merchant_id uuid NOT NULL REFERENCES merchants(id),
     section     text NOT NULL CHECK (section IN ('company','representative','brand','documents')),
@@ -106,10 +110,10 @@ CREATE TABLE kyc_review_notes (
     created_at  timestamptz NOT NULL DEFAULT now(),
     resolved_at timestamptz
 );
-CREATE INDEX kyc_review_notes_merchant_idx ON kyc_review_notes (merchant_id, resolved);
+CREATE INDEX IF NOT EXISTS kyc_review_notes_merchant_idx ON kyc_review_notes (merchant_id, resolved);
 
 -- Wilayah untuk autocomplete alamat (data contoh; produksi diganti data Pos Indonesia).
-CREATE TABLE kyc_regions (
+CREATE TABLE IF NOT EXISTS kyc_regions (
     id           bigserial PRIMARY KEY,
     postal_code  text NOT NULL,
     kelurahan    text NOT NULL,
@@ -117,7 +121,7 @@ CREATE TABLE kyc_regions (
     kota         text NOT NULL,
     provinsi     text NOT NULL
 );
-CREATE INDEX kyc_regions_search_idx ON kyc_regions (lower(kelurahan), lower(kota));
+CREATE INDEX IF NOT EXISTS kyc_regions_search_idx ON kyc_regions (lower(kelurahan), lower(kota));
 
 INSERT INTO kyc_regions (postal_code, kelurahan, kecamatan, kota, provinsi) VALUES
     ('12760','Duren Tiga','Pancoran','Jakarta Selatan','DKI Jakarta'),
@@ -146,15 +150,16 @@ INSERT INTO kyc_regions (postal_code, kelurahan, kecamatan, kota, provinsi) VALU
     ('94112','Makassar','Makassar','Makassar','Sulawesi Selatan');
 
 -- +goose Down
-DROP TABLE kyc_regions;
-DROP TABLE kyc_review_notes;
-DROP TABLE kyc_submissions;
-DROP TABLE merchant_documents;
-DROP TABLE merchant_brand_links;
-DROP TABLE merchant_brand_evidences;
-DROP TABLE merchant_brands;ALTER TABLE merchants
-    DROP COLUMN business_kbli, DROP COLUMN owner_email, DROP COLUMN owner_phone,
-    DROP COLUMN owner_position, DROP COLUMN owner_nationality, DROP COLUMN addr_detail,
-    DROP COLUMN addr_kota, DROP COLUMN addr_kecamatan, DROP COLUMN addr_kelurahan,
-    DROP COLUMN addr_postal_code, DROP COLUMN contact_email, DROP COLUMN entity_type,
-    DROP COLUMN business_id;
+DROP TABLE IF EXISTS kyc_regions;
+DROP TABLE IF EXISTS kyc_review_notes;
+DROP TABLE IF EXISTS kyc_submissions;
+DROP TABLE IF EXISTS merchant_documents;
+DROP TABLE IF EXISTS merchant_brand_links;
+DROP TABLE IF EXISTS merchant_brand_evidences;
+DROP TABLE IF EXISTS merchant_brands;
+ALTER TABLE merchants
+    DROP COLUMN IF EXISTS business_kbli, DROP COLUMN IF EXISTS owner_email, DROP COLUMN IF EXISTS owner_phone,
+    DROP COLUMN IF EXISTS owner_position, DROP COLUMN IF EXISTS owner_nationality, DROP COLUMN IF EXISTS addr_detail,
+    DROP COLUMN IF EXISTS addr_kota, DROP COLUMN IF EXISTS addr_kecamatan, DROP COLUMN IF EXISTS addr_kelurahan,
+    DROP COLUMN IF EXISTS addr_postal_code, DROP COLUMN IF EXISTS contact_email, DROP COLUMN IF EXISTS entity_type,
+    DROP COLUMN IF EXISTS business_id;
