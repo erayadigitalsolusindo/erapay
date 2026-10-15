@@ -18,6 +18,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/observability"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/kyc"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
@@ -43,6 +44,7 @@ type Deps struct {
 	Payouts            *payout.Service     // nil disables bank accounts and payouts
 	Refunds            *refund.Service     // nil disables refunds
 	Onboarding         *onboarding.Service // nil disables /v1/admin/merchants; sign-up also needs its notifier
+	KYC                *kyc.Service        // nil disables /v1/kyc/* and /v1/admin/merchants/{id}/kyc
 	Account            *account.Service    // nil disables email verification and password reset
 	ARUSProvisionToken string              // server-to-server token for ARUS tenant provisioning
 	PlatformSetupToken string              // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars) enables /v1/platform/setup until the first DEWA exists
