@@ -18,6 +18,17 @@
 		{ key: 'suspended', icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M10 9v6 M14 9v6', accent: 'text-violet-600 bg-violet-500/10', bar: 'bg-violet-500' }
 	] as const;
 	const total = $derived(Object.values(data.counts as Record<string, number>).reduce((a, b) => a + b, 0));
+	// Pencarian instan di daftar status terpilih: nama usaha, pemilik, email, telepon, atau ID.
+	let q = $state('');
+	const norm = (v: string | null | undefined) => (v ?? '').toLowerCase();
+	const shown = $derived.by(() => {
+		const list = data.merchants ?? [];
+		const needle = q.trim().toLowerCase();
+		if (!needle) return list;
+		return list.filter((m: any) =>
+			[m.display_name, m.legal_name, m.owner_name, m.owner_email, m.contact_phone, m.id].some((f) => norm(f).includes(needle))
+		);
+	});
 	const initials = (n: string) =>
 		n
 			.split(/\s+/)
@@ -70,23 +81,46 @@
 	{/each}
 </nav>
 
+<div class="relative mb-4">
+	<svg viewBox="0 0 24 24" class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink/40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+	<input
+		type="search"
+		bind:value={q}
+		aria-label="Cari merchant"
+		placeholder="Cari nama usaha, nama pemilik, email, telepon, atau ID…"
+		autocomplete="off"
+		class="inp w-full rounded-xl py-2.5 pl-10 pr-24"
+	/>
+	{#if q}
+		<span class="muted pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 text-[11px] font-bold">{shown.length} hasil</span>
+		<button type="button" aria-label="Hapus pencarian" class="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full hover:bg-ink/10" onclick={() => (q = '')}>
+			<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+		</button>
+	{/if}
+</div>
+
 <p class="muted mb-3 text-[11px]">{t('onb.gatewayNote')}</p>
 
 {#if data.merchants === null}
 	<p class="card p-5 text-xs font-semibold text-red-700" role="alert">{t('c.loadFail')}</p>
-{:else if data.merchants.length === 0}
+{:else if shown.length === 0}
 	<div class="card grid place-items-center gap-3 border-dashed px-6 py-14 text-center">
 		<span class="empty-float grid size-16 place-items-center rounded-full bg-merah/10 text-merah">
 			<svg viewBox="0 0 24 24" class="size-8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9-4 9 4-9 4-9-4Z M3 12l9 4 9-4 M3 17l9 4 9-4" /></svg>
 		</span>
 		<div>
-			<p class="text-sm font-bold">{t('onb.none')}</p>
-			<p class="muted mt-1 text-xs">Tidak ada merchant berstatus “{t(`onb.st.${data.status as (typeof tiles)[number]["key"]}` as const)}” saat ini.</p>
+			{#if q}
+				<p class="text-sm font-bold">Tidak ada hasil untuk “{q}”</p>
+				<p class="muted mt-1 text-xs">Coba kata kunci lain, atau pilih status berbeda di atas.</p>
+			{:else}
+				<p class="text-sm font-bold">{t('onb.none')}</p>
+				<p class="muted mt-1 text-xs">Tidak ada merchant berstatus “{t(`onb.st.${data.status as (typeof tiles)[number]["key"]}` as const)}” saat ini.</p>
+			{/if}
 		</div>
 	</div>
 {:else}
 	<ul class="grid list-none gap-4 lg:grid-cols-2">
-		{#each data.merchants as m, i (m.id)}
+		{#each shown as m, i (m.id)}
 			<li style="animation-delay:{Math.min(i, 8) * 50}ms" class="card animate-naik p-4 transition hover:shadow-md sm:p-5">
 				<div class="flex items-start gap-3">
 					<span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-merah to-merah-tua font-display text-lg font-extrabold text-white shadow-sm">{initials(m.display_name)}</span>
