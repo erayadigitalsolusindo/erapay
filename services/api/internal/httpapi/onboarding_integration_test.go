@@ -433,13 +433,13 @@ func TestMerchantReviewAccessControlHTTP(t *testing.T) {
 	}
 }
 
-// The data diri is collected at sign-up (DOKU-style, 14 Okt 2026). Every rule lives in Go; an
-// rejected sign-up leaves nothing behind.
+// The data diri is OPTIONAL at sign-up (daftar minimal, 15 Okt 2026): an account with no identity is
+// accepted as 'draft' and completes the data diri afterwards via the KYC wizard. Every rule still
+// lives in Go; a rejected sign-up leaves nothing behind.
 func TestRegisterIdentityValidationHTTP(t *testing.T) {
 	w := setup(t)
 	c := &http.Client{}
 	cases := map[string]string{
-		"no identity":              signupJSON("business", "a@toko.test", ""),
 		"short nik":                signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"id_number": "317507010190123"})),
 		"bad dob":                  signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"date_of_birth": "20-05-1990"})),
 		"underage":                 signupJSON("business", "a@toko.test", identityJSONWith(true, map[string]string{"date_of_birth": "2020-01-01"})),
@@ -465,6 +465,20 @@ func TestRegisterIdentityValidationHTTP(t *testing.T) {
 	nikDots := signupJSON("business", "a@toko.test", `,"identity":{"id_number":"3175.0701.0190.1234","place_of_birth":"Jakarta","date_of_birth":"1990-05-20","gender":"male","address":"Jl. Merdeka No. 10","business_npwp":"12.345.678.9-012.345","business_nib":"0123456789012"}`)
 	if r := w.do(t, c, "POST", "/v1/auth/register", nikDots, nil); r.StatusCode != 202 {
 		t.Fatalf("dots in nik: %d", r.StatusCode)
+	}
+	// Daftar minimal (15 Okt 2026): no identity is accepted and the merchant starts as 'draft'
+	// so the data diri is completed afterwards via the KYC wizard.
+	minimal := `{"account_type":"business","name":"Citra Nusantara","business_name":"CV Citra Nusantara","email":"c@toko.test",` +
+		`"phone":"0812 3456 7890","password":"abc12345xyz9","accept_terms":true}`
+	if r := w.do(t, c, "POST", "/v1/auth/register", minimal, nil); r.StatusCode != 202 {
+		t.Fatalf("minimal signup: %d", r.StatusCode)
+	}
+	var miniStatus string
+	_ = w.db.QueryRow(t.Context(), `SELECT onboarding_status FROM merchants m
+		JOIN merchant_users mu ON mu.merchant_id = m.id JOIN users u ON u.id = mu.user_id
+		WHERE lower(u.email) = 'c@toko.test'`).Scan(&miniStatus)
+	if miniStatus != "draft" {
+		t.Fatalf("minimal signup must start as draft, got %q", miniStatus)
 	}
 	r := w.do(t, c, "POST", "/v1/auth/register", signupJSON("individual", "b@toko.test", identityJSONWith(false, nil)), nil)
 	if r.StatusCode != 202 {

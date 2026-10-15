@@ -26,15 +26,21 @@
 	const check = $derived(profile.checklist ?? []);
 	const doneN = $derived(check.filter((c) => c.complete).length);
 
-	const ctaHref = $derived(profile.status === 'draft' || profile.status === 'action_required' ? wizardHref : '');
+	const ctaHref = $derived(
+		profile.status === 'draft' || profile.status === 'action_required' || profile.status === 'rejected' ? wizardHref : ''
+	);
 	const ctaLabel = $derived(
 		profile.status === 'draft'
 			? 'Lengkapi Data & Verifikasi'
-			: profile.status === 'action_required'
-				? 'Perbaiki & Kirim Ulang'
-				: ''
+			: profile.status === 'rejected'
+				? 'Perbaiki & Ajukan Ulang'
+				: profile.status === 'action_required'
+					? 'Perbaiki & Kirim Ulang'
+					: ''
 	);
-	const needsAction = $derived(profile.status === 'draft' || profile.status === 'action_required');
+	const needsAction = $derived(
+		profile.status === 'draft' || profile.status === 'action_required' || profile.status === 'rejected'
+	);
 	const approved = $derived(profile.status === 'approved' && !profile.recheck);
 </script>
 
@@ -61,6 +67,11 @@
 	{:else if approved}
 		<div class="mb-4 rounded-md bg-[#E4F5EC] p-3 text-[13px] leading-relaxed text-[#1D7A46]">
 			<b>Akun aktif & terverifikasi.</b> Seluruh data diri disetujui; Anda boleh mulai menerima transaksi.
+		</div>
+	{:else if profile.status === 'rejected'}
+		<div class="mb-4 rounded-md bg-[#FDF4F4] p-3 text-[13px] leading-relaxed text-[#6B3A3A]">
+			<b>Pengajuan ditolak.</b> Periksa catatan penolakan di bawah, lalu
+			<a class="underline" href={wizardHref}>buka form</a> dan ajukan ulang.
 		</div>
 	{:else if profile.status === 'action_required'}
 		<div class="mb-4 rounded-md bg-[#FDF4F4] p-3 text-[13px] leading-relaxed text-[#6B3A3A]">

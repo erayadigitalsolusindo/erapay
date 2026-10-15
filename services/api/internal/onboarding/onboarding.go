@@ -107,7 +107,7 @@ type RegisterInput struct {
 	Phone        string // national number, with or without +62 / 0
 	Password     string
 	AcceptTerms  bool
-	Identity     *IdentityInput // data diri for verification (DOKU-style); required
+	Identity     *IdentityInput // data diri (DOKU-style); optional. Absent → merchant starts as 'draft'.
 	IP           string
 	RequestID    string
 }
@@ -128,8 +128,10 @@ var (
 )
 
 // IdentityInput is the "data diri" a merchant submits for verification, DOKU-style (decision
-// 14 Okt 2026). NIK is required for every account; business accounts additionally require the
-// company NPWP and NIB. The owner's own NPWP is optional.
+// 14 Okt 2026). It is OPTIONAL at sign-up (decision 15 Okt 2026): a merchant that registers with
+// only basic account fields is created as 'draft' and completes the whole data diri afterwards
+// via the KYC wizard. When provided, NIK is required for every account; business accounts
+// additionally require the company NPWP and NIB. The owner's own NPWP is optional.
 type IdentityInput struct {
 	IDNumber     string `json:"id_number"` // NIK, 16 digits
 	PlaceOfBirth string `json:"place_of_birth"`
@@ -176,7 +178,9 @@ func ageYears(dob, now time.Time) int {
 func normalizeIdentity(accountType *string, raw *IdentityInput) (identity, error) {
 	var out identity
 	if raw == nil {
-		return out, invalid("identity is required")
+		// Identity is optional at sign-up: an account may register with only the basic fields and
+		// complete the data diri afterwards (decision 15 Okt 2026).
+		return out, nil
 	}
 	out.idNumber = digitsOnly(raw.IDNumber)
 	if !nikRe.MatchString(out.idNumber) {
@@ -256,6 +260,11 @@ func (in *RegisterInput) normalize() error {
 	in.BusinessName = strings.TrimSpace(in.BusinessName)
 	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
 
+	// Daftar minimal (15 Okt 2026): hanya Nama, Email, Telpon, Password yang wajib dari pengguna.
+	// Account type default "individual" bila tidak dikirim; nama usaha default nama pemilik.
+	if in.AccountType == "" {
+		in.AccountType = "individual"
+	}
 	if in.AccountType != "individual" && in.AccountType != "business" {
 		return invalid("account_type must be individual or business")
 	}
@@ -296,8 +305,10 @@ func validatePassword(pw string) error {
 	return nil
 }
 
-// Register creates the user, the merchant (status 'submitted'), its first outlet, and the owner
-// membership in one transaction, then emails a verification link. It does not log the caller in.
+// Register creates the user, the merchant, its first outlet, and the owner membership in one
+// transaction, then emails a verification link. It does not log the caller in. A merchant that
+// signs up WITHOUT identity (daftar minimal, decision 15 Okt 2026) starts as 'draft' and completes
+// the data diri afterwards via the KYC wizard; one that supplies identity starts as 'submitted'.
 // If the email already has an account nothing is created and that address is told by email instead;
 // the caller still gets the normal answer.
 func (s *Service) Register(ctx context.Context, in RegisterInput) (Registered, error) {
@@ -314,6 +325,12 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Registered, e
 	ident, err := normalizeIdentity(&at, in.Identity)
 	if err != nil {
 		return Registered{}, err
+	}
+	// Status awal: daftar minimal tanpa identity -> merchant draft (lengkapi data diri via KYC
+	// wizard setelah login). Identity yang diisi penuh -> submitted (jalur lama & tes lama).
+	initialStatus := "submitted"
+	if in.Identity == nil {
+		initialStatus = "draft"
 	}
 	// Throttle before the (deliberately expensive) password hash. Failed and duplicate attempts count too.
 	if _, err := throttle.Reserve(ctx, s.db, "register", in.IP, "", throttle.Limits{PerIP: s.cfg.RegisterPerIP, Window: signupWindow}); err != nil {
@@ -363,14 +380,21 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Registered, e
 	if err != nil {
 		return Registered{}, err
 	}
+	// Identity cells are NULL when the merchant signs up without data diri (daftar minimal):
+	// the DOKU-style columns only exist once the KYC wizard is completed after login. Passing
+	// empty strings here would violate the owner_gender CHECK and write a bogus date of birth.
+	var placeArg, dobArg, genderArg, addrArg any = nil, nil, nil, nil
+	if in.Identity != nil {
+		placeArg, dobArg, genderArg, addrArg = ident.placeOfBirth, ident.dob, ident.gender, ident.address
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO merchants (id, legal_name, display_name, onboarding_status, account_type, owner_name, contact_phone,
 			owner_id_enc, owner_id_last4, owner_place_of_birth, owner_date_of_birth, owner_gender, owner_address,
 			owner_npwp_enc, owner_npwp_last4, business_npwp_enc, business_npwp_last4, business_nib)
-		VALUES ($1,$2,$2,'submitted',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		VALUES ($1,$2,$2,$17,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 		mid, in.BusinessName, in.AccountType, in.OwnerName, in.Phone,
-		idEnc, idLast4, ident.placeOfBirth, ident.dob, ident.gender, ident.address,
-		npwpEnc, npwpLast4, bizEnc, bizLast4, ident.businessNIB); err != nil {
+		idEnc, idLast4, placeArg, dobArg, genderArg, addrArg,
+		npwpEnc, npwpLast4, bizEnc, bizLast4, ident.businessNIB, initialStatus); err != nil {
 		return Registered{}, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO merchant_outlets (merchant_id, name) VALUES ($1,'Outlet Utama')`, mid); err != nil {

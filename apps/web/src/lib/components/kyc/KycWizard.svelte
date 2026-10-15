@@ -29,7 +29,8 @@
 	const flagged = (s: string) => check.find((c) => c.section === s)?.needs_revision ?? false;
 
 	const editable = $derived(profile.editable && !profile.locked);
-	const showSubmit = $derived(profile.status === 'draft' || profile.status === 'action_required');
+	// status rejected = penolakan, tapi merchant boleh memperbaiki & mengajukan ulang (keputusan 15 Okt 2026)
+	const showSubmit = $derived(profile.status === 'draft' || profile.status === 'action_required' || profile.status === 'rejected');
 	const allDone = $derived(check.length > 0 && check.every((c) => c.complete));
 	const flagCount = $derived(check.filter((c) => c.needs_revision).length);
 

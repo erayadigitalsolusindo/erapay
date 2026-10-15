@@ -12,8 +12,10 @@ const MESSAGES = {
 	invalid: 'Data pendaftaran belum valid. Periksa kembali isian Anda.'
 } as const;
 
-// Pendaftaran membuat akun merchant berstatus "submitted"; tim EraPay menyetujuinya (dan menetapkan tarif)
-// sebelum pembayaran bisa dipakai. Semua aturan ada di Go; di sini hanya membentuk permintaan dan pesan.
+// Pendaftaran minimal (15 Okt 2026): hanya Nama, Email, Telpon, Password. Merchant dibuat sebagai
+// "draft"; data diri (perusahaan, perwakilan, merek, dokumen) dilengkapi setelah login melalui
+// wizard KYC — sebelum itu akun tidak bisa menerima pembayaran. Semua aturan ada di Go; di sini
+// hanya membentuk permintaan dan pesan.
 export const actions: Actions = {
 	default: async ({ request, fetch, getClientAddress }) => {
 		const f = await request.formData();
@@ -26,29 +28,12 @@ export const actions: Actions = {
 		const password = String(f.get('password') ?? '');
 		if (password !== String(f.get('password_confirm') ?? '')) return fail(400, { ...keep, error: 'Kata sandi tidak sama.' });
 
-		// Data diri (verifikasi): NIK dan NPWP boleh memakai titik/spasi; Go menormalisasinya.
-		const identity: Record<string, string> = {
-			id_number: s('nik'),
-			place_of_birth: s('pob'),
-			date_of_birth: s('dob'),
-			gender: s('gender'),
-			address: s('address')
-		};
-		if (s('npwp')) identity.npwp = s('npwp');
-		if (s('jenis') === 'usaha') {
-			if (s('biz_npwp')) identity.business_npwp = s('biz_npwp');
-			if (s('nib')) identity.business_nib = s('nib');
-		}
-
 		const r = await register(fetch, getClientAddress(), {
-			account_type: s('jenis') === 'usaha' ? 'business' : 'individual',
 			name,
-			business_name: businessName,
 			email,
 			phone: s('phone'),
 			password,
-			accept_terms: f.get('agree') === 'on',
-			identity: identity as RegisterInput['identity']
+			accept_terms: f.get('agree') === 'on'
 		});
 		if (!r.ok) {
 			// Pesan validasi dari Go (bahasa Inggris, aman ditampilkan) ikut disertakan agar pengguna tahu bagian mana.
