@@ -192,7 +192,7 @@
 			{/if}
 			{#if kyc.brand.links?.length}
 				<p class="muted mb-2 mt-4 text-[11px] font-semibold">Tautan jualan ({kyc.brand.links.length})</p>
-				<ul class="grid gap-2">
+				<ul class="grid list-none gap-2">
 					{#each kyc.brand.links as l (l.id)}
 						{@const u = linkParts(l.url)}
 						<li>
