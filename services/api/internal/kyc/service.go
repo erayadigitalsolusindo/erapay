@@ -27,7 +27,10 @@ type (
 		ActorID     string
 		MDRBPS      int
 		PlatformBPS int
-		RequestID   string
+		// Nominal tetap per transaksi (rupiah); 0 = tidak ada.
+		MDRFixed      int64
+		PlatformFixed int64
+		RequestID     string
 	}
 	RejectInput struct {
 		MerchantID string

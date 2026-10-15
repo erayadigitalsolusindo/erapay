@@ -118,21 +118,34 @@ func (d Deps) adminApproveMerchant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		MDRBPS      *int `json:"mdr_bps"`
-		PlatformBPS *int `json:"platform_bps"`
+		MDRBPS        *int   `json:"mdr_bps"`
+		PlatformBPS   *int   `json:"platform_bps"`
+		MDRFixed      *int64 `json:"mdr_fixed"`
+		PlatformFixed *int64 `json:"platform_fixed"`
 	}
 	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
 		return
 	}
-	// Fees are a business decision with no default: both must be stated explicitly.
-	if body.MDRBPS == nil || body.PlatformBPS == nil {
-		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "mdr_bps and platform_bps are required", false)
+	// Fees are a business decision with no default: each component (MDR, platform) must be stated
+	// explicitly, as a percentage (bps), a fixed rupiah amount, or both. The unstated half is 0.
+	if (body.MDRBPS == nil && body.MDRFixed == nil) || (body.PlatformBPS == nil && body.PlatformFixed == nil) {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "mdr and platform fee are required (mdr_bps/mdr_fixed and platform_bps/platform_fixed)", false)
 		return
 	}
-	m, err := d.Onboarding.Approve(r.Context(), onboarding.ApproveInput{
-		MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID,
-		MDRBPS: *body.MDRBPS, PlatformBPS: *body.PlatformBPS, RequestID: middleware.GetReqID(r.Context()),
-	})
+	in := onboarding.ApproveInput{MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, RequestID: middleware.GetReqID(r.Context())}
+	if body.MDRBPS != nil {
+		in.MDRBPS = *body.MDRBPS
+	}
+	if body.PlatformBPS != nil {
+		in.PlatformBPS = *body.PlatformBPS
+	}
+	if body.MDRFixed != nil {
+		in.MDRFixed = *body.MDRFixed
+	}
+	if body.PlatformFixed != nil {
+		in.PlatformFixed = *body.PlatformFixed
+	}
+	m, err := d.Onboarding.Approve(r.Context(), in)
 	if !d.onboardingErr(w, r, err) {
 		return
 	}

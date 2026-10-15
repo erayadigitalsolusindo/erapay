@@ -3,6 +3,27 @@ import { fail } from '@sveltejs/kit';
 import { call, done, guard, int, str } from './gw';
 import type { RequestEvent } from '@sveltejs/kit';
 
+const MAX_FIXED = 1_000_000; // sama dengan onboarding.MaxFixedFee di Go
+
+function parseFee(f: FormData, key: string, label: string): { bps: number; fixed?: undefined } | { fixed: number; bps?: undefined } | { error: string } {
+	const raw = str(f, `${key}_value`).trim();
+	const unit = str(f, `${key}_unit`);
+	if (!raw) return { error: `${label} wajib diisi.` };
+	if (unit === 'rupiah') {
+		const digits = raw.replace(/[.\s]/g, '').replace(/,\d+$/, '');
+		if (!/^\d+$/.test(digits)) return { error: `${label}: isi nominal rupiah berupa angka bulat.` };
+		const n = Number(digits);
+		if (n > MAX_FIXED) return { error: `${label}: nominal maksimal Rp ${MAX_FIXED.toLocaleString('id-ID')}.` };
+		return { fixed: n };
+	}
+	if (unit !== 'percent') return { error: `${label}: pilih satuan % atau Rp.` };
+	const v = Number(raw.replace(',', '.'));
+	if (!Number.isFinite(v) || v < 0 || v > 100) return { error: `${label}: persen harus antara 0 dan 100.` };
+	const bps = Math.round(v * 100);
+	if (Math.abs(bps - v * 100) > 1e-6) return { error: `${label}: persen maksimal 2 angka desimal (mis. 0,75).` };
+	return { bps };
+}
+
 const path = (f: FormData, action: string) => `/v1/admin/merchants/${encodeURIComponent(str(f, 'id'))}/${action}`;
 
 export const merchantActions = {
@@ -16,16 +37,21 @@ export const merchantActions = {
 		const f = await request.formData();
 		return done(await call(fetch, token, 'POST', path(f, 'request-changes'), { note: str(f, 'note') }));
 	},
-	// Tarif tidak punya nilai bawaan: keduanya wajib bilangan bulat 0..10000 (basis point, 100 = 1%).
+	// Tarif tidak punya nilai bawaan. Tiap komponen (MDR, platform) diisi sebagai persen ATAU nominal rupiah:
+	// persen -> basis point (0,01% ketelitian, 0..100%), rupiah -> bilangan bulat 0..MAX_FIXED.
 	approve: async ({ request, cookies, fetch, locals }: RequestEvent) => {
 		const token = guard(locals, cookies, 'merchant:approve', 'platform');
 		const f = await request.formData();
-		const mdr = int(f, 'mdr_bps');
-		const platform = int(f, 'platform_bps');
-		if (![mdr, platform].every((n) => Number.isInteger(n) && n >= 0 && n <= 10000)) {
-			return fail(400, { message: 'MDR dan fee platform harus bilangan bulat 0 sampai 10000 (basis point).' });
-		}
-		return done(await call(fetch, token, 'POST', path(f, 'approve'), { mdr_bps: mdr, platform_bps: platform }));
+		const mdr = parseFee(f, 'mdr', 'MDR');
+		if ('error' in mdr) return fail(400, { message: mdr.error });
+		const platform = parseFee(f, 'platform', 'Fee platform');
+		if ('error' in platform) return fail(400, { message: platform.error });
+		return done(
+			await call(fetch, token, 'POST', path(f, 'approve'), {
+				...(mdr.bps !== undefined ? { mdr_bps: mdr.bps } : { mdr_fixed: mdr.fixed }),
+				...(platform.bps !== undefined ? { platform_bps: platform.bps } : { platform_fixed: platform.fixed })
+			})
+		);
 	},
 	reject: async ({ request, cookies, fetch, locals }: RequestEvent) => {
 		const token = guard(locals, cookies, 'merchant:approve', 'platform');

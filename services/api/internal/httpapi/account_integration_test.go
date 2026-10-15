@@ -532,3 +532,38 @@ func TestSuspendAndReactivateHTTP(t *testing.T) {
 		t.Fatalf("audit = %d, want 4", n)
 	}
 }
+
+// Tarif persetujuan: tiap komponen (MDR, platform) boleh persen, nominal rupiah, atau keduanya;
+// tanpa nilai bawaan dan nominal dibatasi agar salah ketik tidak lolos.
+func TestApproveFixedFeesHTTP(t *testing.T) {
+	w := setup(t)
+	mid := register(t, w, "tarif@toko.test")
+	verifyOwner(t, w, "tarif@toko.test")
+	root := w.client(t, "root@erapay.test")
+	approve := func(body string) *http.Response {
+		return w.do(t, root, "POST", "/v1/admin/merchants/"+mid+"/approve", body, nil)
+	}
+	for name, body := range map[string]string{
+		"kosong":            `{}`,
+		"platform hilang":   `{"mdr_bps":70}`,
+		"mdr hilang":        `{"platform_fixed":500}`,
+		"nominal negatif":   `{"mdr_bps":70,"platform_fixed":-1}`,
+		"nominal kelewatan": `{"mdr_fixed":5000000,"platform_bps":100}`,
+	} {
+		if r := approve(body); r.StatusCode != 400 {
+			t.Fatalf("%s: %d, want 400", name, r.StatusCode)
+		}
+	}
+	// MDR dalam rupiah tetap, platform dalam persen.
+	if r := approve(`{"mdr_fixed":500,"platform_bps":100}`); r.StatusCode != 200 {
+		t.Fatalf("approve: %d", r.StatusCode)
+	}
+	var mdrBPS, mdrFixed, platBPS, platFixed int64
+	if err := w.db.QueryRow(t.Context(), `SELECT mdr_bps, mdr_fixed, platform_bps, platform_fixed FROM pricing_plans WHERE code = 'qris-'||$1::text`,
+		mid).Scan(&mdrBPS, &mdrFixed, &platBPS, &platFixed); err != nil {
+		t.Fatal(err)
+	}
+	if mdrBPS != 0 || mdrFixed != 500 || platBPS != 100 || platFixed != 0 {
+		t.Fatalf("plan = mdr %d bps + %d, platform %d bps + %d", mdrBPS, mdrFixed, platBPS, platFixed)
+	}
+}

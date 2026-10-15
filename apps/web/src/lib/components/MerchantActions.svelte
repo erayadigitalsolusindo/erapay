@@ -4,6 +4,7 @@
 	import type { SubmitFunction } from '$app/forms';
 	import Modal from './Modal.svelte';
 	import Combobox from './Combobox.svelte';
+	import FeeInput from './FeeInput.svelte';
 	import { getI18n } from '../i18n/i18n.svelte';
 	import { notify } from '../ui/dialog.svelte';
 	import { withConfirm } from '../ui/confirm';
@@ -32,7 +33,11 @@
 	const showReactivate = $derived(canApprove && m.status === 'suspended');
 	const any = $derived(showVerify || showStart || showChanges || showDecide || showRevoke || showReactivate);
 
-	const pct = (bps: FormDataEntryValue | null) => (Number(bps) / 100).toString();
+	// Ringkas isian tarif untuk dialog konfirmasi: "0,7%" atau "Rp 500".
+	const feeText = (fd: FormData, key: string) => {
+		const v = String(fd.get(`${key}_value`) ?? '').trim();
+		return fd.get(`${key}_unit`) === 'rupiah' ? `Rp ${v}` : `${v}%`;
+	};
 	// Aksi tanpa dialog konfirmasi (mulai review, minta perbaikan, tolak sudah punya alasan wajib).
 	const plain =
 		(title: string, successMessage: string): SubmitFunction =>
@@ -112,14 +117,16 @@
 				<form
 					method="POST"
 					action="?/approve"
-					use:enhance={withConfirm((fd) => ({ variant: 'info', title: t('onb.approveBtn'), message: t('onb.approveConfirm', { name: m.display_name, mdr: pct(fd.get('mdr_bps')), platform: pct(fd.get('platform_bps')) }), confirmText: 'Ya, setujui', successMessage: 'Merchant disetujui. Tarif sudah ditetapkan.' }), busyWrap)}
+					use:enhance={withConfirm((fd) => ({ variant: 'info', title: t('onb.approveBtn'), message: t('onb.approveConfirm', { name: m.display_name, mdr: feeText(fd, 'mdr'), platform: feeText(fd, 'platform') }), confirmText: 'Ya, setujui', successMessage: 'Merchant disetujui. Tarif sudah ditetapkan.' }), busyWrap)}
 					class="space-y-2"
 				>
 					<h4 class="font-bold">{t('onb.approveBtn')}</h4>
 					<input type="hidden" name="id" value={m.id} />
 					<div class="flex flex-wrap gap-2">
-						<input class="inp w-36 py-2" name="mdr_bps" type="number" min="0" max="10000" step="1" inputmode="numeric" required placeholder={t('onb.mdr')} aria-label={t('onb.mdr')} />
-						<input class="inp w-48 py-2" name="platform_bps" type="number" min="0" max="10000" step="1" inputmode="numeric" required placeholder={t('onb.platform')} aria-label={t('onb.platform')} />
+						<FeeInput name="mdr" label="MDR (biaya gateway)" />
+						<FeeInput name="platform" label="Fee platform EraPay" />
+					</div>
+					<div class="flex justify-end">
 						<button class="btn btn-red" type="submit" disabled={busy}>{t('onb.approveBtn')}</button>
 					</div>
 					<p class="muted">{t('onb.bpsHint')}</p>

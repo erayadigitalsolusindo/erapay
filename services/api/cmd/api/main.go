@@ -61,7 +61,8 @@ func (b kycReviewerBridge) Reject(ctx context.Context, in kyc.RejectInput) error
 func (b kycReviewerBridge) Approve(ctx context.Context, in kyc.ApproveInput) error {
 	_, err := b.onb.Approve(ctx, onboarding.ApproveInput{
 		MerchantID: in.MerchantID, ActorID: in.ActorID,
-		MDRBPS: in.MDRBPS, PlatformBPS: in.PlatformBPS, RequestID: in.RequestID})
+		MDRBPS: in.MDRBPS, PlatformBPS: in.PlatformBPS,
+		MDRFixed: in.MDRFixed, PlatformFixed: in.PlatformFixed, RequestID: in.RequestID})
 	return err
 }
 
