@@ -55,6 +55,14 @@ export const actions: Actions = {
 		}
 		return done(await call(fetch, token, 'POST', `/v1/admin/merchants/${encodeURIComponent(str(f, 'id'))}/approve`, { mdr_bps: mdr, platform_bps: platform }));
 	},
+	// Cabut persetujuan: approved -> under_review | rejected. Alasan wajib (masuk audit & dibaca merchant).
+	revoke: async ({ request, cookies, fetch, locals }) => {
+		const token = guard(locals, cookies, 'merchant:approve', 'platform');
+		const f = await request.formData();
+		const to = str(f, 'to');
+		if (to !== 'under_review' && to !== 'rejected') return fail(400, { message: 'Pilih status tujuan.' });
+		return done(await call(fetch, token, 'POST', `/v1/admin/merchants/${encodeURIComponent(str(f, 'id'))}/revoke`, { to, note: str(f, 'note') }));
+	},
 	reject: async ({ request, cookies, fetch, locals }) => {
 		const token = guard(locals, cookies, 'merchant:approve', 'platform');
 		const f = await request.formData();

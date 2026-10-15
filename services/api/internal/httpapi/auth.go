@@ -483,6 +483,7 @@ func (d Deps) mountV1(r chi.Router) {
 						r.With(requirePerm("merchant:review")).Post("/merchants/{id}/request-changes", d.adminReviewAction("request-changes"))
 						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/approve", d.adminApproveMerchant)
 						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/reject", d.adminRejectMerchant)
+						r.With(requirePerm("merchant:approve")).Post("/merchants/{id}/revoke", d.adminRevokeMerchant)
 					})
 				}
 				if d.KYC != nil {

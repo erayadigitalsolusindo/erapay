@@ -381,3 +381,69 @@ func TestEmailRequestsDoNotWaitForTheRelayHTTP(t *testing.T) {
 		t.Fatal("the reset email never arrived")
 	}
 }
+
+// Persetujuan bisa dicabut (approved -> under_review | rejected) hanya oleh pemegang merchant:approve,
+// dengan alasan; sekali saja (konkuren), dan setelah itu merchant bisa disetujui ulang (plan versi 2).
+func TestRevokeApprovalHTTP(t *testing.T) {
+	w := setup(t)
+	mid := register(t, w, "cabut@toko.test")
+	verifyOwner(t, w, "cabut@toko.test")
+	fin := w.client(t, "finance@erapay.test")
+	root := w.client(t, "root@erapay.test")
+	act := func(c *http.Client, action, body string) *http.Response {
+		return w.do(t, c, "POST", "/v1/admin/merchants/"+mid+"/"+action, body, nil)
+	}
+	status := func() string {
+		var s string
+		_ = w.db.QueryRow(t.Context(), `SELECT onboarding_status FROM merchants WHERE id = $1`, mid).Scan(&s)
+		return s
+	}
+	if r := act(root, "revoke", `{"to":"rejected","note":"belum disetujui"}`); r.StatusCode != 409 {
+		t.Fatalf("revoke sebelum approved: %d", r.StatusCode)
+	}
+	if r := act(root, "approve", `{"mdr_bps":70,"platform_bps":100}`); r.StatusCode != 200 {
+		t.Fatalf("approve: %d", r.StatusCode)
+	}
+	if r := act(fin, "revoke", `{"to":"rejected","note":"dokumen palsu"}`); r.StatusCode != 403 {
+		t.Fatalf("finance revoke: %d", r.StatusCode)
+	}
+	if r := act(root, "revoke", `{"to":"approved","note":"dokumen palsu"}`); r.StatusCode != 400 {
+		t.Fatalf("to tidak valid: %d", r.StatusCode)
+	}
+	if r := act(root, "revoke", `{"to":"rejected","note":" "}`); r.StatusCode != 400 {
+		t.Fatalf("tanpa alasan: %d", r.StatusCode)
+	}
+	if status() != "approved" {
+		t.Fatalf("status berubah oleh permintaan tidak sah: %s", status())
+	}
+	// Dua pencabutan serentak: tepat satu yang menang.
+	codes := make(chan int, 2)
+	for i := 0; i < 2; i++ {
+		go func() { codes <- act(root, "revoke", `{"to":"under_review","note":"cek ulang dokumen"}`).StatusCode }()
+	}
+	a, b := <-codes, <-codes
+	if !(a == 200 && b == 409) && !(a == 409 && b == 200) {
+		t.Fatalf("revoke konkuren: %d %d", a, b)
+	}
+	if status() != "under_review" {
+		t.Fatalf("status = %s", status())
+	}
+	var n int
+	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM audit_logs WHERE action='merchant.approval_revoked' AND entity_id=$1`, mid).Scan(&n)
+	if n != 1 {
+		t.Fatalf("audit revoke = %d", n)
+	}
+	// Disetujui ulang: plan harga versi berikutnya, bukan bentrok unique(code, version).
+	if r := act(root, "approve", `{"mdr_bps":80,"platform_bps":100}`); r.StatusCode != 200 || status() != "approved" {
+		t.Fatalf("approve ulang: %d %s", r.StatusCode, status())
+	}
+	var plans int
+	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM pricing_plans WHERE code = 'qris-'||$1::text`, mid).Scan(&plans)
+	if plans != 2 {
+		t.Fatalf("plans = %d, want 2", plans)
+	}
+	// Ditolak: merchant boleh memperbaiki lagi.
+	if r := act(root, "revoke", `{"to":"rejected","note":"transaksi mencurigakan"}`); r.StatusCode != 200 || status() != "rejected" {
+		t.Fatalf("revoke -> rejected: %d %s", r.StatusCode, status())
+	}
+}

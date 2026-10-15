@@ -73,6 +73,25 @@
 										</form>
 									</div>
 								{/if}
+								{#if m.status === 'approved' && data.canApprove}
+									<form
+										method="POST"
+										action="?/revoke"
+										class="flex flex-wrap items-center gap-2"
+										use:enhance={({ cancel }) => {
+											if (!confirm(t('onb.revokeConfirm', { name: m.display_name }))) cancel();
+										}}
+									>
+										<input type="hidden" name="id" value={m.id} />
+										<select class="inp w-40 py-2" name="to" required aria-label={t('onb.revokeTo')}>
+											<option value="under_review">{t('onb.revokeToReview')}</option>
+											<option value="rejected">{t('onb.revokeToRejected')}</option>
+										</select>
+										<input class="inp w-44 py-2" name="note" placeholder={t('onb.noteRequired')} minlength="3" maxlength="500" required aria-label={t('onb.noteRequired')} />
+										<button class="btn btn-danger" type="submit">{t('onb.revokeBtn')}</button>
+									</form>
+									<p class="muted mt-1 max-w-sm text-[10px] whitespace-normal">{t('onb.revokeHint')}</p>
+								{/if}
 								{#if reviewable.includes(m.status) && data.canApprove}
 									{#if !m.owner_email_verified}<p class="mb-1 text-[10px] font-semibold text-amber-700">{t('onb.needVerify')}</p>{/if}
 									<div class="flex flex-wrap items-start gap-3">

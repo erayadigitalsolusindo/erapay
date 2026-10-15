@@ -160,6 +160,29 @@ func (d Deps) adminRejectMerchant(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, m)
 }
 
+// adminRevokeMerchant: cabut persetujuan (approved -> under_review | rejected), alasan wajib.
+func (d Deps) adminRevokeMerchant(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		To   string `json:"to"`
+		Note string `json:"note"`
+	}
+	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
+		return
+	}
+	m, err := d.Onboarding.Revoke(r.Context(), onboarding.RevokeInput{
+		MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, To: body.To, Note: body.Note,
+		RequestID: middleware.GetReqID(r.Context()),
+	})
+	if !d.onboardingErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
 func (d Deps) adminReviewAction(action string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)

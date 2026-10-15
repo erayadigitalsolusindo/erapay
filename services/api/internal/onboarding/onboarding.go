@@ -646,7 +646,8 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 	var planID string
 	if err := tx.QueryRow(ctx, `INSERT INTO pricing_plans
 		(code, version, gateway, payment_method, mdr_bps, mdr_rounding, platform_bps, platform_rounding, mdr_cap, mdr_cap_up_to, created_by, approved_by)
-		VALUES ('qris-'||$1::text, 1, 'doku', 'QRIS', $2, 'half_up', $3, 'half_up', $5, $6, $4, $4) RETURNING id::text`,
+		SELECT 'qris-'||$1::text, COALESCE(max(version),0)+1, 'doku', 'QRIS', $2, 'half_up', $3, 'half_up', $5, $6, $4, $4
+		FROM pricing_plans WHERE code = 'qris-'||$1::text RETURNING id::text`,
 		in.MerchantID, in.MDRBPS, in.PlatformBPS, in.ActorID, s.cfg.MDRCap, s.cfg.MDRCapUpTo).Scan(&planID); err != nil {
 		return Merchant{}, err
 	}
@@ -696,6 +697,48 @@ func (s *Service) Reject(ctx context.Context, in RejectInput) (Merchant, error) 
 	}
 	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant.rejected", EntityType: "merchant",
 		EntityID: in.MerchantID, RequestID: in.RequestID}); err != nil {
+		return Merchant{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Merchant{}, err
+	}
+	return s.Get(ctx, in.MerchantID)
+}
+
+type RevokeInput struct {
+	MerchantID string
+	ActorID    string
+	To         string // "under_review" | "rejected"
+	Note       string // alasan, wajib (masuk audit dan dibaca merchant)
+	RequestID  string
+}
+
+// Revoke mencabut persetujuan: approved -> under_review | rejected. Gerbang pembayaran membaca
+// onboarding_status, jadi transaksi baru berhenti seketika; dana/ledger yang sudah ada tidak disentuh.
+// Plan harga lama tetap tersimpan; persetujuan ulang membuat plan versi berikutnya.
+func (s *Service) Revoke(ctx context.Context, in RevokeInput) (Merchant, error) {
+	if in.To != "under_review" && in.To != "rejected" {
+		return Merchant{}, invalid("to must be under_review or rejected")
+	}
+	in.Note = strings.TrimSpace(in.Note)
+	if n := utf8.RuneCountInString(in.Note); n < 3 || n > 500 {
+		return Merchant{}, invalid("note must be 3-500 characters")
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Merchant{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockIn(ctx, tx, in.MerchantID, []string{"approved"}); err != nil {
+		return Merchant{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE merchants SET onboarding_status=$3, review_note=$4, reviewed_by=$2,
+		reviewed_at=now(), updated_at=now(), version=version+1 WHERE id=$1`,
+		in.MerchantID, in.ActorID, in.To, in.Note); err != nil {
+		return Merchant{}, err
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant.approval_revoked", EntityType: "merchant",
+		EntityID: in.MerchantID, RequestID: in.RequestID, Metadata: map[string]any{"to": in.To, "note": in.Note}}); err != nil {
 		return Merchant{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
