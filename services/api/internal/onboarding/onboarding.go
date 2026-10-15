@@ -488,11 +488,7 @@ func scanMerchant(row pgx.Row) (Merchant, error) {
 // complete reports whether the data diri is sufficient for approval (business accounts also need
 // the company NPWP and NIB). Approve re-checks the same rule from the database itself.
 func (m Merchant) complete() bool {
-	if m.Identity == nil {
-		return false
-	}
-	if m.idEnc == nil || m.Identity.PlaceOfBirth == "" || m.Identity.DateOfBirth == "" ||
-		m.Identity.Gender == "" || m.Identity.Address == "" {
+	if m.Identity == nil || m.idEnc == nil {
 		return false
 	}
 	if m.AccountType != nil && *m.AccountType == "business" {
@@ -635,10 +631,11 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 	}
 	// The data diri is verified against what was submitted, so it must be complete first. The rule
 	// is read from the database, not the request: business accounts additionally need NPWP + NIB.
+	// Only the fields both onboarding paths collect are required: the KYC wizard (internal/kyc)
+	// stores NIK, NPWP and NIB but not birth data, gender or a personal address.
 	var complete bool
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(
-		owner_id_enc IS NOT NULL AND owner_place_of_birth IS NOT NULL AND owner_date_of_birth IS NOT NULL
-		AND owner_gender IS NOT NULL AND owner_address IS NOT NULL
+		owner_id_enc IS NOT NULL
 		AND (account_type IS DISTINCT FROM 'business' OR (business_npwp_enc IS NOT NULL AND business_nib IS NOT NULL))
 	, false) FROM merchants WHERE id = $1`, in.MerchantID).Scan(&complete); err != nil {
 		return Merchant{}, err

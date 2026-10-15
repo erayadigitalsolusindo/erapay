@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import { LANGS } from '../../../lib/i18n/messages';
-	import { aktif, visible } from './nav';
+	import { visible } from './nav';
 
 	type Theme = 'light' | 'dark' | 'system';
 	let {
@@ -12,7 +11,6 @@
 
 	const i18n = getI18n();
 	const { t } = i18n;
-	const current = $derived(aktif(page.url.pathname));
 	const pintas = $derived(visible(user));
 	const nama = $derived(user.email.split('@')[0]);
 	const inisial = $derived(nama.slice(0, 2).toUpperCase());
@@ -123,7 +121,3 @@
 	</div>
 	<div class="garis-emas h-px"></div>
 </header>
-
-<div class="bg-surface px-5 pt-3 lg:px-8">
-	<span class="inline-block rounded-t-xl border border-b-0 border-ink/10 bg-ink/5 px-4 py-2.5 text-sm font-semibold">{t(current.label)}</span>
-</div>
