@@ -11,7 +11,7 @@ import (
 
 type stubNotifier struct{}
 
-func (stubNotifier) SendVerification(_ context.Context, _, _ string) error    { return nil }
+func (stubNotifier) SendVerification(_ context.Context, _, _ string) error   { return nil }
 func (stubNotifier) SendAlreadyRegistered(_ context.Context, _ string) error { return nil }
 
 // Sign-up needs a way to deliver the verification email and a key to seal the NIK/NPWP at rest:

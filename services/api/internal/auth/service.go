@@ -471,34 +471,25 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 	var sid, uid, mid, email string
 	var verified bool
 	var lastSeen time.Time
+	var perms []string
+	// Satu round-trip untuk sesi + izin (sebelumnya dua query per request terautentikasi).
+	// Izin tetap dibaca segar tiap panggilan, jadi pencabutan peran langsung berlaku.
 	err := s.db.QueryRow(ctx, `
-		SELECT s.id::text, s.user_id::text, COALESCE(s.merchant_id::text,''), s.last_seen_at, u.email, u.email_verified_at IS NOT NULL
+		SELECT s.id::text, s.user_id::text, COALESCE(s.merchant_id::text,''), s.last_seen_at, u.email, u.email_verified_at IS NOT NULL,
+		       CASE WHEN s.merchant_id IS NULL THEN
+		         ARRAY(SELECT rp.permission_code FROM user_roles ur JOIN role_permissions rp ON rp.role_id = ur.role_id
+		               WHERE ur.user_id = s.user_id)
+		       ELSE
+		         ARRAY(SELECT rp.permission_code FROM merchant_users mu JOIN role_permissions rp ON rp.role_id = mu.role_id
+		               WHERE mu.user_id = s.user_id AND mu.merchant_id = s.merchant_id)
+		       END
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > $2
 		  AND s.last_seen_at > $3 AND u.status = 'active'`,
-		hashToken(token), now, now.Add(-s.cfg.IdleTTL)).Scan(&sid, &uid, &mid, &lastSeen, &email, &verified)
+		hashToken(token), now, now.Add(-s.cfg.IdleTTL)).Scan(&sid, &uid, &mid, &lastSeen, &email, &verified, &perms)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrUnauthenticated
 	}
-	if err != nil {
-		return nil, err
-	}
-
-	var q string
-	args := []any{uid}
-	if mid == "" {
-		q = `SELECT rp.permission_code FROM user_roles ur JOIN role_permissions rp ON rp.role_id = ur.role_id
-		     WHERE ur.user_id = $1`
-	} else {
-		q = `SELECT rp.permission_code FROM merchant_users mu JOIN role_permissions rp ON rp.role_id = mu.role_id
-		     WHERE mu.user_id = $1 AND mu.merchant_id = $2`
-		args = append(args, mid)
-	}
-	rows, err := s.db.Query(ctx, q, args...)
-	if err != nil {
-		return nil, err
-	}
-	perms, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
 		return nil, err
 	}

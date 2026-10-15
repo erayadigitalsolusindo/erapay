@@ -32,21 +32,21 @@ var sensitiveFields = map[string]bool{
 // Masked seals-opened values for the merchant's own view; full values are only
 // filled by the reveal view (owner edit mode) and the reviewer detail view.
 type Company struct {
-	BusinessID    string  `json:"business_id"`
-	EntityType    string  `json:"entity_type"`
-	CompanyName   string  `json:"company_name"`
-	Phone         string  `json:"phone"`
-	Email         string  `json:"email"`
-	PostalCode    string  `json:"postal_code"`
-	Kelurahan     string  `json:"kelurahan"`
-	Kecamatan     string  `json:"kecamatan"`
-	Kota          string  `json:"kota"`
-	Provinsi      string  `json:"provinsi"`
-	AddressDetail string  `json:"address_detail"`
-	Complete      bool    `json:"complete"`
-	NeedsRevision bool    `json:"needs_revision"`
-	Notes         []Note  `json:"notes,omitempty"`
-	Recheck       bool    `json:"recheck,omitempty"` // bagian ini memicu review ulang
+	BusinessID    string `json:"business_id"`
+	EntityType    string `json:"entity_type"`
+	CompanyName   string `json:"company_name"`
+	Phone         string `json:"phone"`
+	Email         string `json:"email"`
+	PostalCode    string `json:"postal_code"`
+	Kelurahan     string `json:"kelurahan"`
+	Kecamatan     string `json:"kecamatan"`
+	Kota          string `json:"kota"`
+	Provinsi      string `json:"provinsi"`
+	AddressDetail string `json:"address_detail"`
+	Complete      bool   `json:"complete"`
+	NeedsRevision bool   `json:"needs_revision"`
+	Notes         []Note `json:"notes,omitempty"`
+	Recheck       bool   `json:"recheck,omitempty"` // bagian ini memicu review ulang
 }
 
 type Representative struct {
@@ -94,37 +94,37 @@ type Link struct {
 }
 
 type Evidence struct {
-	ID     string `json:"id"`
-	URL    string `json:"url"` // /v1/kyc/evidences/{id}/file
-	Name   string `json:"name"`
-	Mime   string `json:"mime"`
-	Size   int64  `json:"size"`
+	ID   string `json:"id"`
+	URL  string `json:"url"` // /v1/kyc/evidences/{id}/file
+	Name string `json:"name"`
+	Mime string `json:"mime"`
+	Size int64  `json:"size"`
 }
 
 type Document struct {
-	ID        string `json:"id"`
-	DocType   string `json:"doc_type"`
-	Name      string `json:"original_name"`
-	Mime      string `json:"mime"`
-	Size      int64  `json:"size"`
-	Number    string `json:"number,omitempty"`       // nomor NPWP/NIB terkait (mask bila disegel)
-	NumberEnc bool   `json:"number_enc,omitempty"`    // nomor disegel (NPWP); hanya edit pemilik/reviewer
+	ID         string `json:"id"`
+	DocType    string `json:"doc_type"`
+	Name       string `json:"original_name"`
+	Mime       string `json:"mime"`
+	Size       int64  `json:"size"`
+	Number     string `json:"number,omitempty"`     // nomor NPWP/NIB terkait (mask bila disegel)
+	NumberEnc  bool   `json:"number_enc,omitempty"` // nomor disegel (NPWP); hanya edit pemilik/reviewer
 	UploadedAt string `json:"uploaded_at,omitempty"`
 }
 
 type Documents struct {
-	NPWP       *Document `json:"npwp_badan,omitempty"`
-	NPWPNumber string    `json:"npwp_number,omitempty"` // ter-mask ("••••7890"); penuh hanya mode edit pemilik/reviewer
-	Akta       *Document `json:"akta,omitempty"`
-	SK         *Document `json:"sk_kemenkumham,omitempty"`
-	NIBDoc     *Document `json:"nib,omitempty"`
-	Izin       *Document `json:"izin_usaha,omitempty"`
-	NIBNumber  string    `json:"nib_number,omitempty"`
-	KBLI       string    `json:"kbli,omitempty"`
-	Complete      bool   `json:"complete"`
-	NeedsRevision bool   `json:"needs_revision"`
-	Recheck       bool   `json:"recheck,omitempty"`
-	Notes         []Note `json:"notes,omitempty"`
+	NPWP          *Document `json:"npwp_badan,omitempty"`
+	NPWPNumber    string    `json:"npwp_number,omitempty"` // ter-mask ("••••7890"); penuh hanya mode edit pemilik/reviewer
+	Akta          *Document `json:"akta,omitempty"`
+	SK            *Document `json:"sk_kemenkumham,omitempty"`
+	NIBDoc        *Document `json:"nib,omitempty"`
+	Izin          *Document `json:"izin_usaha,omitempty"`
+	NIBNumber     string    `json:"nib_number,omitempty"`
+	KBLI          string    `json:"kbli,omitempty"`
+	Complete      bool      `json:"complete"`
+	NeedsRevision bool      `json:"needs_revision"`
+	Recheck       bool      `json:"recheck,omitempty"`
+	Notes         []Note    `json:"notes,omitempty"`
 }
 
 type Note struct {
@@ -136,28 +136,28 @@ type Note struct {
 }
 
 type SectionCheck struct {
-	Key     string `json:"section"`
-	Label   string `json:"label"`
-	Complete bool  `json:"complete"`
-	NeedsRevision bool `json:"needs_revision"`
-	Recheck bool   `json:"recheck,omitempty"`
+	Key           string `json:"section"`
+	Label         string `json:"label"`
+	Complete      bool   `json:"complete"`
+	NeedsRevision bool   `json:"needs_revision"`
+	Recheck       bool   `json:"recheck,omitempty"`
 }
 
 // Profile is the merchant's own KYC view (masked). Values opens the sealed
 // NIK/NPWP for the owner's edit mode; it is nil in every other audience.
 type Profile struct {
-	Status        string     `json:"status"` // merchants.onboarding_status
-	Recheck       bool       `json:"recheck"`              // true = NEEDS_REVIEW_AGAIN
-	SubmittedAt   *time.Time `json:"submitted_at,omitempty"`
-	ReviewedAt    *time.Time `json:"reviewed_at,omitempty"`
-	ReviewNote    *string    `json:"review_note,omitempty"` // catatan penolakan global
-	Editable      bool      `json:"editable"`              // boleh mengubah isian sekarang
-	Locked        bool      `json:"locked"`                // SUBMITTED/IN_REVIEW: baca saja
-	Company       Company    `json:"company"`
+	Status         string         `json:"status"`  // merchants.onboarding_status
+	Recheck        bool           `json:"recheck"` // true = NEEDS_REVIEW_AGAIN
+	SubmittedAt    *time.Time     `json:"submitted_at,omitempty"`
+	ReviewedAt     *time.Time     `json:"reviewed_at,omitempty"`
+	ReviewNote     *string        `json:"review_note,omitempty"` // catatan penolakan global
+	Editable       bool           `json:"editable"`              // boleh mengubah isian sekarang
+	Locked         bool           `json:"locked"`                // SUBMITTED/IN_REVIEW: baca saja
+	Company        Company        `json:"company"`
 	Representative Representative `json:"representative"`
-	Brand         Brand      `json:"brand"`
-	Documents     Documents  `json:"documents"`
-	Checklist     []SectionCheck `json:"checklist"`
-	Notes         []Note     `json:"notes"`
-	RecheckPolicy string     `json:"recheck_policy"` // open|closed (info UI)
+	Brand          Brand          `json:"brand"`
+	Documents      Documents      `json:"documents"`
+	Checklist      []SectionCheck `json:"checklist"`
+	Notes          []Note         `json:"notes"`
+	RecheckPolicy  string         `json:"recheck_policy"` // open|closed (info UI)
 }

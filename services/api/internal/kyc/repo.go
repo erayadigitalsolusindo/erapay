@@ -27,21 +27,21 @@ type Querier interface {
 // rawMerchant adalah baris merchants untuk KYC. Nilai tersegel (NIK/NPWP) tidak pernah
 // keluar dari paket ini kecuali lewat reveal (pemilik, mode edit) / reviewer.
 type rawMerchant struct {
-	Status      string
-	ReviewNote  *string
-	BusinessID  *string
-	EntityType  *string
-	CompanyName string
-	Phone       *string
-	Email       *string
-	PostalCode, Kelurahan, Kecamatan, Kota, Provinsi, Detail *string
+	Status                                                             string
+	ReviewNote                                                         *string
+	BusinessID                                                         *string
+	EntityType                                                         *string
+	CompanyName                                                        string
+	Phone                                                              *string
+	Email                                                              *string
+	PostalCode, Kelurahan, Kecamatan, Kota, Provinsi, Detail           *string
 	OwnerName, OwnerPosition, OwnerNationality, OwnerPhone, OwnerEmail *string
-	IDLast4     *string
-	idEnc       []byte
-	BizLast4    *string
-	bizEnc      []byte
-	NIB         *string
-	KBLI        *string
+	IDLast4                                                            *string
+	idEnc                                                              []byte
+	BizLast4                                                           *string
+	bizEnc                                                             []byte
+	NIB                                                                *string
+	KBLI                                                               *string
 }
 
 const merchantCols = `m.onboarding_status, m.review_note, m.business_id, m.entity_type, m.legal_name,
@@ -125,11 +125,11 @@ func (r *Repo) ensureSubmission(ctx context.Context, q Querier, merchantID strin
 }
 
 type brandRow struct {
-	ID, BrandID   string
+	ID, BrandID                 string
 	Name, Category, Description *string
-	Amount, Count *int64
+	Amount, Count               *int64
 	LogoKey, LogoMime, LogoName *string
-	LogoSize      *int64
+	LogoSize                    *int64
 }
 
 func (r *Repo) brandRow(ctx context.Context, q Querier, merchantID string) (brandRow, error) {

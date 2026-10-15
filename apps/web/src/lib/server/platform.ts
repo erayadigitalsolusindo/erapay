@@ -108,14 +108,19 @@ export async function platformVerifyMfa(
 }
 
 /** Sesi panel → principal. Diperbarui tiap request (role bisa ditarik kapan saja). */
-export async function fetchPlatformMe(f: typeof fetch, token: string): Promise<PlatformMe | null> {
+/** null = sesi tidak valid (401/403); 'unavailable' = API bermasalah sesaat (cookie jangan dihapus). */
+export async function fetchPlatformMe(f: typeof fetch, token: string): Promise<PlatformMe | null | 'unavailable'> {
 	try {
-		const res = await f(`${BASE}/v1/platform/auth/me`, { headers: { cookie: `${PLATFORM_COOKIE}=${token}` } });
-		if (!res.ok) return null;
+		const res = await f(`${BASE}/v1/platform/auth/me`, {
+			headers: { cookie: `${PLATFORM_COOKIE}=${token}` },
+			signal: AbortSignal.timeout(5000)
+		});
+		if (res.status === 401 || res.status === 403) return null;
+		if (!res.ok) return 'unavailable';
 		const b = await res.json();
 		return { id: b.user_id, email: b.email, emailVerified: b.email_verified === true, permissions: b.permissions };
 	} catch {
-		return null;
+		return 'unavailable';
 	}
 }
 

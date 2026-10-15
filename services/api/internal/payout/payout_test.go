@@ -374,10 +374,10 @@ func TestBankAccountRules(t *testing.T) {
 	e.fund(t, e.b, 1_000_000)
 
 	for _, bad := range [][3]string{
-		{"B", "1234567890", "Name"},                       // format kode terlalu pendek
-		{"BCA", "1234567890", "Name"},                     // nama bank, bukan kode BI Kirim DOKU
-		{"999", "1234567890", "Name"},                     // kode BI well-formed tapi tidak didukung
-		{"SHOPEEPAY", "1234567890", "Name"},               // e-wallet, bukan rekening bank
+		{"B", "1234567890", "Name"},         // format kode terlalu pendek
+		{"BCA", "1234567890", "Name"},       // nama bank, bukan kode BI Kirim DOKU
+		{"999", "1234567890", "Name"},       // kode BI well-formed tapi tidak didukung
+		{"SHOPEEPAY", "1234567890", "Name"}, // e-wallet, bukan rekening bank
 		{"014", "12ab", "Name"}, {"014", "1234567890", "N"}, {"014", "12345678901234567890123456789012345", "Name"},
 	} {
 		if _, err := e.svc.AddBankAccount(ctx, e.a, bad[0], bad[1], bad[2], Actor{UserID: e.ua}); !errors.Is(err, ErrValidation) {
