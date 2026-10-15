@@ -19,6 +19,7 @@ import (
 var (
 	ErrMethodUnavailable = errors.New("payment: payment method unavailable for this merchant")
 	ErrAmountMismatch    = errors.New("payment: gateway amount differs from the payment amount")
+	ErrNotSentToGateway  = errors.New("payment: no gateway reference yet; request never reached the gateway")
 )
 
 const (
@@ -266,8 +267,13 @@ func (o *Orchestrator) Inquire(ctx context.Context, paymentID string) error {
 	if err != nil {
 		return err
 	}
-	if (Status(status) != Pending && Status(status) != Unknown) || gref == "" {
-		return nil
+	s := Status(status)
+	if s != Created && s != Pending && s != Unknown {
+		return nil // final: nothing to ask
+	}
+	if gref == "" {
+		// Nothing to query. Say so instead of pretending the check succeeded.
+		return ErrNotSentToGateway
 	}
 	ad, ok := o.gws.Get(gw)
 	if !ok || !ad.Capabilities().Inquiry {

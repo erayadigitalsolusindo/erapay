@@ -163,6 +163,8 @@ func (d Deps) paymentInquiry(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusServiceUnavailable, "INQUIRY_NOT_SUPPORTED", "gateway does not support status inquiry", false)
 	case errors.Is(err, payment.ErrAmountMismatch):
 		writeError(w, r, http.StatusConflict, "AMOUNT_MISMATCH", "gateway reports success with a different amount; review manually", false)
+	case errors.Is(err, payment.ErrNotSentToGateway):
+		writeError(w, r, http.StatusConflict, "NOT_SENT_TO_GATEWAY", "Transaksi belum terkirim ke DOKU (belum ada referensi gateway). Tidak ada yang bisa dicek; buat ulang pembayaran bila perlu.", false)
 	default:
 		d.Log.Error("payment inquiry", "err", err)
 		writeError(w, r, http.StatusBadGateway, "INQUIRY_FAILED", "gateway did not answer; try again later", true)
