@@ -55,8 +55,13 @@
 								{#if m.reviewed_at}<div class="muted mt-1 text-[10px]">{fmt(m.reviewed_at)}</div>{/if}
 							</td>
 							<td>
-								<div class="mb-2"><a class="text-[11px] font-bold text-merah hover:underline" href={`/dashboard/finance/merchants/${encodeURIComponent(m.id)}`}>{t('onb.detail')}</a></div>
-								<MerchantActions {m} canReview={data.canReview} canApprove={data.canApprove} />
+								<div class="flex items-center gap-2">
+									<a class="btn btn-light" href={`/dashboard/finance/merchants/${encodeURIComponent(m.id)}`}>
+										<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+										{t('onb.detail')}
+									</a>
+									<MerchantActions {m} canReview={data.canReview} canApprove={data.canApprove} />
+								</div>
 							</td>
 						</tr>
 					{/each}
