@@ -72,7 +72,9 @@ func (s *Service) SaveSection(ctx context.Context, in SaveSectionInput) error {
 		if m.Status == "action_required" && !sectionMarked(notes, "company") && companyComplete(&m) {
 			return ErrLocked
 		}
-		sensitive = s.saveCompany(ctx, tx, in, &m)
+		if sensitive, err = s.saveCompany(ctx, tx, in, &m); err != nil {
+				return err
+			}
 	case "representative":
 		if in.Representative == nil {
 			return fieldErr(map[string]string{"representative": "Isian perwakilan wajib diisi"})
@@ -130,7 +132,7 @@ func (s *Service) markRecheck(ctx context.Context, tx pgx.Tx, merchantID, sectio
 }
 
 // saveCompany menulis bagian Perusahaan; mengembalikan field sensitif yang berubah.
-func (s *Service) saveCompany(ctx context.Context, tx pgx.Tx, in SaveSectionInput, m *rawMerchant) []string {
+func (s *Service) saveCompany(ctx context.Context, tx pgx.Tx, in SaveSectionInput, m *rawMerchant) ([]string, error) {
 	c := in.Company
 	if _, err := tx.Exec(ctx, `UPDATE merchants SET entity_type=$2, legal_name=$3,
 		display_name = CASE WHEN display_name = legal_name THEN $3 ELSE display_name END,
@@ -138,7 +140,7 @@ func (s *Service) saveCompany(ctx context.Context, tx pgx.Tx, in SaveSectionInpu
 		addr_kota=$9, addr_provinsi=$10, addr_detail=$11, updated_at=now(), version=version+1
 		WHERE id=$1`, in.MerchantID, c.EntityType, c.CompanyName, c.Phone, c.Email,
 		c.PostalCode, c.Kelurahan, c.Kecamatan, c.Kota, c.Provinsi, c.AddressDetail); err != nil {
-		return nil
+		return nil, err
 	}
 	var sensitive []string
 	if val(m.EntityType) != c.EntityType {
@@ -147,7 +149,7 @@ func (s *Service) saveCompany(ctx context.Context, tx pgx.Tx, in SaveSectionInpu
 	if c.CompanyName != m.CompanyName {
 		sensitive = append(sensitive, "legal_name")
 	}
-	return sensitive
+	return sensitive, nil
 }
 
 // saveRepresentative menulis bagian Perwakilan; NIK baru disegel (AES-GCM, AAD = merchant id).
