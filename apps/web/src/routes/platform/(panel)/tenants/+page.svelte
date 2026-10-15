@@ -6,6 +6,7 @@
 	const i18n = getI18n();
 	const { t, tx } = i18n;
 	let open = $state<string | null>(null);
+	let act = $state<string | null>(null);
 	const fmt = (s: string) => new Date(s).toLocaleDateString(i18n.locale, { day: '2-digit', month: 'short', year: 'numeric' });
 </script>
 
@@ -34,14 +35,42 @@
 						<div class="truncate text-sm font-bold">{m.display_name}</div>
 						<div class="muted text-xs">{m.legal_name} · {tx(`onb.st.${m.onboarding_status}`, m.onboarding_status)} · {fmt(m.created_at)} · <code class="font-mono text-[11px]">{m.id}</code></div>
 					</div>
-					<button
-						type="button"
-						onclick={() => (open = open === m.id ? null : m.id)}
-						class="rounded-full border border-merah px-3.5 py-1.5 text-xs font-bold text-merah transition hover:bg-merah hover:text-white"
-					>
-						{t('pf.tn.enter')}
-					</button>
+					<div class="flex gap-2">
+						<button
+							type="button"
+							onclick={() => (act = act === m.id ? null : m.id)}
+							class="rounded-full border border-ink/30 px-3.5 py-1.5 text-xs font-bold transition hover:bg-ink hover:text-white"
+						>
+							{t('pf.tn.activate')}
+						</button>
+						<button
+							type="button"
+							onclick={() => (open = open === m.id ? null : m.id)}
+							class="rounded-full border border-merah px-3.5 py-1.5 text-xs font-bold text-merah transition hover:bg-merah hover:text-white"
+						>
+							{t('pf.tn.enter')}
+						</button>
+					</div>
 				</div>
+				{#if act === m.id || (form?.merchantId === m.id && (form?.activateError || form?.activated))}
+					<form method="POST" action="?/activate" use:enhance autocomplete="off" class="mt-3 space-y-2">
+						<input type="hidden" name="merchant_id" value={m.id} />
+						<p class="muted text-xs">{t('pf.tn.activateHint')}</p>
+						<div class="flex flex-wrap items-start gap-2">
+							<input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" placeholder={t('pf.tn.pwPh')} class="min-w-64 flex-1 rounded-xl border border-ink/15 bg-surface px-3 py-2 text-sm" />
+							<input name="note" required minlength="3" maxlength="500" placeholder={t('pf.tn.notePh')} class="min-w-64 flex-1 rounded-xl border border-ink/15 bg-surface px-3 py-2 text-sm" />
+						</div>
+						<div class="flex flex-wrap gap-2">
+							<button name="mode" value="password" class="rounded-full bg-merah px-4 py-2 text-xs font-bold text-white">{t('pf.tn.setPw')}</button>
+							<button name="mode" value="verify" formnovalidate class="rounded-full border border-ink/30 px-4 py-2 text-xs font-bold">{t('pf.tn.verifyOnly')}</button>
+						</div>
+						{#if form?.merchantId === m.id && form.activateError}
+							<p class="text-xs font-semibold text-red-700" role="alert">{form.activateError}</p>
+						{:else if form?.merchantId === m.id && form.activated}
+							<p class="text-xs font-semibold text-green-700">{t('pf.tn.done')}</p>
+						{/if}
+					</form>
+				{/if}
 				{#if open === m.id || form?.merchantId === m.id}
 					<form method="POST" action="?/impersonate" use:enhance class="mt-3 flex flex-wrap items-start gap-2">
 						<input type="hidden" name="merchant_id" value={m.id} />

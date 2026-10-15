@@ -58,6 +58,13 @@ export const enExtra: Record<keyof typeof idExtra, string> = {
 	'pf.tn.reasonPh': 'Reason (e.g. support ticket #123: merchant cannot create an API key)',
 	'pf.tn.submit': 'Sign in & record',
 	'pf.tn.none': 'No matching merchants.',
+	'pf.tn.activate': 'Manual activation',
+	'pf.tn.activateHint': 'For special clients without the email flow: set the owner password directly (email is marked verified, all owner sessions are closed). Hand the password to the client over a secure channel.',
+	'pf.tn.pwPh': 'New owner password (12–128 characters)',
+	'pf.tn.notePh': 'Reason / proof (min. 3 characters, goes to audit)',
+	'pf.tn.setPw': 'Set password & activate',
+	'pf.tn.verifyOnly': 'Verify email only',
+	'pf.tn.done': 'Done and recorded in the audit log.',
 	'pf.tn.loadFail': 'The merchant list could not be loaded.',
 
 	'pf.login.pageTitle': 'Platform Panel Login · EraPay',

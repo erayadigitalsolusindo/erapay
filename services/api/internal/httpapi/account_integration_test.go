@@ -598,3 +598,48 @@ func TestApproveFlatSmallTransactionHTTP(t *testing.T) {
 		t.Fatalf("plan flat = %d / %d", upTo, fee)
 	}
 }
+
+// DEWA menetapkan kata sandi pemilik langsung (klien khusus tanpa email): email jadi terverifikasi,
+// kata sandi baru langsung bisa dipakai login, sesi lama ditutup, password tidak masuk audit, dan
+// permintaan konkuren/berulang tetap konsisten.
+func TestSetOwnerPasswordDirect(t *testing.T) {
+	w := setup(t)
+	mid := register(t, w, "khusus@toko.test")
+	svc := onboarding.NewService(w.db, w.mailNotifier(), onboarding.Config{Box: testBox(t), Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	var actor string
+	if err := w.db.QueryRow(t.Context(), `SELECT id::text FROM users WHERE email = 'root@erapay.test'`).Scan(&actor); err != nil {
+		t.Fatal(err)
+	}
+	in := onboarding.SetOwnerPasswordInput{MerchantID: mid, ActorID: actor, Password: "kata-sandi-khusus-123", Note: "klien khusus, tanpa email"}
+	if _, err := svc.SetOwnerPassword(t.Context(), onboarding.SetOwnerPasswordInput{MerchantID: mid, Password: "pendek", Note: "x yz"}); err == nil {
+		t.Fatal("password pendek harus ditolak")
+	}
+	if _, err := svc.SetOwnerPassword(t.Context(), onboarding.SetOwnerPasswordInput{MerchantID: mid, Password: in.Password, Note: " "}); err == nil {
+		t.Fatal("tanpa alasan harus ditolak")
+	}
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := svc.SetOwnerPassword(t.Context(), in); err != nil {
+				t.Errorf("set password: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	r := w.do(t, &http.Client{}, "POST", "/v1/auth/login", `{"email":"khusus@toko.test","password":"`+in.Password+`"}`, nil)
+	if r.StatusCode != 200 {
+		t.Fatalf("login dengan password baru: %d", r.StatusCode)
+	}
+	var verified bool
+	_ = w.db.QueryRow(t.Context(), `SELECT email_verified_at IS NOT NULL FROM users WHERE email = 'khusus@toko.test'`).Scan(&verified)
+	if !verified {
+		t.Fatal("email harus terverifikasi")
+	}
+	var leaked int
+	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM audit_logs WHERE action='merchant.owner_password_set' AND metadata::text LIKE '%'||$1||'%'`, in.Password).Scan(&leaked)
+	if leaked != 0 {
+		t.Fatal("password bocor ke audit")
+	}
+}

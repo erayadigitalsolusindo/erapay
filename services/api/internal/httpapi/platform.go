@@ -258,6 +258,9 @@ func (d Deps) mountPlatform(r chi.Router) {
 			// Impersonasi tenant + jejak audit (lihat impersonate.go).
 			r.Get("/merchants", d.platformMerchants)
 			r.Post("/impersonate", d.platformImpersonate)
+			// Aktivasi manual klien khusus (tanpa email): verifikasi email pemilik / set kata sandi langsung.
+			r.Post("/merchants/{id}/verify-email", d.adminVerifyMerchantEmail)
+			r.Post("/merchants/{id}/owner-password", d.platformSetOwnerPassword)
 			r.Get("/audit-logs", d.platformAudit)
 			// MFA for the panel (DEWA), using the platform session.
 			r.Get("/auth/mfa/status", d.mfaStatus)

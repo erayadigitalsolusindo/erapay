@@ -883,6 +883,72 @@ func (s *Service) VerifyOwnerEmail(ctx context.Context, in VerifyEmailInput) (Me
 	return s.Get(ctx, in.MerchantID)
 }
 
+type SetOwnerPasswordInput struct {
+	MerchantID string
+	ActorID    string
+	Password   string
+	Note       string // alasan (wajib, masuk audit; password tidak pernah dicatat)
+	RequestID  string
+}
+
+// SetOwnerPassword: DEWA menetapkan kata sandi pemilik merchant secara langsung (klien khusus tanpa
+// alur email). Sekaligus menandai email terverifikasi, menutup semua sesi pemilik, dan menghapus
+// lockout login, sehingga kata sandi baru langsung bisa dipakai.
+func (s *Service) SetOwnerPassword(ctx context.Context, in SetOwnerPasswordInput) (Merchant, error) {
+	in.Note = strings.TrimSpace(in.Note)
+	if n := utf8.RuneCountInString(in.Note); n < 3 || n > 500 {
+		return Merchant{}, invalid("note must be 3-500 characters")
+	}
+	if err := auth.ValidateNewPassword(in.Password); err != nil {
+		return Merchant{}, invalid("%s", err.Error())
+	}
+	hash, err := auth.HashPassword(in.Password)
+	if err != nil {
+		return Merchant{}, err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Merchant{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var status string
+	if err := tx.QueryRow(ctx, `SELECT onboarding_status FROM merchants WHERE id::text = $1 FOR NO KEY UPDATE`, in.MerchantID).Scan(&status); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Merchant{}, ErrNotFound
+		}
+		return Merchant{}, err
+	}
+	var uid, email string
+	if err := tx.QueryRow(ctx, `SELECT u.id::text, u.email FROM merchant_users mu
+		JOIN roles r ON r.id = mu.role_id AND r.code = 'merchant_owner'
+		JOIN users u ON u.id = mu.user_id
+		WHERE mu.merchant_id::text = $1 ORDER BY u.created_at LIMIT 1 FOR NO KEY UPDATE OF u`, in.MerchantID).Scan(&uid, &email); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Merchant{}, ErrNotFound
+		}
+		return Merchant{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, email_verified_at = COALESCE(email_verified_at, now()),
+		updated_at = now(), version = version + 1 WHERE id = $1`, uid, hash); err != nil {
+		return Merchant{}, err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE sessions SET revoked_at = now(), revoked_reason = 'password_reset' WHERE user_id = $1 AND revoked_at IS NULL`, uid)
+	if err != nil {
+		return Merchant{}, err
+	}
+	if err := auth.ClearFailedAttempts(ctx, tx, email); err != nil {
+		return Merchant{}, err
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant.owner_password_set", EntityType: "merchant",
+		EntityID: in.MerchantID, RequestID: in.RequestID, Metadata: map[string]any{"note": in.Note, "owner_user_id": uid, "sessions_revoked": tag.RowsAffected()}}); err != nil {
+		return Merchant{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Merchant{}, err
+	}
+	return s.Get(ctx, in.MerchantID)
+}
+
 // lockIn row-locks the merchant and returns ErrNotFound, or ErrState unless its status is in allowed.
 func lockIn(ctx context.Context, tx pgx.Tx, id string, allowed []string) error {
 	var status string

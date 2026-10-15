@@ -24,5 +24,22 @@ export const actions: Actions = {
 		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { merchantId, reason, message: r.message });
 		setSession(cookies, r.token, r.maxAge, url.protocol === 'https:');
 		redirect(303, '/dashboard');
+	},
+
+	// Aktivasi manual klien khusus (tanpa email): verifikasi email saja, atau set kata sandi pemilik + verifikasi.
+	activate: async ({ request, cookies, locals, fetch }) => {
+		const token = guardPlatform(locals, cookies);
+		const f = await request.formData();
+		const merchantId = String(f.get('merchant_id') ?? '');
+		const note = String(f.get('note') ?? '').trim();
+		const password = String(f.get('password') ?? '');
+		const mode = String(f.get('mode') ?? 'password');
+		if (note.length < 3) return fail(400, { merchantId, activateError: 'Alasan wajib diisi (minimal 3 karakter).' });
+		const r =
+			mode === 'verify'
+				? await platformApi(fetch, token, 'POST', `/merchants/${encodeURIComponent(merchantId)}/verify-email`, { note })
+				: await platformApi(fetch, token, 'POST', `/merchants/${encodeURIComponent(merchantId)}/owner-password`, { password, note });
+		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { merchantId, activateError: r.message });
+		return { merchantId, activated: true };
 	}
 };

@@ -257,6 +257,30 @@ func (d Deps) adminVerifyMerchantEmail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, m)
 }
 
+// platformSetOwnerPassword: DEWA menetapkan kata sandi pemilik tenant langsung (klien khusus tanpa email).
+// Kata sandi tidak pernah dicatat; audit hanya menyimpan alasan.
+func (d Deps) platformSetOwnerPassword(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+		Note     string `json:"note"`
+	}
+	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
+		return
+	}
+	m, err := d.Onboarding.SetOwnerPassword(r.Context(), onboarding.SetOwnerPasswordInput{
+		MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, Password: body.Password, Note: body.Note,
+		RequestID: middleware.GetReqID(r.Context()),
+	})
+	if !d.onboardingErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
 func (d Deps) adminReviewAction(action string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)

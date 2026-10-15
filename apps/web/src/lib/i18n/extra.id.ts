@@ -57,6 +57,13 @@ export const idExtra = {
 	'pf.tn.reasonPh': 'Alasan (mis. tiket support #123: merchant tidak bisa membuat API key)',
 	'pf.tn.submit': 'Masuk & catat',
 	'pf.tn.none': 'Tidak ada merchant yang cocok.',
+	'pf.tn.activate': 'Aktivasi manual',
+	'pf.tn.activateHint': 'Untuk klien khusus tanpa alur email: tetapkan kata sandi pemilik langsung (email otomatis terverifikasi, semua sesi pemilik ditutup). Serahkan kata sandi ke klien lewat jalur aman.',
+	'pf.tn.pwPh': 'Kata sandi baru pemilik (12–128 karakter)',
+	'pf.tn.notePh': 'Alasan / bukti (min. 3 karakter, masuk audit)',
+	'pf.tn.setPw': 'Set kata sandi & aktifkan',
+	'pf.tn.verifyOnly': 'Verifikasi email saja',
+	'pf.tn.done': 'Berhasil dan tercatat di audit.',
 	'pf.tn.loadFail': 'Daftar merchant tidak dapat dimuat.',
 
 	'pf.login.pageTitle': 'Login Panel Platform · EraPay',
