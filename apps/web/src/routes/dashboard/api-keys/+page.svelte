@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Combobox from '../../../lib/components/Combobox.svelte';
 	import { enhance } from '$app/forms';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	const i18n = getI18n();
@@ -73,9 +74,9 @@
 									<div class="flex flex-wrap items-center gap-2">
 										<form method="POST" action="?/rotate" use:enhance class="flex items-center gap-2">
 											<input type="hidden" name="id" value={k.id} />
-											<label class="muted flex items-center gap-1 text-[11px]">{t('keys.grace')}
-												<select name="grace" class="rounded-lg border border-ink/15 bg-surface px-2 py-1.5 text-xs"><option value="0">0</option><option value="3600" selected>{t('keys.grace.1h')}</option><option value="86400">{t('keys.grace.24h')}</option></select>
-											</label>
+											<div class="muted flex items-center gap-1 text-[11px]"><span>{t('keys.grace')}</span>
+												<Combobox id={`grace-${k.id}`} name="grace" class="w-28" value="3600" options={[{ value: '0', label: '0' }, { value: '3600', label: t('keys.grace.1h') }, { value: '86400', label: t('keys.grace.24h') }]} />
+											</div>
 											<button type="submit" class="btn btn-light">{t('keys.rotate')}</button>
 										</form>
 										<form

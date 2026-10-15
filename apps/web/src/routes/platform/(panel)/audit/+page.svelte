@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Combobox from '../../../../lib/components/Combobox.svelte';
 	let { data } = $props();
 	const fmt = (s: string) => new Date(s).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'medium' });
 	const detail = (md: Record<string, unknown>) =>
@@ -15,11 +16,11 @@
 		<h1 class="text-xl font-bold">Audit log</h1>
 		<p class="muted mt-1 text-sm">Append-only. Default menampilkan jejak impersonasi DEWA (mulai, setiap request, selesai).</p>
 		<form method="GET" class="mt-4 flex flex-wrap gap-2">
-			<select name="prefix" class="rounded-xl border border-ink/15 bg-surface px-3 py-2 text-sm">
-				<option value="impersonation." selected={data.prefix === 'impersonation.'}>Impersonasi DEWA</option>
-				<option value="" selected={data.prefix === ''}>Semua aksi</option>
-				<option value="auth." selected={data.prefix === 'auth.'}>Autentikasi</option>
-			</select>
+			<Combobox id="audit-prefix" name="prefix" class="w-52" value={data.prefix} options={[
+				{ value: 'impersonation.', label: 'Impersonasi DEWA' },
+				{ value: '', label: 'Semua aksi' },
+				{ value: 'auth.', label: 'Autentikasi' }
+			]} />
 			<input name="merchant_id" value={data.merchant} placeholder="ID merchant (opsional)" class="w-72 rounded-xl border border-ink/15 bg-surface px-3 py-2 text-sm" />
 			<button class="rounded-full bg-merah px-4 py-2 text-xs font-bold text-white">Filter</button>
 		</form>

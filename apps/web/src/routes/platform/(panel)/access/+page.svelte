@@ -1,4 +1,9 @@
 <script lang="ts">
+	import Combobox from '../../../../lib/components/Combobox.svelte';
+	const SCOPES = [
+		{ value: 'platform', label: 'platform' },
+		{ value: 'merchant', label: 'merchant' }
+	];
 	import { enhance } from '$app/forms';
 	let { data, form } = $props();
 	let tab = $state<'roles' | 'perms' | 'menus' | 'users'>('roles');
@@ -47,10 +52,7 @@
 			<h2 class="mb-3 text-sm font-bold">Buat role</h2>
 			<form method="POST" action="?/createRole" use:enhance class="flex flex-wrap items-center gap-2">
 				<input class="inp w-48 py-2" name="code" placeholder="kode_role" required minlength="2" />
-				<select class="inp w-36 py-2" name="scope" aria-label="Lingkup">
-					<option value="platform">platform</option>
-					<option value="merchant">merchant</option>
-				</select>
+				<Combobox id="new-role-scope" name="scope" class="w-40" value="platform" options={SCOPES} />
 				<button class="btn" type="submit">Simpan</button>
 			</form>
 		</div>
@@ -65,10 +67,7 @@
 							<tr>
 								<td><input class="inp w-48 py-2" name="code" value={r.code} form={`role-${r.id}`} required /></td>
 								<td>
-									<select class="inp w-32 py-2" name="scope" form={`role-${r.id}`} aria-label="Lingkup">
-										<option value="platform" selected={r.scope === 'platform'}>platform</option>
-										<option value="merchant" selected={r.scope === 'merchant'}>merchant</option>
-									</select>
+									<Combobox id={`role-scope-${r.id}`} name="scope" form={`role-${r.id}`} class="w-40" value={r.scope} options={SCOPES} />
 								</td>
 								<td class="flex gap-2">
 									<form id={`role-${r.id}`} method="POST" action="?/updateRole" use:enhance>
@@ -176,18 +175,8 @@
 		<div class="card p-5">
 			<h2 class="mb-3 text-sm font-bold">Assign user</h2>
 			<form method="POST" action="?/assignUser" use:enhance class="grid gap-3 sm:grid-cols-4">
-				<select class="inp w-full py-2" name="user_id" required aria-label="User">
-					<option value="">Pilih user</option>
-					{#each users as u (u.id)}
-						<option value={u.id}>{u.email}</option>
-					{/each}
-				</select>
-				<select class="inp w-full py-2" name="role_id" required aria-label="Role">
-					<option value="">Pilih role</option>
-					{#each roles as r (r.id)}
-						<option value={r.id}>{r.code} ({r.scope})</option>
-					{/each}
-				</select>
+				<Combobox id="assign-user" name="user_id" required placeholder="Pilih user" options={users.map((u) => ({ value: u.id, label: u.email }))} />
+				<Combobox id="assign-role" name="role_id" required placeholder="Pilih role" options={roles.map((r) => ({ value: r.id, label: `${r.code} (${r.scope})` }))} />
 				<input class="inp w-full py-2" name="merchant_id" placeholder="merchant_id (opsional)" />
 				<button class="btn" type="submit">Assign</button>
 			</form>

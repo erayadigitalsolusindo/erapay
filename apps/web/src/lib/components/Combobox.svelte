@@ -13,6 +13,10 @@
 		value = $bindable(''),
 		placeholder = '',
 		required = false,
+		disabled = false,
+		form,
+		class: cls = '',
+		inputClass = 'inp',
 		onchange
 	}: {
 		id: string;
@@ -21,6 +25,13 @@
 		value?: string;
 		placeholder?: string;
 		required?: boolean;
+		disabled?: boolean;
+		/** id <form> bila field berada di luar form (atribut form= pada input hidden). */
+		form?: string;
+		/** kelas untuk pembungkus (mis. lebar). */
+		class?: string;
+		/** kelas input tampak; default tema dashboard, SelectField KYC memakai gaya DOKU. */
+		inputClass?: string;
 		onchange?: (v: string) => void;
 	} = $props();
 
@@ -30,6 +41,12 @@
 	let active = $state(0);
 	let root: HTMLDivElement;
 	let input: HTMLInputElement;
+	// Daftar memakai posisi fixed agar tidak terpotong tabel/kartu ber-overflow.
+	let pos = $state({ top: 0, left: 0, width: 0 });
+	function place() {
+		const r = input.getBoundingClientRect();
+		pos = { top: r.bottom + 6, left: r.left, width: r.width };
+	}
 
 	const selected = $derived(options.find((o) => o.value === value));
 	const shown = $derived.by(() => {
@@ -38,6 +55,8 @@
 	});
 
 	function show() {
+		if (disabled) return;
+		place();
 		open = true;
 		query = '';
 		active = Math.max(0, options.findIndex((o) => o.value === value));
@@ -70,8 +89,17 @@
 		const away = (e: PointerEvent) => {
 			if (!root.contains(e.target as Node)) open = false;
 		};
+		const reflow = (e: Event) => {
+			if (!(e.target instanceof Node && root.contains(e.target))) place();
+		};
 		document.addEventListener('pointerdown', away);
-		return () => document.removeEventListener('pointerdown', away);
+		window.addEventListener('scroll', reflow, true);
+		window.addEventListener('resize', place);
+		return () => {
+			document.removeEventListener('pointerdown', away);
+			window.removeEventListener('scroll', reflow, true);
+			window.removeEventListener('resize', place);
+		};
 	});
 	$effect(() => {
 		query; // saat mengetik, sorotan kembali ke hasil teratas
@@ -82,19 +110,20 @@
 	});
 </script>
 
-<div class="relative" bind:this={root}>
-	<input type="hidden" {name} {value} />
+<div class="relative {cls}" bind:this={root}>
+	<input type="hidden" {name} {value} {form} {disabled} />
 	<div class="relative">
 		<input
 			{id}
 			bind:this={input}
-			class="inp pr-9"
+			class="{inputClass} pr-9"
 			role="combobox"
 			aria-expanded={open}
 			aria-controls="{id}-list"
 			aria-autocomplete="list"
 			aria-activedescendant={open && shown[active] ? `${id}-o${active}` : undefined}
 			autocomplete="off"
+			{disabled}
 			placeholder={selected?.label || placeholder}
 			required={required && !value}
 			value={open ? query : (selected?.label ?? '')}
@@ -120,7 +149,8 @@
 		<ul
 			id="{id}-list"
 			role="listbox"
-			class="absolute z-30 mt-1.5 max-h-64 w-full overflow-auto rounded-xl border border-ink/15 bg-surface p-1 text-sm shadow-lg"
+			style="top:{pos.top}px;left:{pos.left}px;width:{pos.width}px"
+			class="fixed z-50 max-h-64 overflow-auto rounded-xl border border-ink/15 bg-surface p-1 text-sm shadow-lg"
 		>
 			{#each shown as o, i (o.value)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Combobox from '../../../lib/components/Combobox.svelte';
 	import { enhance } from '$app/forms';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import StateBadge from '../../../lib/components/StateBadge.svelte';
@@ -51,9 +52,8 @@
 			{:else}
 				<div>
 					<label class="lbl mb-1.5" for="acct">{t('po.account')}</label>
-					<select id="acct" name="bank_account_id" class="inp" required>
-						{#each verified as a (a.id)}<option value={a.id}>{bankLabel(a.bank_code)} {a.account_masked} · {a.account_name}</option>{/each}
-					</select>
+					<Combobox id="acct" name="bank_account_id" required value={verified[0]?.id ?? ''}
+						options={verified.map((a) => ({ value: a.id, label: `${bankLabel(a.bank_code)} ${a.account_masked} · ${a.account_name}` }))} />
 				</div>
 				<div>
 					<label class="lbl mb-1.5" for="amount">{t('po.amount')}</label>
@@ -97,12 +97,8 @@
 			<form method="POST" action="?/addAccount" class="grid gap-3 border-t border-ink/10 pt-4 sm:grid-cols-2" use:enhance>
 				<div>
 					<label class="lbl mb-1.5" for="bank_code">{t('bank.code')}</label>
-					<select id="bank_code" class="inp" name="bank_code" required>
-						<option value="">{t('bank.pick')}</option>
-						{#each data.banks as b (b.code)}
-							<option value={b.code}>{b.name} ({b.code})</option>
-						{/each}
-					</select>
+					<Combobox id="bank_code" name="bank_code" required placeholder={t('bank.pick')}
+						options={data.banks.map((b) => ({ value: b.code, label: `${b.name} (${b.code})` }))} />
 				</div>
 				<div>
 					<label class="lbl mb-1.5" for="account_number">{t('bank.number')}</label>

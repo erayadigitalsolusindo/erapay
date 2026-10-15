@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Combobox from '../../../../lib/components/Combobox.svelte';
 	import { enhance } from '$app/forms';
 	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
 	import StateBadge from '../../../../lib/components/StateBadge.svelte';
@@ -83,10 +84,10 @@
 										}}
 									>
 										<input type="hidden" name="id" value={m.id} />
-										<select class="inp w-40 py-2" name="to" required aria-label={t('onb.revokeTo')}>
-											<option value="under_review">{t('onb.revokeToReview')}</option>
-											<option value="rejected">{t('onb.revokeToRejected')}</option>
-										</select>
+										<Combobox id={`revoke-to-${m.id}`} name="to" class="w-44" required value="under_review" options={[
+											{ value: 'under_review', label: t('onb.revokeToReview') },
+											{ value: 'rejected', label: t('onb.revokeToRejected') }
+										]} />
 										<input class="inp w-44 py-2" name="note" placeholder={t('onb.noteRequired')} minlength="3" maxlength="500" required aria-label={t('onb.noteRequired')} />
 										<button class="btn btn-danger" type="submit">{t('onb.revokeBtn')}</button>
 									</form>
