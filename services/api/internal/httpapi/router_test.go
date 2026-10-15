@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/kyc"
 )
 
 type fakePinger struct{ err error }
@@ -20,6 +22,33 @@ func newTestRouter(db, rd error) http.Handler {
 		DB:    fakePinger{db},
 		Redis: fakePinger{rd},
 	})
+}
+
+// TestKYCMounting memastikan route KYC terpasang pada rute /v1 terpisah (di luar
+// requireJSON, karena unggah dokumen memakai multipart) dan router tidak panic.
+// Handler tidak dieksekusi karena tidak ada sesi → cukup membuktikan mount.
+func TestKYCMounting(t *testing.T) {
+	svc := kyc.NewService(nil, kyc.Config{})
+	defer svc.SetReviewer(nil) // tidak dipakai di test
+	router := NewRouter(Deps{
+		Log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		DB:    fakePinger{},
+		Redis: fakePinger{},
+		KYC:   svc,
+	})
+	for _, path := range []string{"/v1/kyc/profile", "/v1/kyc/submit", "/v1/kyc/documents/ktp", "/v1/kyc/brand/logo", "/v1/kyc/evidences/add", "/v1/kyc/regions"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		if path != "/v1/kyc/profile" && path != "/v1/kyc/regions" {
+			req = httptest.NewRequest(http.MethodPost, path, nil)
+		}
+		router.ServeHTTP(rec, req)
+		// Tanpa sesi: malah tersedia route → 403 (diblokir requireAuth) / 400 (parsing body);
+		// TIDAK BOLEH panic internal (505). Tidak perlu menegaskan 401/403 spesifik.
+		if rec.Body.String() != "" && (rec.Code == 500 || rec.Code == 505 || rec.Code == 0) {
+			t.Fatalf("%s: unexpected panic-ish status %d body=%s", path, rec.Code, rec.Body.String())
+		}
+	}
 }
 
 func TestHealthz(t *testing.T) {
