@@ -1,5 +1,7 @@
 // Dialog konfirmasi & toast global (pengganti window.confirm/alert). Dirender oleh DialogHost di layout root.
 export type Variant = 'info' | 'success' | 'warning' | 'danger';
+/** Toast punya dua varian tambahan: abu-abu (default) dan gelap. */
+export type ToastVariant = Variant | 'default' | 'dark';
 
 export type ConfirmOptions = {
 	variant?: Variant;
@@ -9,9 +11,20 @@ export type ConfirmOptions = {
 	cancelText?: string;
 };
 
-export type Toast = { id: number; variant: Variant; title: string; message: string };
+export type Toast = { id: number; variant: ToastVariant; title: string; message: string };
 
-export const DEFAULT_TITLE: Record<Variant, string> = {
+const TOAST_TITLE: Record<ToastVariant, string> = {
+	default: 'Pemberitahuan',
+	dark: 'Pemberitahuan',
+	info: 'Info',
+	success: 'Berhasil',
+	warning: 'Perhatian',
+	danger: 'Gagal'
+};
+
+export const DEFAULT_TITLE: Record<ToastVariant, string> = {
+	default: 'Pemberitahuan',
+	dark: 'Pemberitahuan',
 	info: 'Informasi',
 	success: 'Berhasil',
 	warning: 'Konfirmasi dulu ya',
@@ -41,9 +54,9 @@ export function closeConfirm(ok: boolean) {
 }
 
 /** Toast singkat (hilang sendiri). */
-export function notify(variant: Variant, message: string, title?: string, ms = 4200) {
+export function notify(variant: ToastVariant, message: string, title?: string, ms = 4200) {
 	const id = ++seq;
-	ui.toasts = [...ui.toasts, { id, variant, title: title ?? DEFAULT_TITLE[variant], message }].slice(-4);
+	ui.toasts = [...ui.toasts, { id, variant, title: title ?? TOAST_TITLE[variant], message }].slice(-4);
 	setTimeout(() => dismissToast(id), ms);
 }
 

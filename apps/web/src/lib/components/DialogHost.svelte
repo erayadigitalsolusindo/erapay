@@ -2,7 +2,7 @@
 	// Host dialog konfirmasi + toast beranimasi (pengganti confirm/alert bawaan browser).
 	// Setiap varian punya ikon dan gerak sendiri: info (berayun), success (centang digambar + percikan),
 	// warning (segitiga bergetar), danger (tong sampah, tutup terangkat).
-	import { ui, closeConfirm, dismissToast, DEFAULT_TITLE, type Variant } from '../ui/dialog.svelte';
+	import { ui, closeConfirm, dismissToast, DEFAULT_TITLE, type Variant, type ToastVariant } from '../ui/dialog.svelte';
 
 	const c = $derived(ui.confirm);
 	const variant = $derived<Variant>(c?.variant ?? 'warning');
@@ -13,6 +13,16 @@
 		success: { ring: '#059669', btn: 'bg-emerald-600 hover:bg-emerald-700', soft: 'bg-emerald-50', text: 'text-emerald-600' },
 		warning: { ring: '#d97706', btn: 'bg-amber-500 hover:bg-amber-600', soft: 'bg-amber-50', text: 'text-amber-600' },
 		danger: { ring: '#dc2626', btn: 'bg-red-600 hover:bg-red-700', soft: 'bg-red-50', text: 'text-red-600' }
+	};
+
+	// Gaya toast: bar berwarna dengan garis aksen kiri, ikon bulat terisi, dan tombol tutup bulat.
+	const TOAST: Record<ToastVariant, { bg: string; fg: string; edge: string; glyph: 'check' | 'x' | 'i' | 'bang' }> = {
+		default: { bg: '#ececec', fg: '#8f8f8f', edge: '#bdbdbd', glyph: 'check' },
+		success: { bg: '#bff3d6', fg: '#1a9f55', edge: '#2ecc71', glyph: 'check' },
+		info: { bg: '#d4ecff', fg: '#2fa8f5', edge: '#7fc8ff', glyph: 'check' },
+		danger: { bg: '#ffdede', fg: '#f0384a', edge: '#ff4b5c', glyph: 'x' },
+		warning: { bg: '#ffd996', fg: '#cf8200', edge: '#ff9f0a', glyph: 'bang' },
+		dark: { bg: '#4b4b4b', fg: '#dcdcdc', edge: '#2c2c2c', glyph: 'bang' }
 	};
 
 	let cancelBtn = $state<HTMLButtonElement>();
@@ -83,18 +93,28 @@
 	</div>
 {/if}
 
-<div class="pointer-events-none fixed top-4 right-4 z-[110] flex w-[min(92vw,22rem)] flex-col gap-2" aria-live="polite">
+{#snippet glyph(g: 'check' | 'x' | 'i' | 'bang')}
+	<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		{#if g === 'check'}<path d="m7 12.5 3.2 3.2L17 9" />
+		{:else if g === 'x'}<path d="m8 8 8 8M16 8l-8 8" />
+		{:else}<path d="M12 7v6" /><circle cx="12" cy="17" r="0.6" fill="#fff" />{/if}
+	</svg>
+{/snippet}
+
+<div class="pointer-events-none fixed top-4 right-4 z-[110] flex w-[min(92vw,24rem)] flex-col gap-3" aria-live="polite">
 	{#each ui.toasts as t (t.id)}
-		<div class="dh-toast pointer-events-auto relative flex items-start gap-3 overflow-hidden rounded-xl bg-white p-3.5 pr-9 shadow-xl ring-1 ring-black/5" role="status" style:--tone={TONE[t.variant].ring}>
-			<span class="grid size-9 shrink-0 place-items-center rounded-full {TONE[t.variant].soft} {TONE[t.variant].text}">{@render icon(t.variant, 22)}</span>
-			<div class="min-w-0">
-				<p class="text-[13px] font-extrabold text-neutral-900">{t.title}</p>
-				<p class="mt-0.5 text-xs leading-snug break-words text-neutral-600">{t.message}</p>
-			</div>
-			<button type="button" class="absolute top-2 right-2 grid size-6 place-items-center rounded-full text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700" aria-label="Tutup" onclick={() => dismissToast(t.id)}>
-				<svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
+		{@const k = TOAST[t.variant]}
+		<div
+			class="dh-toast pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-md py-3 pr-12 pl-4 shadow-md"
+			role="status"
+			style="background:{k.bg};color:{k.fg};border-left:5px solid {k.edge}"
+		>
+			<span class="grid size-6 shrink-0 place-items-center rounded-full" style="background:{k.fg}">{@render glyph(k.glyph)}</span>
+			<p class="min-w-0 text-[13px] leading-snug font-semibold break-words"><b class="font-extrabold">{t.title}:</b> {t.message}</p>
+			<button type="button" class="absolute top-1/2 right-3 grid size-6 -translate-y-1/2 place-items-center rounded-full border-2 transition hover:opacity-70" style="border-color:{k.fg}" aria-label="Tutup" onclick={() => dismissToast(t.id)}>
+				<svg viewBox="0 0 24 24" class="size-3" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><path d="m7 7 10 10M17 7 7 17" /></svg>
 			</button>
-			<span class="dh-bar absolute inset-x-0 bottom-0 h-0.5" style:background={TONE[t.variant].ring}></span>
+			<span class="dh-bar absolute inset-x-0 bottom-0 h-0.5" style="background:{k.fg};opacity:.35"></span>
 		</div>
 	{/each}
 </div>
