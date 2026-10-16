@@ -5,11 +5,19 @@
 	let { title, onclose, wide = false, children }: { title: string; onclose: () => void; wide?: boolean; children: Snippet } = $props();
 	let dlg = $state<HTMLDivElement>();
 	$effect(() => dlg?.focus());
+
+	// Pindahkan ke root `.adm` (bukan <body>: style .card/.btn/.inp & tema hanya berlaku di dalam .adm).
+	// Induk dengan transform/filter/backdrop-filter menjebak `position: fixed` sehingga modal
+	// terpotong di dalam kartu alih-alih menutupi layar.
+	function portal(node: HTMLElement) {
+		(node.closest('.adm') ?? document.body).appendChild(node);
+		return { destroy: () => node.remove() };
+	}
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
 
-<div class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/50 p-4" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onclose()}>
+<div use:portal class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/50 p-4" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onclose()}>
 	<div
 		bind:this={dlg}
 		tabindex="-1"
