@@ -47,7 +47,10 @@
 		<p class="mb-4 text-sm text-neutral-600">{t('pf.setup.intro')}</p>
 		<form method="POST" novalidate class="space-y-4" use:enhance={() => {
 			busy = true;
-			return async () => { busy = false; };
+			return async ({ update }) => {
+				await update({ reset: false });
+				busy = false;
+			};
 		}}>
 			<Field id="token" name="token" label={t('pf.setup.token')} icon="lock" autocomplete="off" placeholder="ERAPAY_PLATFORM_SETUP_TOKEN" bind:value={token} />
 			<Field id="email" name="email" label={t('pf.setup.email')} icon="mail" type="email" autocomplete="off" placeholder="dewa@erapay.test" bind:value={email} />
