@@ -189,6 +189,12 @@
 						>
 							{t('pf.tn.activate')}
 						</button>
+						<a
+							href="/platform/tenants/{m.id}/gateway?n={encodeURIComponent(m.display_name)}"
+							class="rounded-full border border-ink/25 px-4 py-2 text-xs font-bold transition hover:bg-ink hover:text-surface"
+						>
+							{tx('pf.tn.gateway', 'Gateway')}
+						</a>
 					</div>
 
 					{#if act === m.id || (form?.merchantId === m.id && (form?.activateError || form?.activated))}

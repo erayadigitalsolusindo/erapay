@@ -19,6 +19,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwaccount"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/kyc"
@@ -215,6 +216,7 @@ func run(log *slog.Logger) error {
 			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
 			KYC:           kycSvc,
+			GWAccounts:    gwaccount.NewService(pool, reg, apikey.EnvFromApp(cfg.Env)),
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 			ARUSProvisionToken: cfg.ARUSProvisionToken,
 			PlatformSetupToken: cfg.PlatformSetupToken,

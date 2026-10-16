@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 )
 
@@ -126,6 +127,23 @@ type Adapter interface {
 	// MapStatus maps a raw gateway status to a normalized one. ok=false means
 	// "no confirmed mapping": callers must leave the payment unchanged.
 	MapStatus(raw string) (Status, bool)
+}
+
+// ConnectionStep is one check of a connection test. Message is safe to show to an operator
+// (never a secret or a raw gateway body).
+type ConnectionStep struct {
+	Name    string `json:"name"`
+	OK      bool   `json:"ok"`
+	Code    string `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// ConnectionTester is implemented by adapters that can verify their credentials and a merchant's
+// account reference without moving money. With deep=false only credentials are checked (no
+// merchant data is sent). With deep=true the adapter also exercises accountRef the way a real
+// payment would (e.g. a short-lived QR that is cancelled right away) and must clean up after itself.
+type ConnectionTester interface {
+	TestConnection(ctx context.Context, accountRef string, deep bool) []ConnectionStep
 }
 
 // ErrInvalidSignature: the notification is not authentic. Callers answer 4xx and change nothing.
@@ -266,3 +284,13 @@ func (r *Registry) Register(a Adapter) {
 }
 
 func (r *Registry) Get(code string) (Adapter, bool) { a, ok := r.m[code]; return a, ok }
+
+// Codes lists the registered gateway codes, sorted.
+func (r *Registry) Codes() []string {
+	out := make([]string, 0, len(r.m))
+	for c := range r.m {
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out
+}

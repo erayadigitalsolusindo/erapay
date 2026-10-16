@@ -261,6 +261,12 @@ func (d Deps) mountPlatform(r chi.Router) {
 			// Aktivasi manual klien khusus (tanpa email): verifikasi email pemilik / set kata sandi langsung.
 			r.Post("/merchants/{id}/verify-email", d.adminVerifyMerchantEmail)
 			r.Post("/merchants/{id}/owner-password", d.platformSetOwnerPassword)
+			// Akun gateway per merchant (aktivasi + tes koneksi); tanpa ini merchant tidak bisa membuat QRIS.
+			if d.GWAccounts != nil {
+				r.Get("/merchants/{id}/gateway-accounts", d.platformGatewayAccounts)
+				r.Put("/merchants/{id}/gateway-accounts", d.platformSetGatewayAccount)
+				r.Post("/merchants/{id}/gateway-accounts/test", d.platformTestGatewayAccount)
+			}
 			r.Get("/audit-logs", d.platformAudit)
 			r.Get("/stats", d.platformStats)
 			// MFA for the panel (DEWA), using the platform session.

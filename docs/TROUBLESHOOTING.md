@@ -113,3 +113,28 @@ journalctl -u erapay-api -n 30 | grep "gateway registered"   # harus menampilkan
 - Login 403 di balik proxy: lihat DEPLOY-AAPANEL.md §9 (`csrf.trustedOrigins`, `ProxyPreserveHost On`).
 - Nilai env terbaca dengan karakter `\r` di akhir: file env berakhiran CRLF. Perbaiki dengan `sudo sed -i 's/\r$//' <file>.env`.
 - `erapay.env` memakai format systemd `KEY=value` (tanpa `export`); PEM multi-baris tidak didukung, pakai `DOKU_PRIVATE_KEY_FILE`.
+
+---
+
+## Kasus 4: ARUS menampilkan "EraPay menolak tagihan QRIS" (HTTP 422 `PAYMENT_METHOD_UNAVAILABLE` / 403 `MERCHANT_NOT_ACTIVE`)
+
+### Gejala
+`POST /v1/payments` dijawab 4xx. Di ARUS pesannya "EraPay menolak tagihan QRIS ini."
+
+### Penyebab
+Merchant sudah `approved` tetapi belum punya akun gateway aktif untuk environment server ini. Persetujuan onboarding hanya membuat pricing plan; baris `merchant_gateway_accounts` tidak dibuat otomatis. Orchestrator hanya memakai baris dengan `activation_status='active'`, `gateway_ref` terisi, dan `environment` = `ERAPAY_ENV`.
+
+### Diagnosa
+```sql
+select m.id, m.onboarding_status, g.gateway, g.environment, g.activation_status, g.gateway_ref
+from merchants m left join merchant_gateway_accounts g on g.merchant_id = m.id;
+```
+Kolom gateway kosong (NULL) = belum ada akun gateway.
+
+### Perbaikan
+Panel DEWA: **/platform/tenants → tombol Gateway** pada merchant itu.
+1. Isi Merchant ID dari dashboard DOKU (bukan Client ID `BRN-...`), pilih environment dan status Aktif, tulis alasan, Simpan. Tercatat di audit (`gateway_account.set`).
+2. **Tes kredensial** memeriksa token B2B (client id, secret, private key, base URL).
+3. **Tes merchant (QR uji)** membuat QR Rp1.000 untuk Merchant ID itu lalu langsung menutupnya; tidak ada uang bergerak. Ini yang membongkar Merchant ID/terminal/kode pos yang salah (gejala 500 `5004701` pada Kasus 1). Tercatat di audit (`gateway_account.tested`).
+
+Tes hanya bisa untuk environment yang sama dengan server (`ERAPAY_ENV`). API: `GET|PUT /v1/platform/merchants/{id}/gateway-accounts`, `POST .../gateway-accounts/test` (hanya DEWA).
