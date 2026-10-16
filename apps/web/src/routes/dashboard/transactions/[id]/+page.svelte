@@ -29,7 +29,7 @@
 	<h2 class="font-bold">{t('trx.payment', { ref: p.merchant_reference })}</h2><StatusBadge status={p.status} />
 	{#if ['pending', 'unknown', 'created'].includes(p.status)}
 		<form method="POST" action="?/inquiry" use:enhance>
-			<button type="submit" class="btn btn-light">🔄 {t('trx.inquiryBtn')}</button>
+			<button type="submit" class="btn btn-light inline-flex items-center gap-2"><svg viewBox="0 0 24 24" class="size-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12A9 9 0 0 1 18.5 5.8L21 8M21 3v5h-5M3 21v-5h5" /></svg> {t('trx.inquiryBtn')}</button>
 		</form>
 	{/if}
 </div>

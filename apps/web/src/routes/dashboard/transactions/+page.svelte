@@ -135,15 +135,17 @@
 							<td><StatusBadge status={p.status} /></td>
 							<td>{#if p.settlement_status && p.settlement_status !== 'not_expected'}<StateBadge kind="settle" value={p.settlement_status} />{:else}<span class="muted">—</span>{/if}</td>
 							<td class="text-right">
+								<div class="ml-auto flex w-40 flex-col gap-1.5">
 								{#if p.status === 'created' || p.status === 'pending' || p.status === 'unknown'}
-									{#if p.status === 'pending'}<form method="POST" action="?/qr" use:enhance={qrEnhance} class="mb-1.5"><input type="hidden" name="id" value={p.id} /><button type="submit" class="btn btn-red" disabled={qrBusy === p.id}>▦ {t('trx.showQr')}</button></form>{/if}
+									{#if p.status === 'pending'}<form method="POST" action="?/qr" use:enhance={qrEnhance} class="contents"><input type="hidden" name="id" value={p.id} /><button type="submit" class="btn btn-red inline-flex w-full items-center justify-center gap-2 whitespace-nowrap" disabled={qrBusy === p.id}><svg viewBox="0 0 24 24" class="size-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.2" /><rect x="14" y="3" width="7" height="7" rx="1.2" /><rect x="3" y="14" width="7" height="7" rx="1.2" /><path d="M14 14h3v3h-3zM20 14v.01M14 20h3M20 17v4" /></svg> {t('trx.showQr')}</button></form>{/if}
 										<form method="POST" action="?/inquiry" use:enhance={inquiryEnhance}>
 										<input type="hidden" name="id" value={p.id} />
-										<button type="submit" class="btn btn-light" disabled={submitting === p.id}>🔄 {t('trx.inquiryBtn')}</button>
+										<button type="submit" class="btn btn-light inline-flex w-full items-center justify-center gap-2 whitespace-nowrap" disabled={submitting === p.id}><svg viewBox="0 0 24 24" class="size-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12A9 9 0 0 1 18.5 5.8L21 8M21 3v5h-5M3 21v-5h5" /></svg> {t('trx.inquiryBtn')}</button>
 									</form>
 								{:else}
 									<span class="muted text-[11px]">—</span>
 								{/if}
+								</div>
 							</td>
 						</tr>
 					{/each}
