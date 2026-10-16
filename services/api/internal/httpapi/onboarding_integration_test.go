@@ -591,3 +591,79 @@ func TestIdentityGateAndCompletionHTTP(t *testing.T) {
 		t.Fatalf("identity locked after approval: %d", r.StatusCode)
 	}
 }
+
+// Pemilik mengubah identitasnya sendiri dari halaman Profil: NIK/NPWP terbuka hanya untuk pemilik,
+// kolom kosong dikosongkan, aturan akun bisnis mengikuti tipe akun, dan akun terverifikasi terkunci.
+func TestOwnIdentityEditFromProfileHTTP(t *testing.T) {
+	w := setup(t)
+	mid := register(t, w, "profil@toko.test")
+	c := signedUp(t, w, "profil@toko.test")
+
+	if r := w.do(t, &http.Client{}, "GET", "/v1/merchant/identity/edit", "", nil); r.StatusCode != 401 {
+		t.Fatalf("anon: %d", r.StatusCode)
+	}
+	r := w.do(t, c, "GET", "/v1/merchant/identity/edit", "", nil)
+	if r.StatusCode != 200 || r.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("get: %d cache=%q", r.StatusCode, r.Header.Get("Cache-Control"))
+	}
+	// Akun yang baru mendaftar (submitted, belum diverifikasi) harus bisa diedit; NIK terbuka untuk pemilik.
+	if g := decode(t, r); g["editable"] != true || g["status"] != "submitted" || g["account_type"] != "business" ||
+		g["identity"].(map[string]any)["id_number"] != "3175070101901234" {
+		t.Fatalf("unverified must be editable with plaintext: %v", g)
+	}
+
+	put := func(identity string) *http.Response {
+		return w.do(t, c, "PUT", "/v1/merchant/identity", `{"identity":{`+identity+`}}`, nil)
+	}
+	full := `"id_number":"3175070101901234","place_of_birth":"Jakarta","date_of_birth":"1990-05-20","gender":"male","address":"Jl. Merdeka No. 10, Jakarta Pusat","npwp":"123456789012345","business_npwp":"1234567890123456","business_nib":"0123456789012"`
+	if r := put(full); r.StatusCode != 200 {
+		t.Fatalf("save full: %d %s", r.StatusCode, errCode(t, r))
+	}
+	got := decode(t, w.do(t, c, "GET", "/v1/merchant/identity/edit", "", nil))["identity"].(map[string]any)
+	if got["id_number"] != "3175070101901234" || got["npwp"] != "123456789012345" || got["place_of_birth"] != "Jakarta" || got["gender"] != "male" {
+		t.Fatalf("owner must read back plaintext: %v", got)
+	}
+	var enc []byte
+	if err := w.db.QueryRow(t.Context(), `SELECT owner_id_enc FROM merchants WHERE id=$1`, mid).Scan(&enc); err != nil || len(enc) == 0 || strings.Contains(string(enc), "3175070101901234") {
+		t.Fatalf("NIK must be sealed at rest: %v", err)
+	}
+
+	// Validasi per kolom; gagal tidak mengubah apa pun.
+	for name, body := range map[string]string{
+		"nik pendek":       `"id_number":"123"`,
+		"tanggal salah":    `"date_of_birth":"20-05-1990"`,
+		"terlalu muda":     `"date_of_birth":"2020-01-01"`,
+		"gender salah":     `"gender":"x"`,
+		"npwp salah":       `"npwp":"12"`,
+		"nib salah":        `"business_nib":"12"`,
+		"npwp badan salah": `"business_npwp":"12"`,
+	} {
+		if r := put(body); r.StatusCode != 400 {
+			t.Errorf("%s: want 400, got %d", name, r.StatusCode)
+		}
+	}
+	// Kolom kosong = dikosongkan (NPWP dihapus, NIK dipertahankan karena dikirim ulang).
+	if r := put(`"id_number":"3175070101901234","place_of_birth":"Bandung"`); r.StatusCode != 200 {
+		t.Fatalf("partial save: %d", r.StatusCode)
+	}
+	got = decode(t, w.do(t, c, "GET", "/v1/merchant/identity/edit", "", nil))["identity"].(map[string]any)
+	if got["place_of_birth"] != "Bandung" || got["npwp"] != nil || got["address"] != nil {
+		t.Fatalf("blank fields must clear: %v", got)
+	}
+	var audits int
+	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM audit_logs WHERE action='merchant.identity_updated' AND entity_id=$1 AND metadata::text NOT LIKE '%3175070101901234%'`, mid).Scan(&audits)
+	if audits != 2 {
+		t.Fatalf("audit rows without plaintext: %d", audits)
+	}
+
+	// Terverifikasi (approved) = terkunci.
+	if _, err := w.db.Exec(t.Context(), `UPDATE merchants SET onboarding_status='approved' WHERE id=$1`, mid); err != nil {
+		t.Fatal(err)
+	}
+	if g := decode(t, w.do(t, c, "GET", "/v1/merchant/identity/edit", "", nil)); g["editable"] != false {
+		t.Fatalf("approved must be locked: %v", g)
+	}
+	if r := put(full); r.StatusCode != 409 {
+		t.Fatalf("approved save: want 409, got %d", r.StatusCode)
+	}
+}

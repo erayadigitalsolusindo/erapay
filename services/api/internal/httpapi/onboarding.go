@@ -357,3 +357,31 @@ func (d Deps) merchantResubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, m)
 }
+
+// merchantOwnIdentity: identitas pemilik dengan NIK/NPWP terbuka, hanya untuk pemiliknya (merchant dari sesi).
+func (d Deps) merchantOwnIdentity(w http.ResponseWriter, r *http.Request) {
+	out, err := d.Onboarding.GetOwnIdentity(r.Context(), PrincipalFrom(r.Context()).MerchantID)
+	if !d.onboardingErr(w, r, err) {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, out)
+}
+
+// merchantUpdateOwnIdentity menyimpan formulir identitas dari halaman Profil (kolom kosong = dikosongkan).
+func (d Deps) merchantUpdateOwnIdentity(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Identity *onboarding.IdentityInput `json:"identity"`
+	}
+	if _, ok := decodeStrict(w, r, 8<<10, &body); !ok {
+		return
+	}
+	p := PrincipalFrom(r.Context())
+	out, err := d.Onboarding.UpdateOwnIdentity(r.Context(), onboarding.SetIdentityInput{
+		MerchantID: p.MerchantID, ActorID: p.UserID, Identity: body.Identity, RequestID: middleware.GetReqID(r.Context())})
+	if !d.onboardingErr(w, r, err) {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, out)
+}

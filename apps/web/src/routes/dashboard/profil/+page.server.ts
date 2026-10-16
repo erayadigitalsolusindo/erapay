@@ -16,6 +16,23 @@ export type Profile = {
 	created_at: string;
 };
 
+export type OwnIdentity = {
+	identity: {
+		id_number?: string;
+		place_of_birth?: string;
+		date_of_birth?: string;
+		gender?: string;
+		address?: string;
+		npwp?: string;
+		business_npwp?: string;
+		business_nib?: string;
+		complete: boolean;
+	};
+	account_type: string;
+	status: string;
+	editable: boolean;
+};
+
 function token(cookies: { get(n: string): string | undefined }, locals: App.Locals) {
 	const t = cookies.get(SESSION_COOKIE);
 	if (!locals.user || !t) redirect(303, '/login');
@@ -26,7 +43,12 @@ function token(cookies: { get(n: string): string | undefined }, locals: App.Loca
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 	const t = token(cookies, locals);
-	return { profile: await read<Profile>(fetch, t, '/v1/profile') };
+	// Tab data identitas hanya untuk pengguna merchant (staf platform tidak punya merchant).
+	const [profile, ownIdentity] = await Promise.all([
+		read<Profile>(fetch, t, '/v1/profile'),
+		locals.user?.merchantId ? read<OwnIdentity>(fetch, t, '/v1/merchant/identity/edit') : Promise.resolve(null)
+	]);
+	return { profile, ownIdentity };
 };
 
 export const actions: Actions = {
@@ -36,6 +58,24 @@ export const actions: Actions = {
 		const r = await call<Profile>(fetch, t, 'PUT', '/v1/profile', { full_name: str(f, 'full_name'), phone: str(f, 'phone') });
 		if (!r.ok) return fail(r.status === 0 ? 503 : 400, { section: 'profile', message: r.message });
 		return { section: 'profile', ok: true };
+	},
+
+	saveIdentity: async ({ request, cookies, locals, fetch }) => {
+		const t = token(cookies, locals);
+		const f = await request.formData();
+		const identity = {
+			id_number: str(f, 'id_number'),
+			place_of_birth: str(f, 'place_of_birth'),
+			date_of_birth: str(f, 'date_of_birth'),
+			gender: str(f, 'gender'),
+			address: str(f, 'address'),
+			npwp: str(f, 'npwp'),
+			business_npwp: str(f, 'business_npwp'),
+			business_nib: str(f, 'business_nib')
+		};
+		const r = await call(fetch, t, 'PUT', '/v1/merchant/identity', { identity });
+		if (!r.ok) return fail(r.status === 0 ? 503 : r.status === 409 ? 409 : 400, { section: 'identity', code: r.body?.error?.code ?? 'ERR', message: r.message });
+		return { section: 'identity', ok: true };
 	},
 
 	changePassword: async ({ request, cookies, locals, fetch }) => {

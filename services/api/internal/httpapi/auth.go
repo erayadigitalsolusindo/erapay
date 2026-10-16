@@ -533,6 +533,9 @@ func (d Deps) mountV1(r chi.Router) {
 				if d.Onboarding != nil {
 					r.With(requirePerm("merchant:read")).Get("/merchant/identity", d.merchantIdentity)
 					r.With(requirePerm("merchant:write")).Post("/merchant/identity", d.merchantSetIdentity)
+					// Edit identitas pemilik dari halaman Profil: baca (NIK/NPWP terbuka untuk pemilik) + simpan.
+					r.With(requirePerm("merchant:read")).Get("/merchant/identity/edit", d.merchantOwnIdentity)
+					r.With(requirePerm("merchant:write")).Put("/merchant/identity", d.merchantUpdateOwnIdentity)
 					r.With(requirePerm("merchant:write")).Post("/merchant/resubmit", d.merchantResubmit)
 				}
 				if d.APIKeys != nil {

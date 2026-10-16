@@ -5,16 +5,19 @@
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 	import { notify } from '../../../lib/ui/dialog.svelte';
 	import Modal from '../../../lib/components/Modal.svelte';
+	import HackerScene from '../../../lib/components/HackerScene.svelte';
 
 	let { data } = $props();
 	const i18n = getI18n();
 	const { t } = i18n;
 
 	const profile = $derived(data.profile);
-	type Tab = 'profile' | 'password' | 'mfa';
+	type Tab = 'profile' | 'identity' | 'password' | 'mfa';
 	let tab = $state<Tab>('profile');
 	let dir = $state(1);
-	const TABS: Tab[] = ['profile', 'password', 'mfa'];
+	// Tab identitas hanya ada untuk pengguna merchant (data dari /v1/merchant/identity/edit).
+	const own = $derived(data.ownIdentity);
+	const TABS = $derived<Tab[]>(own ? ['profile', 'identity', 'password', 'mfa'] : ['profile', 'password', 'mfa']);
 	function go(next: Tab) {
 		dir = TABS.indexOf(next) >= TABS.indexOf(tab) ? 1 : -1;
 		tab = next;
@@ -35,6 +38,7 @@
 					{ k: 'pr.check.name', ok: !!profile.full_name },
 					{ k: 'pr.check.phone', ok: !!profile.phone },
 					{ k: 'pr.check.email', ok: profile.email_verified },
+					...(own ? [{ k: 'pr.check.id', ok: !!own.identity?.complete }] : []),
 					{ k: 'pr.check.mfa', ok: profile.mfa_enabled }
 				]
 			: []
@@ -53,6 +57,27 @@
 	let savingProfile = $state(false);
 	let savedPulse = $state(false);
 	const dirty = $derived(!!profile && (fullName.trim() !== profile.full_name || phone.trim() !== profile.phone));
+
+	// ---------- identitas ----------
+	const isBiz = $derived(own?.account_type === 'business');
+	// svelte-ignore state_referenced_locally
+	let idf = $state({
+		id_number: own?.identity?.id_number ?? '',
+		place_of_birth: own?.identity?.place_of_birth ?? '',
+		date_of_birth: own?.identity?.date_of_birth ?? '',
+		gender: own?.identity?.gender ?? '',
+		address: own?.identity?.address ?? '',
+		npwp: own?.identity?.npwp ?? '',
+		business_npwp: own?.identity?.business_npwp ?? '',
+		business_nib: own?.identity?.business_nib ?? ''
+	});
+	let savingId = $state(false);
+	const onlyDigits = (v: string) => v.replace(/\D/g, '');
+	const idLocked = $derived(!!own && !own.editable);
+	// Kolom wajib agar dinilai lengkap: sama dengan aturan server (akun bisnis juga butuh NPWP badan & NIB).
+	const missing = $derived(
+		[idf.id_number, idf.place_of_birth, idf.date_of_birth, idf.gender, idf.address, ...(isBiz ? [idf.business_npwp, idf.business_nib] : [])].filter((v) => !v).length
+	);
 
 	// ---------- kata sandi ----------
 	let curPw = $state('');
@@ -148,6 +173,10 @@
 		notify('success', t('pr.saved'));
 		savedPulse = true;
 		setTimeout(() => (savedPulse = false), 1400);
+	};
+	const onIdentity = (res: any, kind: string) => {
+		if (kind === 'failure') return notify('danger', res.code === 'INVALID_STATE' ? t('pr.id.locked') : t('pr.id.failed', { msg: res.message ?? '' }));
+		notify('success', t('pr.id.saved'));
 	};
 	const onPassword = (res: any, kind: string) => {
 		if (kind === 'failure') {
@@ -253,8 +282,8 @@
 
 		<!-- ============ TAB ============ -->
 		<div class="card p-1.5" role="tablist">
-			<div class="relative grid grid-cols-3 gap-1">
-				<span class="tab-pill" style:transform={`translateX(calc(${TABS.indexOf(tab)} * (100% + 0.25rem)))`} aria-hidden="true"></span>
+			<div class="relative grid gap-1" style:grid-template-columns={`repeat(${TABS.length}, minmax(0, 1fr))`}>
+				<span class="tab-pill" style:width={`calc((100% - ${(TABS.length - 1) * 0.25}rem) / ${TABS.length})`} style:transform={`translateX(calc(${TABS.indexOf(tab)} * (100% + 0.25rem)))`} aria-hidden="true"></span>
 				{#each TABS as k (k)}
 					<button
 						type="button"
@@ -265,6 +294,8 @@
 					>
 						{#if k === 'profile'}
 							<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>
+						{:else if k === 'identity'}
+							<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2.2" /><path d="M5.8 16c.6-1.6 1.8-2.4 3.2-2.4s2.6.8 3.2 2.4M14.5 10h4M14.5 13h3" /></svg>
 						{:else if k === 'password'}
 							<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
 						{:else}
@@ -311,9 +342,94 @@
 						</form>
 					{/if}
 
+					<!-- ---- IDENTITAS ---- -->
+					{#if tab === 'identity' && own}
+						<form method="POST" action="?/saveIdentity" use:enhance={run((v) => (savingId = v), onIdentity)} class="space-y-7">
+							<div class="flex flex-wrap items-start justify-between gap-3">
+								<div class="max-w-xl">
+									<h2 class="font-display text-lg font-extrabold">{t('pr.id.title')}</h2>
+									<p class="muted mt-1 text-xs leading-relaxed">{t('pr.id.sub')}</p>
+								</div>
+								<span class="flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[11px] font-bold {missing === 0 ? 'bg-emerald-500/15 text-emerald-700' : 'bg-amber-500/20 text-amber-700'}">
+									<span class="size-2 rounded-full {missing === 0 ? 'bg-emerald-500' : 'bg-amber-500'}"></span>
+									{missing === 0 ? t('pr.id.complete') : t('pr.id.incomplete', { n: missing })}
+								</span>
+							</div>
+
+							{#if idLocked}
+								<p class="flex items-start gap-2.5 rounded-xl border border-emas/50 bg-emas/10 px-4 py-3 text-xs font-semibold" role="status">
+									<svg class="mt-0.5 size-4 shrink-0 text-amber-600" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+									{t('pr.id.locked')}
+								</p>
+							{/if}
+
+							<fieldset disabled={idLocked || savingId} class="space-y-6 disabled:opacity-80">
+								<div>
+									<h3 class="mb-3 font-mono text-[10px] font-bold tracking-[.16em] text-merah uppercase">{t('pr.id.owner')}</h3>
+									<div class="grid gap-5 sm:grid-cols-2">
+										<div>
+											<label class="mb-1.5 block text-xs font-bold" for="id-nik">{t('pr.id.nik')}</label>
+											<input id="id-nik" name="id_number" inputmode="numeric" maxlength="16" autocomplete="off" class="{inputCls} font-mono tracking-wider" value={idf.id_number} oninput={(e) => (idf.id_number = onlyDigits((e.target as HTMLInputElement).value))} />
+											<div class="mt-1.5 h-1 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full transition-all duration-300 {idf.id_number.length === 16 ? 'bg-emerald-500' : 'bg-merah'}" style:width={`${(idf.id_number.length / 16) * 100}%`}></div></div>
+										</div>
+										<div>
+											<label class="mb-1.5 block text-xs font-bold" for="id-npwp">{t('pr.id.npwp')}</label>
+											<input id="id-npwp" name="npwp" inputmode="numeric" maxlength="16" autocomplete="off" class="{inputCls} font-mono tracking-wider" value={idf.npwp} oninput={(e) => (idf.npwp = onlyDigits((e.target as HTMLInputElement).value))} />
+										</div>
+										<div>
+											<label class="mb-1.5 block text-xs font-bold" for="id-pob">{t('pr.id.pob')}</label>
+											<input id="id-pob" name="place_of_birth" maxlength="100" class={inputCls} bind:value={idf.place_of_birth} />
+										</div>
+										<div>
+											<label class="mb-1.5 block text-xs font-bold" for="id-dob">{t('pr.id.dob')}</label>
+											<input id="id-dob" name="date_of_birth" type="date" class={inputCls} bind:value={idf.date_of_birth} />
+										</div>
+										<div class="sm:col-span-2">
+											<span class="mb-1.5 block text-xs font-bold" id="id-gender-l">{t('pr.id.gender')}</span>
+											<div class="grid grid-cols-2 gap-3" role="radiogroup" aria-labelledby="id-gender-l">
+												{#each [['male', 'pr.id.male'], ['female', 'pr.id.female']] as [v, k] (v)}
+													<label class="flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold transition has-[:checked]:border-merah has-[:checked]:bg-merah/10 has-[:checked]:text-merah {idf.gender === v ? 'border-merah' : 'border-ink/15 hover:bg-ink/5'}">
+														<input type="radio" name="gender" value={v} class="sr-only" bind:group={idf.gender} />
+														{t(k as any)}
+													</label>
+												{/each}
+											</div>
+										</div>
+										<div class="sm:col-span-2">
+											<label class="mb-1.5 block text-xs font-bold" for="id-addr">{t('pr.id.address')}</label>
+											<textarea id="id-addr" name="address" rows="3" maxlength="255" class={inputCls} bind:value={idf.address}></textarea>
+										</div>
+									</div>
+								</div>
+
+								{#if isBiz}
+									<div>
+										<h3 class="mb-3 font-mono text-[10px] font-bold tracking-[.16em] text-merah uppercase">{t('pr.id.business')}</h3>
+										<div class="grid gap-5 sm:grid-cols-2">
+											<div>
+												<label class="mb-1.5 block text-xs font-bold" for="id-bnpwp">{t('pr.id.bnpwp')}</label>
+												<input id="id-bnpwp" name="business_npwp" inputmode="numeric" maxlength="16" autocomplete="off" class="{inputCls} font-mono tracking-wider" value={idf.business_npwp} oninput={(e) => (idf.business_npwp = onlyDigits((e.target as HTMLInputElement).value))} />
+											</div>
+											<div>
+												<label class="mb-1.5 block text-xs font-bold" for="id-nib">{t('pr.id.nib')}</label>
+												<input id="id-nib" name="business_nib" inputmode="numeric" maxlength="13" autocomplete="off" class="{inputCls} font-mono tracking-wider" value={idf.business_nib} oninput={(e) => (idf.business_nib = onlyDigits((e.target as HTMLInputElement).value))} />
+											</div>
+										</div>
+									</div>
+								{/if}
+							</fieldset>
+
+							{#if !idLocked}
+								<button type="submit" disabled={savingId} class="{btnCls} btn-shine bg-merah text-white hover:bg-merah-tua">
+									{#if savingId}<span class="spinner"></span>{/if}{t('pr.id.save')}
+								</button>
+							{/if}
+						</form>
+					{/if}
+
 					<!-- ---- KATA SANDI ---- -->
 					{#if tab === 'password'}
-						<div class="grid gap-8 lg:grid-cols-[1fr_280px]">
+						<div class="grid gap-8 lg:grid-cols-[1fr_300px]">
 							<form method="POST" action="?/changePassword" use:enhance={run((v) => (savingPw = v), onPassword)} class="space-y-5">
 								<div>
 									<h2 class="font-display text-lg font-extrabold">{t('pr.pw.title')}</h2>
@@ -360,9 +476,8 @@
 									{#if savingPw}<span class="spinner"></span>{/if}{t('pr.pw.save')}
 								</button>
 							</form>
-							<aside class="relative hidden overflow-hidden rounded-2xl bg-gradient-to-br from-merah-gelap to-merah-tua p-6 text-white lg:block" aria-hidden="true">
-								<div class="pola absolute inset-0 opacity-50"></div>
-								<svg viewBox="0 0 64 64" class="float relative mx-auto size-24 text-emas" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="28" width="36" height="26" rx="5" /><path d="M22 28v-7a10 10 0 0 1 20 0v7" /><circle cx="32" cy="41" r="3.5" fill="currentColor" /></svg>
+							<aside class="order-first h-60 overflow-hidden rounded-2xl bg-[#14050a] shadow-inner lg:order-none lg:h-auto lg:min-h-[22rem]" aria-hidden="true">
+								<HackerScene />
 							</aside>
 						</div>
 					{/if}
