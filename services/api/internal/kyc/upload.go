@@ -63,7 +63,7 @@ func (s *Service) UploadDocument(ctx context.Context, in UploadInput) (*Document
 	if err := s.throttleCheck(ctx, "upload", in.IP, s.cfg.UploadPerIP); err != nil {
 		return nil, err
 	}
-	key, mime, size, err := s.storeFile(ctx, "kyc/"+in.MerchantID, in.Reader, maxBytesFor(in.DocType))
+	key, mime, size, sum, err := s.storeFile(ctx, in.MerchantID, in.Reader, maxBytesFor(in.DocType))
 	if err != nil {
 		return nil, err
 	}
@@ -121,8 +121,8 @@ func (s *Service) UploadDocument(ctx context.Context, in UploadInput) (*Document
 		oldKey = old
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO merchant_documents
-		(merchant_id, doc_type, storage_key, original_name, mime, size_bytes, uploaded_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)`, in.MerchantID, in.DocType, key, trimStr(in.Name, 200), mime, size, in.ActorID); err != nil {
+		(merchant_id, doc_type, storage_key, original_name, mime, size_bytes, uploaded_by, sha256, enc_v)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, in.MerchantID, in.DocType, key, trimStr(in.Name, 200), mime, size, in.ActorID, sum, encVersion); err != nil {
 		return nil, err
 	}
 	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "kyc.document_uploaded",

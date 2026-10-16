@@ -130,15 +130,17 @@ type brandRow struct {
 	Amount, Count               *int64
 	LogoKey, LogoMime, LogoName *string
 	LogoSize                    *int64
+	LogoEncV                    int16
+	LogoSum                     *string
 }
 
 func (r *Repo) brandRow(ctx context.Context, q Querier, merchantID string) (brandRow, error) {
 	var b brandRow
 	err := q.QueryRow(ctx, `SELECT id::text, brand_id, name, category, description,
-		monthly_amount, monthly_count, logo_key, logo_mime, logo_name, logo_size
+		monthly_amount, monthly_count, logo_key, logo_mime, logo_name, logo_size, logo_enc_v, logo_sha256
 		FROM merchant_brands WHERE merchant_id = $1`, merchantID).
 		Scan(&b.ID, &b.BrandID, &b.Name, &b.Category, &b.Description, &b.Amount, &b.Count,
-			&b.LogoKey, &b.LogoMime, &b.LogoName, &b.LogoSize)
+			&b.LogoKey, &b.LogoMime, &b.LogoName, &b.LogoSize, &b.LogoEncV, &b.LogoSum)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return b, ErrNotFound
 	}
@@ -146,13 +148,16 @@ func (r *Repo) brandRow(ctx context.Context, q Querier, merchantID string) (bran
 }
 
 type docRow struct {
-	ID      string
-	DocType string
-	Key     string
-	Name    string
-	Mime    string
-	Size    int64
-	At      time.Time
+	ID         string
+	DocType    string
+	Key        string
+	Name       string
+	Mime       string
+	Size       int64
+	At         time.Time
+	MerchantID string  // diisi GetDocumentFile (untuk audit akses)
+	EncV       int16   // 0 = berkas lama (belum terenkripsi)
+	Sum        *string // SHA-256 isi asli
 }
 
 func (r *Repo) docs(ctx context.Context, q Querier, merchantID string) ([]docRow, error) {
@@ -174,11 +179,14 @@ func (r *Repo) docs(ctx context.Context, q Querier, merchantID string) ([]docRow
 }
 
 type evidenceRow struct {
-	ID   string
-	Key  string
-	Name string
-	Mime string
-	Size int64
+	ID         string
+	Key        string
+	Name       string
+	Mime       string
+	Size       int64
+	MerchantID string // diisi GetEvidenceFile (untuk audit akses)
+	EncV       int16
+	Sum        *string
 }
 
 func (r *Repo) evidences(ctx context.Context, q Querier, brandID string) ([]evidenceRow, error) {

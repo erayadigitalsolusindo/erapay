@@ -30,34 +30,36 @@ func (c *counter) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// storeFile: sniffing 512 byte pertama (bukan percaya header), batas ukuran, lalu simpan.
-// r harus ReadSeekCloser (multipart.File memenuhinya) agar bisa mundur setelah sniffing.
-func (s *Service) storeFile(ctx context.Context, prefix string, r io.ReadSeekCloser, max int64) (key, mime string, size int64, err error) {
+// storeFile: sniffing 512 byte pertama (bukan percaya header), batas ukuran, lalu enkripsi dan simpan.
+// r harus ReadSeekCloser (multipart.File memenuhinya) agar bisa mundur setelah sniffing. Mengembalikan juga
+// SHA-256 isi asli. Isi dibaca ke memori (maksimum max+1 byte, paling besar 25 MB) karena harus dienkripsi utuh.
+func (s *Service) storeFile(ctx context.Context, merchantID string, r io.ReadSeekCloser, max int64) (key, mime string, size int64, sum string, err error) {
 	head := make([]byte, 512)
 	n, _ := io.ReadFull(r, head)
 	if n == 0 {
-		return "", "", 0, fieldErr(map[string]string{"file": "Berkas kosong"})
+		return "", "", 0, "", fieldErr(map[string]string{"file": "Berkas kosong"})
 	}
 	mime = http.DetectContentType(head[:n])
 	if !allowedMime(mime) {
-		return "", "", 0, ErrBadFile
+		return "", "", 0, "", ErrBadFile
 	}
 	if _, err := r.Seek(-int64(n), io.SeekCurrent); err != nil {
-		return "", "", 0, err
+		return "", "", 0, "", err
 	}
-	c := &counter{r: io.LimitReader(r, max+1)}
-	if key, err = s.cfg.Storage.Put(ctx, prefix, extByMime[mime], c); err != nil {
-		return "", "", 0, err
+	plain, err := io.ReadAll(io.LimitReader(r, max+1))
+	if err != nil {
+		return "", "", 0, "", err
 	}
-	if c.n > max {
-		_ = s.cfg.Storage.Delete(ctx, key)
-		return "", "", 0, ErrTooLarge
+	if int64(len(plain)) > max {
+		return "", "", 0, "", ErrTooLarge
 	}
-	if c.n == 0 {
-		_ = s.cfg.Storage.Delete(ctx, key)
-		return "", "", 0, fieldErr(map[string]string{"file": "Berkas kosong"})
+	if len(plain) == 0 {
+		return "", "", 0, "", fieldErr(map[string]string{"file": "Berkas kosong"})
 	}
-	return key, mime, c.n, nil
+	if key, sum, err = s.sealAndPut(ctx, merchantID, extByMime[mime], plain); err != nil {
+		return "", "", 0, "", err
+	}
+	return key, mime, int64(len(plain)), sum, nil
 }
 
 // GetDocumentFile membuka file dokumen. Hanya pemilik merchant atau reviewer yang boleh.
@@ -65,8 +67,8 @@ func (s *Service) GetDocumentFile(ctx context.Context, docID, viewerMerchantID s
 	var d docRow
 	var mid string
 	err := s.db.QueryRow(ctx, `SELECT id::text, doc_type, storage_key, original_name, mime, size_bytes,
-		created_at, merchant_id::text FROM merchant_documents WHERE id::text = $1`,
-		docID).Scan(&d.ID, &d.DocType, &d.Key, &d.Name, &d.Mime, &d.Size, &d.At, &mid)
+		created_at, merchant_id::text, enc_v, sha256 FROM merchant_documents WHERE id::text = $1`,
+		docID).Scan(&d.ID, &d.DocType, &d.Key, &d.Name, &d.Mime, &d.Size, &d.At, &mid, &d.EncV, &d.Sum)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return d, nil, ErrNotFound
@@ -76,7 +78,8 @@ func (s *Service) GetDocumentFile(ctx context.Context, docID, viewerMerchantID s
 	if !isReviewer && (viewerMerchantID == "" || mid != viewerMerchantID) {
 		return d, nil, ErrForbidden
 	}
-	f, err := s.cfg.Storage.Open(ctx, d.Key)
+	d.MerchantID = mid
+	f, err := s.openFile(ctx, d.Key, d.EncV, d.Sum, mid)
 	if err != nil {
 		return d, nil, err
 	}
@@ -88,8 +91,8 @@ func (s *Service) GetEvidenceFile(ctx context.Context, evID, viewerMerchantID st
 	var e evidenceRow
 	var mid string
 	err := s.db.QueryRow(ctx, `SELECT v.id::text, v.storage_key, v.original_name, v.mime, v.size_bytes,
-		b.merchant_id::text FROM merchant_brand_evidences v JOIN merchant_brands b ON b.id = v.brand_id
-		WHERE v.id::text = $1`, evID).Scan(&e.ID, &e.Key, &e.Name, &e.Mime, &e.Size, &mid)
+		b.merchant_id::text, v.enc_v, v.sha256 FROM merchant_brand_evidences v JOIN merchant_brands b ON b.id = v.brand_id
+		WHERE v.id::text = $1`, evID).Scan(&e.ID, &e.Key, &e.Name, &e.Mime, &e.Size, &mid, &e.EncV, &e.Sum)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return e, nil, ErrNotFound
@@ -99,7 +102,8 @@ func (s *Service) GetEvidenceFile(ctx context.Context, evID, viewerMerchantID st
 	if !isReviewer && (viewerMerchantID == "" || mid != viewerMerchantID) {
 		return e, nil, ErrForbidden
 	}
-	f, err := s.cfg.Storage.Open(ctx, e.Key)
+	e.MerchantID = mid
+	f, err := s.openFile(ctx, e.Key, e.EncV, e.Sum, mid)
 	if err != nil {
 		return e, nil, err
 	}
@@ -115,7 +119,7 @@ func (s *Service) GetLogoFile(ctx context.Context, merchantID string) (name, mim
 	if b.LogoKey == nil || *b.LogoKey == "" {
 		return "", "", nil, ErrNotFound
 	}
-	f, err = s.cfg.Storage.Open(ctx, *b.LogoKey)
+	f, err = s.openFile(ctx, *b.LogoKey, b.LogoEncV, b.LogoSum, merchantID)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -146,7 +150,7 @@ func (s *Service) AddEvidence(ctx context.Context, in UploadInput) (*Evidence, e
 	if err := s.throttleCheck(ctx, "upload", in.IP, s.cfg.UploadPerIP); err != nil {
 		return nil, err
 	}
-	key, mime, size, err := s.storeFile(ctx, "kyc/"+in.MerchantID, in.Reader, MaxImageBytes)
+	key, mime, size, sum, err := s.storeFile(ctx, in.MerchantID, in.Reader, MaxImageBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -165,9 +169,9 @@ func (s *Service) AddEvidence(ctx context.Context, in UploadInput) (*Evidence, e
 	}
 	var id string
 	if err := tx.QueryRow(ctx, `INSERT INTO merchant_brand_evidences
-		(brand_id, storage_key, original_name, mime, size_bytes, uploaded_by)
-		VALUES ($1,$2,$3,$4,$5,$6) RETURNING id::text`,
-		b.ID, key, trimStr(in.Name, 200), mime, size, in.ActorID).Scan(&id); err != nil {
+		(brand_id, storage_key, original_name, mime, size_bytes, uploaded_by, sha256, enc_v)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id::text`,
+		b.ID, key, trimStr(in.Name, 200), mime, size, in.ActorID, sum, encVersion).Scan(&id); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -218,7 +222,7 @@ func (s *Service) SetBrandLogo(ctx context.Context, in UploadInput) error {
 	if err := s.throttleCheck(ctx, "upload", in.IP, s.cfg.UploadPerIP); err != nil {
 		return err
 	}
-	key, mime, size, err := s.storeFile(ctx, "kyc/"+in.MerchantID, in.Reader, MaxImageBytes)
+	key, mime, size, sum, err := s.storeFile(ctx, in.MerchantID, in.Reader, MaxImageBytes)
 	if err != nil {
 		return err
 	}
@@ -232,8 +236,8 @@ func (s *Service) SetBrandLogo(ctx context.Context, in UploadInput) error {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE merchant_brands SET logo_key=$2, logo_mime=$3, logo_name=$4,
-		logo_size=$5, updated_at=now() WHERE merchant_id=$1`,
-		in.MerchantID, key, mime, trimStr(in.Name, 200), size); err != nil {
+		logo_size=$5, logo_sha256=$6, logo_enc_v=$7, updated_at=now() WHERE merchant_id=$1`,
+		in.MerchantID, key, mime, trimStr(in.Name, 200), size, sum, encVersion); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {

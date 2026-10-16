@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/kyc"
 )
 
@@ -277,6 +278,9 @@ func (d Deps) kycDocumentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
+	if !d.kycAuditAccess(w, r, p, doc.MerchantID, "document", doc.ID, isReviewer) {
+		return
+	}
 	serveKycFile(w, r, doc.Name, doc.Mime, f)
 }
 
@@ -297,6 +301,9 @@ func (d Deps) kycEvidenceFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
+	if !d.kycAuditAccess(w, r, p, ev.MerchantID, "evidence", ev.ID, isReviewer) {
+		return
+	}
 	serveKycFile(w, r, ev.Name, ev.Mime, f)
 }
 
@@ -326,7 +333,21 @@ func (d Deps) adminKycLogoFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
+	if !d.kycAuditAccess(w, r, PrincipalFrom(r.Context()), id, "logo", id, true) {
+		return
+	}
 	serveKycFile(w, r, name, mimeType, f)
+}
+
+// kycAuditAccess mencatat pembukaan berkas KYC (audit append-only) sebelum berkas dikirim; gagal mencatat =
+// berkas tidak dikirim. Logo milik pemilik sendiri tidak dicatat (aset merek yang tampil di tiap halaman).
+func (d Deps) kycAuditAccess(w http.ResponseWriter, r *http.Request, p *auth.Principal, merchantID, kind, fileID string, reviewer bool) bool {
+	if err := d.KYC.RecordFileAccess(r.Context(), p.UserID, merchantID, kind, fileID, reviewer, requestIDOf(r)); err != nil {
+		d.Log.Error("kyc.file.audit", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return false
+	}
+	return true
 }
 
 // serveKycFile mengalirkan berkas dari Storage dengan header aman.
