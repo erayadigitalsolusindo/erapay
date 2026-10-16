@@ -63,7 +63,7 @@ sudo systemctl daemon-reload && sudo systemctl enable erapay-api
 ```bash
 ~/update-erapay.sh
 ```
-Alur: `git pull --ff-only` → build (`deploy/build-release.sh`, binary `erapay-api`/`-migrate`/`-bootstrap`/`-webhookverify`) → backup binary lama (5 terakhir) → `erapay-migrate up` → pasang → restart → cek `/readyz` (rollback binary otomatis jika gagal; migrasi tidak di-rollback).
+Alur: `git pull --ff-only` → build (`deploy/build-release.sh`, binary `erapay-api`/`-migrate`/`-bootstrap`/`-webhookverify`/`-kycencrypt`) → backup binary lama (5 terakhir) → `erapay-migrate up` → pasang → restart → cek `/readyz` (rollback binary otomatis jika gagal; migrasi tidak di-rollback).
 
 Pada deploy pertama, jika service belum jalan: `sudo systemctl start erapay-api`.
 
@@ -94,6 +94,23 @@ ERAPAY_BOOTSTRAP_MDR_BPS=... ERAPAY_BOOTSTRAP_PLATFORM_BPS=... \
 ./bin/erapay-bootstrap merchant     # mencetak merchant_id
 ```
 Lalu login di dashboard web, buka menu **API Keys**, buat key (`payment:create` + `payment:read`) dan salin secret-nya (tampil sekali). Key berbentuk `epk_prd_...` hanya bila `ERAPAY_ENV=production`. Pasang di aplikasi klien (ARUS: `ERAPAY_BASE_URL` + `ERAPAY_API_KEY`).
+
+### 6a. Berkas KYC terenkripsi (migrasi berkas lama: sekali)
+Berkas KYC (dokumen, bukti bisnis, logo) disimpan sebagai file di `ERAPAY_KYC_STORAGE_DIR` dan **dienkripsi AES-256-GCM** dengan `ERAPAY_ENCRYPTION_KEY` (migrasi `0034`). Berkas yang diunggah **setelah** deploy ini otomatis terenkripsi. Berkas yang sudah ada sebelumnya masih polos tetapi tetap terbaca, dan dienkripsi dengan perintah berikut. Jalankan **sekali** setelah `~/update-erapay.sh` selesai (API baru sudah hidup):
+
+```bash
+cd /www/wwwroot/erapay-api.erayadigital.co.id
+# 1) backup dulu: folder ERAPAY_KYC_STORAGE_DIR + database
+# 2) hitung berkas yang belum terenkripsi (tidak mengubah apa pun)
+sudo -u www bash -c 'set -a; . ./erapay.env; set +a; ./bin/erapay-kycencrypt -dry-run'
+# 3) enkripsi
+sudo -u www bash -c 'set -a; . ./erapay.env; set +a; ./bin/erapay-kycencrypt'
+```
+- **Jalankan sebagai user `www`, bukan root.** Berkas baru dibuat dengan pemilik penjalannya; jika root, API (user `www`) tidak bisa membacanya.
+- **Idempoten**: berkas yang sudah terenkripsi dilewati; dijalankan lagi hasilnya `terenkripsi=0 gagal=0`. Tidak perlu dijadwalkan.
+- Dijalankan lagi hanya bila ada berkas polos yang masuk saat jeda antara migrasi dan restart API pada deploy itu. Verifikasi: `-dry-run` harus menampilkan `belum terenkripsi: dokumen=0 bukti=0 logo=0`.
+- `gagal > 0` berarti ada berkas yang tidak terbaca (mis. hilang dari disk); pesan per berkas tercetak di stderr. Berkas lain tidak terpengaruh; perbaiki lalu jalankan ulang.
+- **Kunci**: `erapay.env` wajib berisi `ERAPAY_ENCRYPTION_KEY` dan `ERAPAY_KYC_STORAGE_DIR` (path absolut). Kunci hilang/berubah = berkas tidak bisa dibuka, jadi simpan backup kunci **terpisah** dari backup folder KYC dan jangan ganti kunci tanpa enkripsi ulang. Detail keamanan: `docs/prd/security.md` (Berkas KYC).
 
 ## 7. Uji webhook
 ```bash

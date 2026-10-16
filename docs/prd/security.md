@@ -10,7 +10,7 @@ Baca juga: `../PRD.md`, `payout.md`, `webhook-outbound.md`.
 - Disimpan sebagai file di `ERAPAY_KYC_STORAGE_DIR` (bukan BLOB); tabel hanya menyimpan metadata (`storage_key`, nama, MIME, ukuran).
 - **Terenkripsi at rest**: AES-256-GCM (`secretbox`, kunci `ERAPAY_ENCRYPTION_KEY`), AAD = `kyc/<merchant_id>` sehingga berkas yang disalin ke merchant lain tidak bisa dibuka. Kolom `enc_v` (0 = berkas lama polos, 1 = terenkripsi) dan `sha256` (hash isi asli, diverifikasi saat dibuka; tidak cocok = `ErrFileCorrupt`).
 - **Log akses**: setiap pembukaan dokumen/bukti (dan logo oleh reviewer) menulis `kyc.file.accessed` ke audit_logs sebelum berkas dikirim; gagal mencatat = tidak dikirim. Isi berkas tidak pernah masuk log.
-- **Migrasi berkas lama**: `go run ./cmd/kycencrypt -dry-run` (hitung) lalu `go run ./cmd/kycencrypt` (enkripsi; idempoten). Backup folder KYC + database lebih dulu.
+- **Migrasi berkas lama** (sekali, idempoten): `go run ./cmd/kycencrypt -dry-run` (hitung) lalu `go run ./cmd/kycencrypt`. Backup folder KYC + database lebih dulu. Langkah di server (user `www`, bukan root): `docs/DEPLOY-AAPANEL.md` bagian 6a.
 - **Kunci**: simpan backup `ERAPAY_ENCRYPTION_KEY` terpisah dari backup berkas; merotasi kunci butuh enkripsi ulang (belum otomatis).
 - Retensi: kebijakan hapus/arsip setelah masa wajib simpan belum diimplementasikan (lihat `open-questions.md`).
 
