@@ -37,6 +37,14 @@ func (s *Service) profile(ctx context.Context, merchantID string, reveal bool) (
 		return Profile{}, err
 	}
 	b, bErr := re.brandRow(ctx, s.db, merchantID)
+	if errors.Is(bErr, ErrNotFound) && reveal && editableStatus(m.Status) {
+		// Brand ID dibuat sejak pemilik pertama kali membuka tab Merek (read-only), bukan menunggu simpan pertama.
+		if _, err := s.db.Exec(ctx, `INSERT INTO merchant_brands (merchant_id, brand_id) VALUES ($1,$2) ON CONFLICT (merchant_id) DO NOTHING`,
+			merchantID, genID("BRD")); err != nil {
+			return Profile{}, err
+		}
+		b, bErr = re.brandRow(ctx, s.db, merchantID)
+	}
 	var evs []evidenceRow
 	var lks []Link
 	if bErr == nil {

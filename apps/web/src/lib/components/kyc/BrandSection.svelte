@@ -88,7 +88,7 @@
 		<p class="text-[13px] text-[#7A8894]">{t('ky.locked')}</p>
 	{/if}
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-		<TextField id="kyc-brand-id" label={t('ky.br.id')} value={form.brand_id} hint={t('ky.br.idHint')} />
+		<TextField id="kyc-brand-id" label={t('ky.br.id')} value={form.brand_id} hint={t('ky.br.idHint')} readonly />
 		<TextField id="kyc-brand-name" label={t('ky.br.name')} bind:value={form.name} error={errs.name} />
 		<SelectField id="kyc-brand-cat" label={t('ky.br.cat')} options={CATEGORIES} bind:value={form.category} error={errs.category} />
 		<div class="grid grid-cols-2 gap-4 sm:col-span-2">

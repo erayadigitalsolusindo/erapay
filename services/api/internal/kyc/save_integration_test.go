@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -145,4 +146,38 @@ func TestSaveCompanyPerorangan(t *testing.T) {
 	if !p.Documents.Complete {
 		t.Error("perorangan: bagian dokumen harus dianggap lengkap")
 	}
+}
+
+// Brand ID muncul sejak pemilik pertama kali membuka tab Merek (sebelum simpan), stabil setelahnya, dan
+// tidak dibuat oleh tampilan reviewer/terkunci.
+func TestBrandIDAssignedOnFirstOpen(t *testing.T) {
+	svc, mid, setStatus := newSvc(t)
+	ctx := context.Background()
+
+	if p, err := svc.GetProfile(ctx, mid); err != nil || p.Brand.BrandID != "" {
+		t.Fatalf("tampilan biasa/reviewer tidak boleh membuat Brand ID: %v %q", err, p.Brand.BrandID)
+	}
+	p1, err := svc.GetProfileForEdit(ctx, mid)
+	if err != nil || !strings.HasPrefix(p1.Brand.BrandID, "BRD-") {
+		t.Fatalf("brand id saat pertama dibuka: %v %q", err, p1.Brand.BrandID)
+	}
+	p2, _ := svc.GetProfileForEdit(ctx, mid)
+	if p2.Brand.BrandID != p1.Brand.BrandID {
+		t.Fatalf("brand id harus stabil: %q vs %q", p1.Brand.BrandID, p2.Brand.BrandID)
+	}
+	if err := svc.SaveSection(ctx, kyc.SaveSectionInput{MerchantID: mid, Section: "brand",
+		Brand: &kyc.BrandInput{Name: "Toko Uji", Category: "Fashion"}}); err != nil {
+		t.Fatal(err)
+	}
+	if p3, _ := svc.GetProfileForEdit(ctx, mid); p3.Brand.BrandID != p1.Brand.BrandID {
+		t.Fatalf("simpan tidak boleh mengganti brand id: %q", p3.Brand.BrandID)
+	}
+
+	// Akun terkunci tanpa brand: membuka tab tidak membuat baris baru.
+	svc2, mid2, setStatus2 := newSvc(t)
+	setStatus2("approved")
+	if p, _ := svc2.GetProfileForEdit(ctx, mid2); p.Brand.BrandID != "" {
+		t.Fatalf("terkunci tidak boleh membuat brand id: %q", p.Brand.BrandID)
+	}
+	_ = setStatus
 }

@@ -237,7 +237,7 @@ export const idExtra = {
 	'ky.file.upload': 'Klik untuk unggah',
 	'ky.file.uploadingCap': 'Mengunggah…',
 	'ky.br.id': 'Brand ID',
-	'ky.br.idHint': 'dibuat sistem',
+	'ky.br.idHint': 'dibuat sistem, tidak dapat diubah',
 	'ky.br.name': 'Nama merek',
 	'ky.br.cat': 'Kategori',
 	'ky.cat.retail': 'Ritel / Toko',

@@ -779,7 +779,7 @@ export const ja: Record<Key, string> = {
 	'ky.file.upload': 'クリックしてアップロード',
 	'ky.file.uploadingCap': 'アップロード中…',
 	'ky.br.id': 'ブランドID',
-	'ky.br.idHint': 'システムが自動発行',
+	'ky.br.idHint': 'システムが自動発行・変更不可',
 	'ky.br.name': 'ブランド名',
 	'ky.br.cat': 'カテゴリ',
 	'ky.cat.retail': '小売 / 店舗',
