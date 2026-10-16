@@ -563,6 +563,7 @@ export const ja: Record<Key, string> = {
 	'pf.nav.overview': '概要',
 	'pf.nav.tenants': 'テナントとしてログイン',
 	'pf.nav.audit': '監査ログ',
+	'pf.nav.gateways': 'ゲートウェイ',
 	'pf.nav.access': 'アクセス権限 (RBAC)',
 	'pf.guest.title': 'プラットフォーム管理 · DEWA',
 

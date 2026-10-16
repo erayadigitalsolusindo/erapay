@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -272,21 +273,42 @@ type TransferStatusResult struct {
 }
 
 // Registry maps gateway code -> adapter. Only adapters explicitly registered exist.
-type Registry struct{ m map[string]Adapter }
+// Safe for concurrent use: Replace swaps an adapter while requests are in flight.
+type Registry struct {
+	mu sync.RWMutex
+	m  map[string]Adapter
+}
 
 func NewRegistry() *Registry { return &Registry{m: map[string]Adapter{}} }
 
 func (r *Registry) Register(a Adapter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if _, dup := r.m[a.Code()]; dup {
 		panic("gateway: duplicate adapter " + a.Code())
 	}
 	r.m[a.Code()] = a
 }
 
-func (r *Registry) Get(code string) (Adapter, bool) { a, ok := r.m[code]; return a, ok }
+// Replace registers a, or swaps the adapter already registered under the same code (credential
+// rotation without a restart). Callers that already hold the old adapter finish with it.
+func (r *Registry) Replace(a Adapter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.m[a.Code()] = a
+}
+
+func (r *Registry) Get(code string) (Adapter, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	a, ok := r.m[code]
+	return a, ok
+}
 
 // Codes lists the registered gateway codes, sorted.
 func (r *Registry) Codes() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := make([]string, 0, len(r.m))
 	for c := range r.m {
 		out = append(out, c)

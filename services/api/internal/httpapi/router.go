@@ -17,6 +17,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwaccount"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwcred"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/kyc"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/merchant"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/observability"
@@ -48,6 +49,7 @@ type Deps struct {
 	KYC                *kyc.Service        // nil disables /v1/kyc/* and /v1/admin/merchants/{id}/kyc
 	Account            *account.Service    // nil disables email verification and password reset
 	GWAccounts         *gwaccount.Service  // nil disables /v1/platform/merchants/{id}/gateway-accounts
+	GWCreds            *gwcred.Service     // nil (no ERAPAY_ENCRYPTION_KEY) disables /v1/platform/gateway-credentials
 	ARUSProvisionToken string              // server-to-server token for ARUS tenant provisioning
 	PlatformSetupToken string              // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars) enables /v1/platform/setup until the first DEWA exists
 	Webhooks           *webhook.Store      // optional raw capture (ERAPAY_WEBHOOK_CAPTURE); see webhooks.go

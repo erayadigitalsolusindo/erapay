@@ -21,6 +21,7 @@ export const idExtra = {
 	'pf.nav.overview': 'Ringkasan',
 	'pf.nav.tenants': 'Masuk sebagai tenant',
 	'pf.nav.audit': 'Audit log',
+	'pf.nav.gateways': 'Gateway',
 	'pf.nav.access': 'Hak akses (RBAC)',
 	'pf.guest.title': 'Panel Platform · DEWA',
 

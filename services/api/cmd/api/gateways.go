@@ -1,16 +1,67 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
+	"strings"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/doku"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwcred"
 )
 
+// gatewayFactories is where gateway codes meet concrete adapter packages (PRD §0 #11). A new
+// gateway adds its credential schema in gwcred and its factory here.
+func gatewayFactories() map[string]gwcred.Factory {
+	return map[string]gwcred.Factory{doku.Code: dokuFromCreds}
+}
+
+// dokuFromCreds builds the DOKU adapter from credentials saved in the panel. Unlike the env path
+// it insists the base URL matches the environment, so sandbox keys never hit production (or the
+// reverse) by a copy-paste slip.
+func dokuFromCreds(c map[string]string, env string) (gateway.Adapter, error) {
+	key, err := doku.ParsePrivateKey([]byte(c["private_key"]))
+	if err != nil {
+		return nil, err
+	}
+	base := c["base_url"]
+	switch {
+	case env == "production" && base == "":
+		base = doku.ProductionURL
+	case env == "production" && base != doku.ProductionURL:
+		return nil, errors.New("base URL sandbox tidak boleh dipakai di environment production")
+	case env == "sandbox" && base != "" && base != doku.SandboxBaseURL:
+		return nil, errors.New("base URL production tidak boleh dipakai di environment sandbox")
+	}
+	return doku.New(doku.Config{BaseURL: base, ClientID: c["client_id"], ClientSecret: c["secret_key"], PrivateKey: key,
+		TerminalID: c["terminal_id"], PostalCode: c["postal_code"], StatusMapConfirmed: strings.EqualFold(c["status_map_confirmed"], "true")})
+}
+
 // buildRegistry is the ONLY place a concrete gateway package is imported (PRD §0 #11).
-func buildRegistry(cfg config.Config, log *slog.Logger) (*gateway.Registry, error) {
+// Credentials saved in the panel (creds, may be nil) win over DOKU_* env; when none are saved,
+// or they fail to load, the environment is used exactly as before.
+func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (*gateway.Registry, error) {
 	reg := gateway.NewRegistry()
+	env := apikey.EnvFromApp(cfg.Env)
+	if creds != nil {
+		vals, ok, err := creds.Load(context.Background(), doku.Code, env)
+		switch {
+		case err != nil:
+			log.Error("gateway credentials in database unreadable; falling back to env", "gateway", doku.Code)
+		case ok:
+			a, err := dokuFromCreds(vals, env)
+			if err != nil {
+				log.Error("gateway credentials in database rejected; falling back to env", "gateway", doku.Code, "reason", err.Error())
+				break
+			}
+			reg.Register(a)
+			log.Info("gateway registered from database credentials", "gateway", doku.Code, "env", env)
+			return reg, nil
+		}
+	}
 	dc, err := config.LoadDOKU()
 	if err != nil {
 		return nil, err
@@ -37,13 +88,62 @@ func buildRegistry(cfg config.Config, log *slog.Logger) (*gateway.Registry, erro
 	return reg, nil
 }
 
-// disburserOf returns the first registered adapter that can execute payouts. Adding a
-// second gateway means adding its code here (the domain stays gateway-neutral, PRD §0 #11).
-func disburserOf(reg *gateway.Registry) (gateway.Disburser, bool) {
-	if a, ok := reg.Get(doku.Code); ok {
+// registryDisburser lets payouts follow the adapter currently registered, so rotating credentials
+// from the panel also reaches payouts without a restart.
+type registryDisburser struct{ reg *gateway.Registry }
+
+var errNoDisburser = errors.New("gateway: no adapter registered for payouts")
+
+func (r registryDisburser) cur() (gateway.Disburser, error) {
+	if a, ok := r.reg.Get(doku.Code); ok {
 		if d, ok := a.(gateway.Disburser); ok {
-			return d, true
+			return d, nil
 		}
 	}
-	return nil, false
+	return nil, errNoDisburser
+}
+
+func (r registryDisburser) Code() string { return doku.Code }
+
+func (r registryDisburser) InquiryBankAccount(ctx context.Context, q gateway.BankInquiryRequest) (gateway.BankInquiryResult, error) {
+	d, err := r.cur()
+	if err != nil {
+		return gateway.BankInquiryResult{}, err
+	}
+	return d.InquiryBankAccount(ctx, q)
+}
+
+func (r registryDisburser) TransferBank(ctx context.Context, q gateway.TransferRequest) (gateway.TransferResult, error) {
+	d, err := r.cur()
+	if err != nil {
+		return gateway.TransferResult{}, err
+	}
+	return d.TransferBank(ctx, q)
+}
+
+func (r registryDisburser) TransferStatus(ctx context.Context, q gateway.TransferStatusRequest) (gateway.TransferStatusResult, error) {
+	d, err := r.cur()
+	if err != nil {
+		return gateway.TransferStatusResult{}, err
+	}
+	return d.TransferStatus(ctx, q)
+}
+
+func (r registryDisburser) MapTransferStatus(raw string) (gateway.TransferStatus, bool) {
+	d, err := r.cur()
+	if err != nil {
+		return "", false
+	}
+	return d.MapTransferStatus(raw)
+}
+
+// disburserOf returns a payout executor that tracks the registered adapter, or false when the
+// registered one cannot execute payouts. Adding a second gateway means adding its code here
+// (the domain stays gateway-neutral, PRD §0 #11).
+func disburserOf(reg *gateway.Registry) (gateway.Disburser, bool) {
+	d := registryDisburser{reg: reg}
+	if _, err := d.cur(); err != nil {
+		return nil, false
+	}
+	return d, true
 }

@@ -267,6 +267,13 @@ func (d Deps) mountPlatform(r chi.Router) {
 				r.Put("/merchants/{id}/gateway-accounts", d.platformSetGatewayAccount)
 				r.Post("/merchants/{id}/gateway-accounts/test", d.platformTestGatewayAccount)
 			}
+			// Kredensial gateway tingkat platform (terenkripsi di DB, write-only); env DOKU_* tetap fallback.
+			if d.GWCreds != nil {
+				r.Get("/gateway-credentials", d.platformGatewayCreds)
+				r.Put("/gateway-credentials/{gateway}/{env}", d.platformSetGatewayCreds)
+				r.Post("/gateway-credentials/{gateway}/{env}/test", d.platformTestGatewayCreds)
+				r.Post("/gateway-credentials/{gateway}/{env}/apply", d.platformApplyGatewayCreds)
+			}
 			r.Get("/audit-logs", d.platformAudit)
 			r.Get("/stats", d.platformStats)
 			// MFA for the panel (DEWA), using the platform session.

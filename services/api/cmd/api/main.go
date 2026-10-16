@@ -20,6 +20,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwaccount"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwcred"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/kyc"
@@ -125,9 +126,25 @@ func run(log *slog.Logger) error {
 	}
 	rdb := redis.NewClient(ropts)
 
-	reg, err := buildRegistry(cfg, log)
+	var box *secretbox.Box
+	if len(cfg.EncryptionKey) > 0 {
+		box, err = secretbox.New(cfg.EncryptionKey)
+		if err != nil {
+			return err
+		}
+	}
+	// Gateway credentials saved in the panel need the encryption key; without it the server keeps
+	// using DOKU_* from the environment, exactly as before.
+	var credSvc *gwcred.Service
+	if box != nil {
+		credSvc = gwcred.NewService(pool, box, apikey.EnvFromApp(cfg.Env), nil, gatewayFactories())
+	}
+	reg, err := buildRegistry(cfg, log, credSvc)
 	if err != nil {
 		return err
+	}
+	if credSvc != nil {
+		credSvc.SetLive(reg)
 	}
 	paySvc := payment.NewService(pool)
 	flow := payment.NewOrchestrator(paySvc, pool, idempotency.NewStore(pool), reg, apikey.EnvFromApp(cfg.Env), log)
@@ -136,12 +153,7 @@ func run(log *slog.Logger) error {
 
 	var out *outbound.Service
 	var payouts *payout.Service
-	var box *secretbox.Box
-	if len(cfg.EncryptionKey) > 0 {
-		box, err = secretbox.New(cfg.EncryptionKey)
-		if err != nil {
-			return err
-		}
+	if box != nil {
 		out = outbound.NewService(pool, box, log)
 		go out.RunDispatcher(ctx, 5*time.Second)
 
@@ -217,6 +229,7 @@ func run(log *slog.Logger) error {
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
 			KYC:           kycSvc,
 			GWAccounts:    gwaccount.NewService(pool, reg, apikey.EnvFromApp(cfg.Env)),
+			GWCreds:       credSvc,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 			ARUSProvisionToken: cfg.ARUSProvisionToken,
 			PlatformSetupToken: cfg.PlatformSetupToken,

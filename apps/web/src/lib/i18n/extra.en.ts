@@ -22,6 +22,7 @@ export const enExtra: Record<keyof typeof idExtra, string> = {
 	'pf.nav.overview': 'Overview',
 	'pf.nav.tenants': 'Sign in as tenant',
 	'pf.nav.audit': 'Audit log',
+	'pf.nav.gateways': 'Gateways',
 	'pf.nav.access': 'Access rights (RBAC)',
 	'pf.guest.title': 'Platform Panel · DEWA',
 
