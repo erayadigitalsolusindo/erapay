@@ -9,7 +9,7 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/bin"
 cd "$SRC_DIR/services/api"
 export CGO_ENABLED=0
-for cmd in api migrate bootstrap webhookverify; do
+for cmd in api migrate bootstrap webhookverify kycencrypt; do
   echo "==> build $cmd"
   go build -trimpath -ldflags "-s -w" -o "$STAGE/bin/erapay-$cmd" "./cmd/$cmd"
 done
