@@ -44,7 +44,10 @@
 
 	const editable = $derived(profile.editable && !profile.locked);
 	// status rejected = penolakan, tapi merchant boleh memperbaiki & mengajukan ulang (keputusan 15 Okt 2026)
-	const showSubmit = $derived(profile.status === 'draft' || profile.status === 'action_required' || profile.status === 'rejected');
+	// 'submitted' tanpa submitted_at = pendaftar yang belum pernah mengajukan lewat wizard: tetap tampilkan tombol Ajukan.
+	const showSubmit = $derived(
+		profile.status === 'draft' || profile.status === 'action_required' || profile.status === 'rejected' || (profile.status === 'submitted' && !profile.submitted_at)
+	);
 	const allDone = $derived(check.length > 0 && check.every((c) => c.complete));
 	const doneN = $derived(check.filter((c) => c.complete).length);
 	const pct = $derived(check.length ? (doneN / check.length) * 100 : 0);

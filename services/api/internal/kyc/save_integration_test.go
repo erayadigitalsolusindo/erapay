@@ -181,3 +181,38 @@ func TestBrandIDAssignedOnFirstOpen(t *testing.T) {
 	}
 	_ = setStatus
 }
+
+// Pendaftar yang sudah berstatus submitted sejak daftar tapi belum pernah mengajukan lewat wizard harus bisa
+// melanjutkan ke pengajuan (kesalahan = data belum lengkap, bukan status terkunci); setelah benar-benar
+// diajukan, pengajuan kedua ditolak.
+func TestSubmitFromSignupSubmittedUntilTrulySubmitted(t *testing.T) {
+	db := testdb.New(t)
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	box, err := secretbox.New(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := kyc.NewService(db, kyc.Config{Box: box, Storage: &kyc.LocalFS{Dir: t.TempDir()}})
+	mid, _ := testdb.SeedMerchant(t, db, "Toko Uji")
+	ctx := context.Background()
+	if _, err := db.Exec(ctx, `UPDATE merchants SET onboarding_status='submitted' WHERE id::text=$1`, mid); err != nil {
+		t.Fatal(err)
+	}
+	// Menyimpan bagian membuat baris kyc_submissions (belum diajukan).
+	if err := svc.SaveSection(ctx, kyc.SaveSectionInput{MerchantID: mid, Section: "company", Company: companyIn()}); err != nil {
+		t.Fatal(err)
+	}
+	var inc *kyc.IncompleteError
+	if err := svc.Submit(ctx, kyc.SubmitInput{MerchantID: mid}); !errors.As(err, &inc) {
+		t.Fatalf("submitted tanpa pengajuan harus lanjut ke cek kelengkapan, bukan terkunci: %v", err)
+	}
+	if _, err := db.Exec(ctx, `UPDATE kyc_submissions SET submitted_at=now() WHERE merchant_id::text=$1`, mid); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Submit(ctx, kyc.SubmitInput{MerchantID: mid}); !errors.Is(err, kyc.ErrInvalidSt) {
+		t.Fatalf("sudah diajukan: want ErrInvalidSt, got %v", err)
+	}
+}

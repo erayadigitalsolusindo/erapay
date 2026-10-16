@@ -252,11 +252,22 @@ func (s *Service) Submit(ctx context.Context, in SubmitInput) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	// REJECTED diizinkan ajukan ulang; transisi kembali ke submitted lalu antre review lagi.
-	if err := s.lockIn(ctx, tx, in.MerchantID, []string{"draft", "action_required", "rejected"}); err != nil {
+	// "submitted" ikut diizinkan HANYA bila pemilik belum pernah mengajukan lewat wizard: pendaftar yang mengisi
+	// identitas saat daftar langsung berstatus submitted tanpa peninjauan, dan harus bisa melengkapi + mengajukan.
+	if err := s.lockIn(ctx, tx, in.MerchantID, []string{"draft", "action_required", "rejected", "submitted"}); err != nil {
 		return err
 	}
 	if err := s.repo.ensureSubmission(ctx, tx, in.MerchantID); err != nil {
 		return err
+	}
+	var curStatus string
+	var alreadySubmitted bool
+	if err := tx.QueryRow(ctx, `SELECT m.onboarding_status, COALESCE(k.submitted_at IS NOT NULL, false)
+		FROM merchants m LEFT JOIN kyc_submissions k ON k.merchant_id = m.id WHERE m.id::text = $1`, in.MerchantID).Scan(&curStatus, &alreadySubmitted); err != nil {
+		return err
+	}
+	if curStatus == "submitted" && alreadySubmitted {
+		return ErrInvalidSt
 	}
 	m, err := s.repo.merchantRow(ctx, in.MerchantID)
 	if err != nil {
