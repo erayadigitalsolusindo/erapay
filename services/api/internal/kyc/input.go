@@ -35,6 +35,13 @@ type BrandInput struct {
 	// DeleteEvidenceIDs / AddEvidence ditangani endpoint tersendiri (multipart).
 }
 
+// DocumentsInput: nomor pendamping dokumen legal. Kosong = tidak berubah (NPWP tampil ter-mask di UI).
+type DocumentsInput struct {
+	NPWPNumber string `json:"npwp_number"`
+	NIBNumber  string `json:"nib_number"`
+	KBLI       string `json:"kbli"`
+}
+
 type SaveSectionInput struct {
 	MerchantID string
 	ActorID    string
@@ -47,4 +54,5 @@ type SaveSectionInput struct {
 	Company        *CompanyInput
 	Representative *RepresentativeInput
 	Brand          *BrandInput
+	Documents      *DocumentsInput // hanya nomor; berkas lewat endpoint unggah
 }

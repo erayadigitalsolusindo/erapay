@@ -123,6 +123,11 @@ export type DocKind = 'ktp' | 'npwp_badan' | 'akta' | 'sk_kemenkumham' | 'nib' |
 export type Document = KycFile & { id: string };
 export type Documents = {
 	[P in DocKind]: Document | null;
+} & {
+	/** NPWP badan ter-mask ("••••1234"); NIB & KBLI apa adanya. */
+	npwp_number?: string;
+	nib_number?: string;
+	kbli?: string;
 };
 
 export type Note = { id: string; section: string; field?: string; note: string; resolved: boolean };

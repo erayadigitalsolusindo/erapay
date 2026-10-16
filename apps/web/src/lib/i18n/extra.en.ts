@@ -180,6 +180,8 @@ export const enExtra: Record<keyof typeof idExtra, string> = {
 	'kw.hide': 'Hide data',
 	'kw.prev': '← Previous',
 	'kw.next': 'Next →',
+	'ky.doc.saveNumbers': 'Save document numbers',
+	'ky.doc.saving': 'Saving…',
 	'kw.sending': 'Submitting…',
 	'kw.submit': 'Submit for Verification',
 	'kw.lockedApproved': 'Data is verified and locked. Contact an admin if changes are needed.',

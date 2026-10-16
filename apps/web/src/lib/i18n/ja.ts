@@ -721,6 +721,8 @@ export const ja: Record<Key, string> = {
 	'kw.hide': 'データを隠す',
 	'kw.prev': '← 前へ',
 	'kw.next': '次へ →',
+	'ky.doc.saveNumbers': '書類番号を保存',
+	'ky.doc.saving': '保存中…',
 	'kw.sending': '送信中…',
 	'kw.submit': '確認のために送信',
 	'kw.lockedApproved': 'データは認証済みでロックされています。変更が必要な場合は管理者にお問い合わせください。',

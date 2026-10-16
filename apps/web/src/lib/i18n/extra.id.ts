@@ -179,6 +179,8 @@ export const idExtra = {
 	'kw.hide': 'Samarkan data',
 	'kw.prev': '← Sebelumnya',
 	'kw.next': 'Selanjutnya →',
+	'ky.doc.saveNumbers': 'Simpan nomor dokumen',
+	'ky.doc.saving': 'Menyimpan…',
 	'kw.sending': 'Mengirim…',
 	'kw.submit': 'Kirim untuk Verifikasi',
 	'kw.lockedApproved': 'Data terverifikasi dan terkunci. Hubungi admin bila perlu perubahan.',

@@ -53,8 +53,8 @@ func (s *Service) ensureEditable(ctx context.Context, merchantID string) error {
 
 // SaveSection menyimpan draft per bagian (partial save) dengan aturan edit per status.
 func (s *Service) SaveSection(ctx context.Context, in SaveSectionInput) error {
-	if !ValidSection(in.Section) || in.Section == "documents" {
-		return invalid("gunakan endpoint unggah dokumen untuk bagian ini")
+	if !ValidSection(in.Section) {
+		return invalid("bagian tidak dikenal")
 	}
 	if s.cfg.Box == nil {
 		return errors.New("kyc: ERAPAY_ENCRYPTION_KEY is not configured")
@@ -118,6 +118,13 @@ func (s *Service) SaveSection(ctx context.Context, in SaveSectionInput) error {
 			return ErrLocked
 		}
 		if err := s.saveBrand(ctx, tx, in); err != nil {
+			return err
+		}
+	case "documents":
+		if in.Documents == nil {
+			return fieldErr(map[string]string{"documents": "Isian dokumen wajib diisi"})
+		}
+		if err := s.saveDocumentNumbers(ctx, tx, in); err != nil {
 			return err
 		}
 	}
@@ -195,6 +202,51 @@ func (s *Service) saveRepresentative(ctx context.Context, tx pgx.Tx, in SaveSect
 		owner_email=$5, owner_nationality=$6, updated_at=now(), version=version+1 WHERE id=$1`,
 		in.MerchantID, r.Name, r.Position, r.Phone, r.Email, r.Nationality)
 	return nil, err
+}
+
+// saveDocumentNumbers menyimpan nomor NPWP badan (disegel), NIB, dan KBLI tanpa berkas.
+// Field kosong dibiarkan; NIB dan KBLI divalidasi sebagai pasangan seperti saat unggah.
+func (s *Service) saveDocumentNumbers(ctx context.Context, tx pgx.Tx, in SaveSectionInput) error {
+	d := in.Documents
+	f := map[string]string{}
+	npwp := digitsOnly(d.NPWPNumber)
+	nib := digitsOnly(d.NIBNumber)
+	kbli := digitsOnly(d.KBLI)
+	if npwp != "" && !npwpRe.MatchString(npwp) {
+		f["npwp_number"] = "Nomor NPWP harus 15 atau 16 digit"
+	}
+	if nib != "" && !nibRe.MatchString(nib) {
+		f["nib_number"] = "Nomor NIB harus 13 digit"
+	}
+	if kbli != "" && !kbliRe.MatchString(kbli) {
+		f["kbli"] = "KBLI harus 5 digit"
+	}
+	if len(f) > 0 {
+		return fieldErr(f)
+	}
+	if npwp != "" {
+		enc, last4, err := s.seal(npwp, in.MerchantID)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE merchants SET business_npwp_enc=$2, business_npwp_last4=$3,
+			updated_at=now(), version=version+1 WHERE id=$1`, in.MerchantID, enc, last4); err != nil {
+			return err
+		}
+	}
+	if nib != "" {
+		if _, err := tx.Exec(ctx, `UPDATE merchants SET business_nib=$2, updated_at=now(), version=version+1
+			WHERE id=$1`, in.MerchantID, nib); err != nil {
+			return err
+		}
+	}
+	if kbli != "" {
+		if _, err := tx.Exec(ctx, `UPDATE merchants SET business_kbli=$2, updated_at=now(), version=version+1
+			WHERE id=$1`, in.MerchantID, kbli); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // saveBrand menulis bagian Merek (membuat baris + Brand ID saat pertama kali) dan menulis ulang link.

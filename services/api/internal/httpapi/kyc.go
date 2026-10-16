@@ -103,6 +103,7 @@ func (d Deps) kycSaveSection(w http.ResponseWriter, r *http.Request) {
 		Company          *kyc.CompanyInput        `json:"company,omitempty"`
 		Representative   *kyc.RepresentativeInput `json:"representative,omitempty"`
 		Brand            *kyc.BrandInput          `json:"brand,omitempty"`
+		Documents        *kyc.DocumentsInput      `json:"documents,omitempty"`
 	}
 	if _, ok := decodeStrict(w, r, 16<<10, &body); !ok {
 		return
@@ -111,7 +112,7 @@ func (d Deps) kycSaveSection(w http.ResponseWriter, r *http.Request) {
 	err := d.KYC.SaveSection(r.Context(), kyc.SaveSectionInput{
 		MerchantID: p.MerchantID, ActorID: p.UserID, RequestID: middleware.GetReqID(r.Context()),
 		ConfirmSensitive: body.ConfirmSensitive, Section: section,
-		Company: body.Company, Representative: body.Representative, Brand: body.Brand,
+		Company: body.Company, Representative: body.Representative, Brand: body.Brand, Documents: body.Documents,
 	})
 	if !d.kycErr(w, r, err) {
 		return
