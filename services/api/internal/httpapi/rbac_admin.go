@@ -242,3 +242,37 @@ func (d Deps) adminSetMenuPermissions(w http.ResponseWriter, r *http.Request) {
 var _ = auth.RBACRole{}
 var _ = json.NewEncoder
 var _ = chi.URLParam
+
+// adminDeleteUser menghapus user + seluruh relasinya (sesi, peran, token, jejak FK nullable di-NULL-kan).
+func (d Deps) adminDeleteUser(w http.ResponseWriter, r *http.Request) {
+	userID, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	p := PrincipalFrom(r.Context())
+	touched, err := d.Auth.DeleteUser(r.Context(), userID, p.UserID, middleware.GetReqID(r.Context()))
+	switch {
+	case errors.Is(err, auth.ErrUserNotFound):
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "not found", false)
+	case errors.Is(err, auth.ErrUserProtected):
+		writeError(w, r, http.StatusConflict, "USER_PROTECTED", "Tidak bisa menghapus diri sendiri atau pemegang akses DEWA terakhir.", false)
+	case errors.Is(err, auth.ErrUserHasFinancial):
+		writeError(w, r, http.StatusConflict, "USER_HAS_FINANCIAL_RECORDS", "User punya jejak keuangan/kepemilikan tenant (payout, refund, plan, settlement) dan tidak boleh dihapus. Nonaktifkan saja.", false)
+	case err != nil:
+		d.Log.Error("rbac.users.delete", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "relations": touched})
+	}
+}
+
+// platformStats: ringkasan angka dashboard DEWA.
+func (d Deps) platformStats(w http.ResponseWriter, r *http.Request) {
+	st, err := d.Auth.PlatformStats(r.Context())
+	if err != nil {
+		d.Log.Error("platform.stats", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}

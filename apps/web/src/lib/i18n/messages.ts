@@ -2,6 +2,7 @@
 import { idExtra } from './extra.id';
 import { enExtra } from './extra.en';
 import { ja } from './ja';
+import { pfId, pfEn } from './platform';
 
 export const LANGS = ['id', 'en', 'ja'] as const;
 export type Lang = (typeof LANGS)[number];
@@ -547,7 +548,7 @@ const idBase = {
 	'ov.day': '{date}: {n} transaksi, {amount}'
 };
 
-const id = { ...idBase, ...idExtra };
+const id = { ...idBase, ...idExtra, ...pfId };
 
 const enBase: Record<keyof typeof idBase, string> = {
 	'nav.workspace': 'Workspace',
@@ -1091,7 +1092,7 @@ const enBase: Record<keyof typeof idBase, string> = {
 	'ov.day': '{date}: {n} transactions, {amount}'
 };
 
-const en: Record<keyof typeof id, string> = { ...enBase, ...enExtra };
+const en: Record<keyof typeof id, string> = { ...enBase, ...enExtra, ...pfEn };
 
 export type Key = keyof typeof id;
 export const messages: Record<Lang, Record<Key, string>> = { id, en, ja };

@@ -174,3 +174,64 @@ func TestPlatformPortalAndSeparation(t *testing.T) {
 		t.Fatal("non-dewa got a platform cookie")
 	}
 }
+
+func TestPlatformUserDeleteAndStats(t *testing.T) {
+	w := newPlatformWorld(t)
+	createDewa(t, w, "dewa@erapay.test")
+	lr := w.do(t, &http.Client{}, "POST", "/v1/platform/auth/login", `{"email":"dewa@erapay.test","password":"`+itPW+`"}`, nil)
+	if lr.StatusCode != 200 {
+		t.Fatalf("dewa login: %d", lr.StatusCode)
+	}
+	hdr := map[string]string{"Cookie": platformCookie + "=" + readCookie(lr, platformCookie)}
+
+	// Statistik dashboard: hanya DEWA, dan angkanya terisi.
+	if r := w.do(t, &http.Client{}, "GET", "/v1/platform/stats", "", nil); r.StatusCode != 401 {
+		t.Fatalf("stats without cookie: %d", r.StatusCode)
+	}
+	st := decode(t, w.do(t, &http.Client{}, "GET", "/v1/platform/stats", "", hdr))
+	if users, _ := st["users"].(map[string]any); users == nil || users["total"].(float64) < 1 {
+		t.Fatalf("stats users: %v", st["users"])
+	}
+	if series, _ := st["audit"].(map[string]any)["series_24h"].([]any); len(series) != 24 {
+		t.Fatalf("audit series: %v", st["audit"])
+	}
+
+	svc := auth.NewService(w.db, auth.DefaultConfig())
+	victim, err := svc.CreateUser(t.Context(), "victim@erapay.test", itPW)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idOf := func(email string) string {
+		list, _ := decode(t, w.do(t, &http.Client{}, "GET", "/v1/platform/admin/users", "", hdr))["data"].([]any)
+		for _, u := range list {
+			if m := u.(map[string]any); m["email"] == email {
+				return m["id"].(string)
+			}
+		}
+		return ""
+	}
+	self := idOf("dewa@erapay.test")
+	if self == "" || idOf("victim@erapay.test") != victim {
+		t.Fatal("users list missing rows")
+	}
+
+	if r := w.do(t, &http.Client{}, "DELETE", "/v1/platform/admin/users/"+victim, "", nil); r.StatusCode != 401 {
+		t.Fatalf("delete without cookie: %d", r.StatusCode)
+	}
+	if r := w.do(t, &http.Client{}, "DELETE", "/v1/platform/admin/users/not-a-uuid", "", hdr); r.StatusCode != 404 {
+		t.Fatalf("delete bad id: %d", r.StatusCode)
+	}
+	// Tidak boleh menghapus diri sendiri (juga pemegang DEWA terakhir).
+	if r := w.do(t, &http.Client{}, "DELETE", "/v1/platform/admin/users/"+self, "", hdr); r.StatusCode != 409 || errCode(t, r) != "USER_PROTECTED" {
+		t.Fatalf("self delete: %d", r.StatusCode)
+	}
+	if r := w.do(t, &http.Client{}, "DELETE", "/v1/platform/admin/users/"+victim, "", hdr); r.StatusCode != 200 {
+		t.Fatalf("delete victim: %d", r.StatusCode)
+	}
+	if idOf("victim@erapay.test") != "" {
+		t.Fatal("victim still listed")
+	}
+	if r := w.do(t, &http.Client{}, "DELETE", "/v1/platform/admin/users/"+victim, "", hdr); r.StatusCode != 404 {
+		t.Fatalf("delete twice: %d", r.StatusCode)
+	}
+}

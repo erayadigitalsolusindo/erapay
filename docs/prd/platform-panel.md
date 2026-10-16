@@ -62,5 +62,7 @@ jalur panel.
 - Dibatasi: `/v1/auth/mfa/*` (akun DEWA sendiri) tertutup saat impersonasi; sesi ini tidak bisa membuka panel
   maupun rute `/v1/admin/*` lintas-tenant. Satu impersonasi aktif per DEWA.
 - Panel: `/platform/tenants` (pilih merchant + alasan), `/platform/audit` (baca `GET /v1/platform/audit-logs`).
+- Konsol `/platform`: angka agregat dari `GET /v1/platform/stats` (user, MFA, sesi, login gagal, pembayaran 24 jam, webhook, tenant per status, aktivitas audit). Tanpa data pribadi.
+- Hapus user: `DELETE /v1/platform/admin/users/{id}` (rbac:manage) — satu transaksi: baris relasi `NOT NULL` (sesi, peran, token, keanggotaan) dihapus, FK nullable (`created_by` dst.) di-NULL-kan, audit tetap. Ditolak 409 untuk diri sendiri, pemegang rbac:manage terakhir, dan user dengan jejak keuangan append-only (payouts, refunds, pricing_plans, settlement_batches, merchant_external_links).
   Dashboard menampilkan banner merah "MODE DEWA" + tombol keluar yang mengembalikan ke panel.
 - Belum: tenant belum bisa melihat sendiri catatan akses DEWA (transparansi); daftar ini hanya di panel DEWA.

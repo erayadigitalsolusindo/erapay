@@ -28,6 +28,10 @@ type RBACUser struct {
 	PlatformRoles []string `json:"platform_roles"`
 	MerchantID    string   `json:"merchant_id,omitempty"`
 	MerchantRole  string   `json:"merchant_role,omitempty"`
+	MFAEnabled    bool     `json:"mfa_enabled"`
+	CreatedAt     string   `json:"created_at"`
+	LastLoginAt   string   `json:"last_login_at,omitempty"`
+	ActiveSession int      `json:"active_sessions"`
 }
 
 type MenuItem struct {
@@ -284,6 +288,9 @@ func (s *Service) SetUserRoles(ctx context.Context, userID, merchantID string, r
 func (s *Service) ListUsers(ctx context.Context, q string) ([]RBACUser, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT u.id::text, u.email, u.status,
+			u.mfa_enabled, to_char(u.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+			COALESCE((SELECT to_char(max(s.created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM sessions s WHERE s.user_id = u.id), ''),
+			(SELECT count(*) FROM sessions s WHERE s.user_id = u.id AND s.revoked_at IS NULL AND s.expires_at > now())::int,
 			COALESCE((SELECT string_agg(r.code, ',' ORDER BY r.code) FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = u.id), '') AS platform_roles,
 			COALESCE((SELECT mu.merchant_id::text FROM merchant_users mu WHERE mu.user_id = u.id ORDER BY mu.merchant_id LIMIT 1), '') AS merchant_id,
 			COALESCE((SELECT r.code FROM merchant_users mu JOIN roles r ON r.id = mu.role_id WHERE mu.user_id = u.id ORDER BY mu.merchant_id LIMIT 1), '') AS merchant_role
@@ -299,7 +306,7 @@ func (s *Service) ListUsers(ctx context.Context, q string) ([]RBACUser, error) {
 		var u RBACUser
 		var platform string
 		var merchantID, merchantRole string
-		if err := rows.Scan(&u.ID, &u.Email, &u.Status, &platform, &merchantID, &merchantRole); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.Status, &u.MFAEnabled, &u.CreatedAt, &u.LastLoginAt, &u.ActiveSession, &platform, &merchantID, &merchantRole); err != nil {
 			return nil, err
 		}
 		if platform != "" {

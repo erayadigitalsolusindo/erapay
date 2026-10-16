@@ -262,6 +262,7 @@ func (d Deps) mountPlatform(r chi.Router) {
 			r.Post("/merchants/{id}/verify-email", d.adminVerifyMerchantEmail)
 			r.Post("/merchants/{id}/owner-password", d.platformSetOwnerPassword)
 			r.Get("/audit-logs", d.platformAudit)
+			r.Get("/stats", d.platformStats)
 			// MFA for the panel (DEWA), using the platform session.
 			r.Get("/auth/mfa/status", d.mfaStatus)
 			r.Post("/auth/mfa/enroll", d.mfaEnroll)
@@ -280,6 +281,7 @@ func (d Deps) mountPlatform(r chi.Router) {
 				r.With(requirePerm("rbac:manage")).Delete("/role-permissions", d.adminRevokeRolePermission)
 				r.With(requirePerm("rbac:manage")).Put("/users/{id}/roles", d.adminSetUserRole)
 				r.With(requirePerm("rbac:manage")).Get("/users", d.adminListRBACUsers)
+				r.With(requirePerm("rbac:manage")).Delete("/users/{id}", d.adminDeleteUser)
 				r.With(requirePerm("rbac:manage")).Get("/menu-permissions", d.adminListMenuItems)
 				r.With(requirePerm("rbac:manage")).Put("/menu-permissions", d.adminSetMenuPermissions)
 			})

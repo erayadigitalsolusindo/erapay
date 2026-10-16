@@ -5,13 +5,16 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 	const token = guardPlatform(locals, cookies);
-	const menu = await platformApi<any>(fetch, token, 'GET', '/admin/menu-permissions');
-	const roles = await platformApi<{ data: any[] }>(fetch, token, 'GET', '/admin/roles');
-	const permissions = await platformApi<{ data: any[] }>(fetch, token, 'GET', '/admin/permissions');
-	const rolePermissions = await platformApi<{ data: any[] }>(fetch, token, 'GET', '/admin/role-permissions');
-	const users = await platformApi<{ data: any[] }>(fetch, token, 'GET', '/admin/users');
+	const [menu, roles, permissions, rolePermissions, users] = await Promise.all([
+		platformApi<any>(fetch, token, 'GET', '/admin/menu-permissions'),
+		platformApi<{ data: any[] }>(fetch, token, 'GET', '/admin/roles'),
+		platformApi<{ data: any[] }>(fetch, token, 'GET', '/admin/permissions'),
+		platformApi<{ data: any[] }>(fetch, token, 'GET', '/admin/role-permissions'),
+		platformApi<{ data: any[] }>(fetch, token, 'GET', '/admin/users')
+	]);
 	return {
-		error: menu.ok && roles.ok && permissions.ok ? null : 'Gagal memuat data hak akses.',
+		me: locals.platformUser?.id ?? '',
+		error: menu.ok && roles.ok && permissions.ok && users.ok ? null : 'Gagal memuat data hak akses.',
 		menu: (menu.ok ? menu.value : null) ?? { data: [], roles: [], access: [] },
 		roles: roles.ok ? roles.value.data ?? [] : [],
 		permissions: permissions.ok ? permissions.value.data ?? [] : [],
@@ -47,18 +50,19 @@ export const actions: Actions = {
 	togglePerm: async ({ request, cookies, locals, fetch }) => {
 		const token = guardPlatform(locals, cookies);
 		const f = await request.formData();
-		const body = { role_id: str(f, 'role_id'), permission_code: str(f, 'permission_code') };
-		return done(await platformApi<void>(fetch, token, str(f, 'allowed') === 'true' ? 'POST' : 'DELETE', '/admin/role-permissions', body));
+		// Satu form untuk seluruh matriks: tiap sel mengirim "role_id|permission_code|allowed".
+		const [role_id, permission_code, allowed] = str(f, 'cell').split('|');
+		if (!role_id || !permission_code) return fail(400, { message: 'Sel tidak valid.' });
+		return done(await platformApi<void>(fetch, token, allowed === 'true' ? 'POST' : 'DELETE', '/admin/role-permissions', { role_id, permission_code }));
 	},
 	// --- Matriks menu ---
 	toggleMenu: async ({ request, cookies, locals, fetch }) => {
 		const token = guardPlatform(locals, cookies);
 		const f = await request.formData();
-		return done(
-			await platformApi<void>(fetch, token, 'PUT', '/admin/menu-permissions', {
-				items: [{ menu_id: str(f, 'menu_id'), role_id: str(f, 'role_id'), allowed: str(f, 'allowed') === 'true' }]
-			})
-		);
+		// Satu form untuk seluruh matriks: tiap sel mengirim "menu_id|role_id|allowed".
+		const [menu_id, role_id, allowed] = str(f, 'cell').split('|');
+		if (!menu_id || !role_id) return fail(400, { message: 'Sel tidak valid.' });
+		return done(await platformApi<void>(fetch, token, 'PUT', '/admin/menu-permissions', { items: [{ menu_id, role_id, allowed: allowed === 'true' }] }));
 	},
 
 	// --- Assign user ---
@@ -73,5 +77,14 @@ export const actions: Actions = {
 				role_ids: [role]
 			})
 		);
+	},
+
+	// --- Hapus user + seluruh relasinya (transaksi di Go; ditolak bila punya jejak keuangan) ---
+	deleteUser: async ({ request, cookies, locals, fetch }) => {
+		const token = guardPlatform(locals, cookies);
+		const f = await request.formData();
+		const id = str(f, 'id');
+		if (!id) return fail(400, { message: 'User tidak valid.' });
+		return done(await platformApi<any>(fetch, token, 'DELETE', `/admin/users/${encodeURIComponent(id)}`, {}), { deleted: true });
 	}
 };
