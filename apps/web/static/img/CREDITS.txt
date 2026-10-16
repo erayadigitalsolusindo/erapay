@@ -1,0 +1,2 @@
+qris-pasar.webp — Ilustrasi dari pemilik proyek.
+emoji/*.png  — Fluent Emoji (Microsoft), MIT License; lihat emoji/LICENSE.txt.

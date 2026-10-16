@@ -38,21 +38,24 @@
 /* Reset ala preflight, dibatasi ke area auth. Di @layer base supaya utilitas tetap menang. */
 @layer base {
 	.auth, .auth *, .auth ::before, .auth ::after,
-	.adm, .adm *, .adm ::before, .adm ::after {
+	.adm, .adm *, .adm ::before, .adm ::after,
+	.lp, .lp *, .lp ::before, .lp ::after {
 		box-sizing: border-box;
 		margin: 0;
 		padding: 0;
 		border: 0 solid;
 	}
-	.auth, .adm { line-height: 1.5; -webkit-text-size-adjust: 100%; }
-	.auth h1, .auth h2, .auth h3, .adm h1, .adm h2, .adm h3 { font-size: inherit; font-weight: inherit; }
-	.auth a, .adm a { color: inherit; text-decoration: inherit; }
-	.auth button, .auth input, .adm button, .adm input, .adm select, .adm textarea { font: inherit; color: inherit; background: transparent; letter-spacing: inherit; }
-	.auth button, .adm button { cursor: pointer; }
+	.auth, .adm, .lp { line-height: 1.5; -webkit-text-size-adjust: 100%; }
+	.auth h1, .auth h2, .auth h3, .adm h1, .adm h2, .adm h3, .lp h1, .lp h2, .lp h3 { font-size: inherit; font-weight: inherit; }
+	.auth a, .adm a, .lp a { color: inherit; text-decoration: inherit; }
+	.auth button, .auth input, .adm button, .adm input, .adm select, .adm textarea, .lp button, .lp input { font: inherit; color: inherit; background: transparent; letter-spacing: inherit; }
+	.auth button, .adm button, .lp button { cursor: pointer; }
 	.auth button:disabled, .adm button:disabled { cursor: default; }
-	.auth svg, .adm svg { display: block; vertical-align: middle; }
+	.auth svg, .adm svg, .lp svg { display: block; vertical-align: middle; }
 	.auth input::placeholder, .adm input::placeholder { color: inherit; opacity: 1; }
-	.auth :focus-visible, .adm :focus-visible { outline: 3px solid var(--color-emas); outline-offset: 2px; }
+	.auth :focus-visible, .adm :focus-visible, .lp :focus-visible { outline: 3px solid var(--color-emas); outline-offset: 2px; }
+	.lp ul, .lp ol { list-style: none; }
+	.lp { scroll-behavior: smooth; }
 }
 
 .garis-emas {
@@ -193,8 +196,10 @@
 	animation: kilau 3.5s ease-in-out infinite;
 }
 
+@keyframes marquee { to { transform: translateX(-50%); } }
+
 @media (prefers-reduced-motion: reduce) {
-	.auth *, .auth ::before, .auth ::after, .adm *, .adm ::before, .adm ::after {
+	.auth *, .auth ::before, .auth ::after, .adm *, .adm ::before, .adm ::after, .lp *, .lp ::before, .lp ::after {
 		animation-duration: 0.001ms !important;
 		animation-iteration-count: 1 !important;
 	}
