@@ -16,7 +16,7 @@ import (
 //     izin = role merchant_owner. Aktor di semua audit tetap user DEWA yang sebenarnya.
 //   - Setiap request pada sesi ini ditulis ke audit_logs (impersonation.request) SEBELUM
 //     handler jalan; untuk method yang mengubah data, gagal menulis audit = request ditolak.
-//   - Endpoint akun DEWA sendiri (MFA) tertutup selama impersonasi.
+//   - Endpoint akun DEWA sendiri (MFA, profil, kata sandi) tertutup selama impersonasi.
 
 // readOnlyQuiet are polled by the dashboard shell on every navigation; logging them
 // would bury the real activity.
@@ -26,7 +26,7 @@ var impersonationQuiet = map[string]bool{"/v1/auth/me": true, "/v1/menus": true}
 // response when the request must not proceed.
 func (d Deps) guardImpersonation(w http.ResponseWriter, r *http.Request, p *auth.Principal) bool {
 	path := r.URL.Path
-	if strings.HasPrefix(path, "/v1/auth/mfa/") {
+	if strings.HasPrefix(path, "/v1/auth/mfa/") || strings.HasPrefix(path, "/v1/profile") {
 		writeError(w, r, http.StatusForbidden, "FORBIDDEN", "not available while impersonating", false)
 		return false
 	}

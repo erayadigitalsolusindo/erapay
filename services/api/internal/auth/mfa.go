@@ -185,17 +185,7 @@ func (s *Service) EnrollMFA(ctx context.Context, userID, email string) (*MFAEnro
 		return nil, ErrMFAAlreadyEnrolled
 	}
 
-	// Check for pending enrollment
-	var pendingExists bool
-	err = s.db.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM mfa_pending_enrollment WHERE user_id = $1 AND expires_at > now())`,
-		userID).Scan(&pendingExists)
-	if err != nil {
-		return nil, err
-	}
-	if pendingExists {
-		return nil, ErrMFAEnrollmentPending
-	}
+	// Pendaftaran yang tertunda ditimpa (ON CONFLICT di bawah): memuat ulang halaman tidak boleh membuat pengguna buntu.
 
 	secret, secretRaw, err := generateTOTPSecret(email)
 	if err != nil {

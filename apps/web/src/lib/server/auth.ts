@@ -8,6 +8,7 @@ export const SESSION_COOKIE = 'erapay_session';
 export type Me = {
 	id: string;
 	email: string;
+	fullName: string;
 	merchantId: string;
 	emailVerified: boolean;
 	permissions: string[];
@@ -158,6 +159,7 @@ export async function fetchMe(f: typeof fetch, token: string): Promise<Me | null
 		return {
 			id: b.user_id,
 			email: b.email,
+			fullName: b.full_name ?? '',
 			merchantId: b.merchant_id,
 			emailVerified: b.email_verified === true,
 			permissions: b.permissions,

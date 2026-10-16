@@ -266,15 +266,11 @@ func (d Deps) mfaStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// mfaEnroll starts MFA enrollment for the authenticated platform admin.
+// mfaEnroll starts MFA enrollment for the authenticated user (platform admin or merchant user).
 func (d Deps) mfaEnroll(w http.ResponseWriter, r *http.Request) {
 	p := PrincipalFrom(r.Context())
-	if p == nil || p.MerchantID != "" {
-		writeError(w, r, http.StatusForbidden, "FORBIDDEN", "platform admin session required", false)
-		return
-	}
-	if !p.AdminMFARequired() {
-		writeError(w, r, http.StatusForbidden, "FORBIDDEN", "MFA enrollment not required for this role", false)
+	if p == nil || p.UserID == "" {
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required", false)
 		return
 	}
 	enrollment, err := d.Auth.EnrollMFA(r.Context(), p.UserID, p.Email)
@@ -338,6 +334,9 @@ func (d Deps) mfaDisable(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required", false)
 		return
 	}
+	if !d.mfaStepUp(w, r, p) {
+		return
+	}
 	err := d.Auth.DisableMFA(r.Context(), p.UserID, p.UserID, middleware.GetReqID(r.Context()))
 	if err != nil {
 		d.Log.Error("mfa.disable", "err", err)
@@ -352,6 +351,9 @@ func (d Deps) mfaRegenerateRecoveryCodes(w http.ResponseWriter, r *http.Request)
 	p := PrincipalFrom(r.Context())
 	if p == nil {
 		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required", false)
+		return
+	}
+	if !d.mfaStepUp(w, r, p) {
 		return
 	}
 	codes, err := d.Auth.RegenerateRecoveryCodes(r.Context(), p.UserID, middleware.GetReqID(r.Context()))
@@ -372,7 +374,7 @@ func meResponse(p *auth.Principal) map[string]any {
 	for c := range p.Permissions {
 		perms = append(perms, c)
 	}
-	m := map[string]any{"user_id": p.UserID, "email": p.Email, "merchant_id": p.MerchantID, "email_verified": p.EmailVerified, "permissions": perms}
+	m := map[string]any{"user_id": p.UserID, "email": p.Email, "full_name": p.FullName, "merchant_id": p.MerchantID, "email_verified": p.EmailVerified, "permissions": perms}
 	if p.ImpersonatorID != "" {
 		m["impersonating"] = true
 		m["impersonation_reason"] = p.ImpersonationReason
@@ -463,6 +465,9 @@ func (d Deps) mountV1(r chi.Router) {
 			r.Get("/banks", d.listBanks) // daftar bank Kirim DOKU untuk form rekening
 			r.Post("/auth/logout", d.logout)
 			r.Get("/auth/me", d.me)
+			r.Get("/profile", d.getProfile)
+			r.Put("/profile", d.updateProfile)
+			r.Post("/profile/password", d.changePassword)
 			// MFA endpoints (platform admin only, gated by role in handlers)
 			r.Get("/auth/mfa/status", d.mfaStatus)
 			r.Post("/auth/mfa/enroll", d.mfaEnroll)

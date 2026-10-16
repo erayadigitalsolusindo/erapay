@@ -6,11 +6,11 @@
 	let {
 		user,
 		theme = $bindable()
-	}: { user: { email: string; merchantId: string; permissions?: string[] }; theme: Theme } = $props();
+	}: { user: { email: string; fullName?: string; merchantId: string; permissions?: string[]; impersonating?: boolean }; theme: Theme } = $props();
 
 	const i18n = getI18n();
 	const { t } = i18n;
-	const nama = $derived(user.email.split('@')[0]);
+	const nama = $derived(user.fullName || user.email.split('@')[0]);
 	const inisial = $derived(nama.slice(0, 2).toUpperCase());
 
 	let menu = $state<'' | 'profil'>('');
@@ -85,8 +85,21 @@
 					<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
 				</button>
 				{#if menu === 'profil'}
-					<div bind:this={profilMenu} class="card absolute top-full right-0 z-30 mt-2 w-60 p-1.5 shadow-lg">
-						<div class="muted truncate px-3 py-2 text-[11px]">{user.email}</div>
+					<div bind:this={profilMenu} class="card pop-menu absolute top-full right-0 z-30 mt-2 w-64 p-1.5 shadow-lg">
+						<div class="flex items-center gap-3 px-3 py-2.5">
+							<span class="grid size-9 shrink-0 place-items-center rounded-full bg-merah text-xs font-bold text-white">{inisial}</span>
+							<span class="min-w-0">
+								<span class="block truncate text-xs font-bold">{nama}</span>
+								<span class="muted block truncate text-[11px]">{user.email}</span>
+							</span>
+						</div>
+						<div class="my-1 h-px bg-ink/10"></div>
+						{#if !user.impersonating}
+							<a href="/dashboard/profil" onclick={() => (menu = '')} class="group flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold hover:bg-ink/5">
+								<svg class="size-4 text-merah transition group-hover:scale-110" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+								{t('pr.menu')}
+							</a>
+						{/if}
 						<form method="POST" action="/logout">
 							<button type="submit" class="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-500/10">{t('hdr.logout')}</button>
 						</form>
@@ -97,3 +110,8 @@
 	</div>
 	<div class="garis-emas h-px"></div>
 </header>
+
+<style>
+	.pop-menu { transform-origin: top right; animation: pop-menu 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+	@keyframes pop-menu { from { opacity: 0; transform: translateY(-6px) scale(0.96); } to { opacity: 1; transform: none; } }
+</style>

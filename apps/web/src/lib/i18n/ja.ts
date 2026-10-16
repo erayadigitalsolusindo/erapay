@@ -1,5 +1,6 @@
 import type { Key } from './messages';
 import { pfJa } from './platform';
+import { prJa } from './profile';
 
 // 日本語辞書。キーはインドネシア語・英語と同一。
 export const ja: Record<Key, string> = {
@@ -960,5 +961,6 @@ export const ja: Record<Key, string> = {
 	'lg.mfaFor': '{email} の多要素認証ログイン',
 	'reg.afterTitle': '確認用データはログイン後に入力します。',
 	'reg.afterBody': 'それまでアカウントは下書き状態で、決済を受け取れません。EraPayチームが確認できるよう、ダッシュボードで4つの本人情報セクション（会社、代表者、ブランド、書類）を入力してください。',
-	...pfJa
+	...pfJa,
+	...prJa
 };

@@ -70,6 +70,7 @@ func DefaultConfig() Config {
 type Principal struct {
 	UserID     string
 	Email      string
+	FullName   string
 	SessionID  string
 	KeyID      string // set when authenticated by API key (UserID/SessionID empty)
 	MerchantID string
@@ -204,8 +205,7 @@ func (s *Service) CreatePlatformAdmin(ctx context.Context, email, password, requ
 
 // Login verifies credentials and opens a session. It returns the opaque session
 // token (shown to the caller once; only its sha256 is stored).
-// If the user has a platform admin role requiring MFA and MFA is enrolled,
-// it returns an MFARequiredError with a challenge instead of a session.
+// If the user has enrolled MFA (any account), it returns an MFARequiredError with a challenge instead of a session.
 func (s *Service) Login(ctx context.Context, in LoginInput) (string, *Principal, error) {
 	ek := emailKey(in.Email)
 	attemptID, left, err := s.reserveAttempt(ctx, ek, in.IP)
@@ -236,19 +236,14 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (string, *Principal,
 		return "", nil, err
 	}
 
-	// Check if this is a platform admin session that requires MFA
-	isPlatformAdmin := merchantID == ""
+	// MFA berlaku untuk SIAPA pun yang sudah mengaktifkannya (admin platform maupun pengguna merchant).
 	var mfaEnrolled bool
-	if isPlatformAdmin {
-		err = s.db.QueryRow(ctx,
-			`SELECT mfa_secret IS NOT NULL FROM users WHERE id = $1`, uid).Scan(&mfaEnrolled)
-		if err != nil {
-			return "", nil, err
-		}
+	if err = s.db.QueryRow(ctx,
+		`SELECT mfa_secret IS NOT NULL FROM users WHERE id = $1`, uid).Scan(&mfaEnrolled); err != nil {
+		return "", nil, err
 	}
 
-	// If platform admin with MFA enrolled, require MFA challenge
-	if isPlatformAdmin && mfaEnrolled {
+	if mfaEnrolled {
 		// Generate MFA challenge
 		challengeID, _, err := s.GenerateMFAChallenge(ctx, uid)
 		if err != nil {
@@ -272,7 +267,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (string, *Principal,
 		}
 	}
 
-	// No MFA required (merchant user or platform admin without MFA) - create session
+	// MFA belum diaktifkan - buat sesi
 	return s.createSession(ctx, uid, merchantID, attemptID, in)
 }
 
@@ -471,7 +466,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		return nil, ErrUnauthenticated
 	}
 	now := s.now()
-	var sid, uid, mid, email, imp, impReason string
+	var sid, uid, mid, email, fullName, imp, impReason string
 	var verified bool
 	var lastSeen time.Time
 	var perms []string
@@ -480,7 +475,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 	// Sesi impersonasi: izin = role merchant_owner, hanya selama pemiliknya masih DEWA (rbac:manage);
 	// DEWA yang dicabut perannya langsung kehilangan sesi tenant-nya juga.
 	err := s.db.QueryRow(ctx, `
-		SELECT s.id::text, s.user_id::text, COALESCE(s.merchant_id::text,''), s.last_seen_at, u.email, u.email_verified_at IS NOT NULL,
+		SELECT s.id::text, s.user_id::text, COALESCE(s.merchant_id::text,''), s.last_seen_at, u.email, COALESCE(u.full_name,''), u.email_verified_at IS NOT NULL,
 		       COALESCE(s.impersonator_id::text,''), COALESCE(s.impersonation_reason,''),
 		       CASE WHEN s.impersonator_id IS NOT NULL THEN
 		         CASE WHEN EXISTS (SELECT 1 FROM user_roles ur JOIN role_permissions rp ON rp.role_id = ur.role_id
@@ -496,7 +491,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > $2
 		  AND s.last_seen_at > $3 AND u.status = 'active'`,
-		hashToken(token), now, now.Add(-s.cfg.IdleTTL)).Scan(&sid, &uid, &mid, &lastSeen, &email, &verified, &imp, &impReason, &perms)
+		hashToken(token), now, now.Add(-s.cfg.IdleTTL)).Scan(&sid, &uid, &mid, &lastSeen, &email, &fullName, &verified, &imp, &impReason, &perms)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrUnauthenticated
 	}
@@ -506,7 +501,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 	if len(perms) == 0 {
 		return nil, ErrUnauthenticated // role/membership removed since login
 	}
-	p := &Principal{UserID: uid, Email: email, SessionID: sid, MerchantID: mid, EmailVerified: verified,
+	p := &Principal{UserID: uid, Email: email, FullName: fullName, SessionID: sid, MerchantID: mid, EmailVerified: verified,
 		ImpersonatorID: imp, ImpersonationReason: impReason, Permissions: map[string]struct{}{}}
 	for _, c := range perms {
 		p.Permissions[c] = struct{}{}
