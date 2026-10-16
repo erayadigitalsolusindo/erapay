@@ -182,7 +182,7 @@ export const idExtra = {
 	'kw.sending': 'Mengirim…',
 	'kw.submit': 'Kirim untuk Verifikasi',
 	'kw.lockedApproved': 'Data terverifikasi dan terkunci. Hubungi admin bila perlu perubahan.',
-	'kw.lockedReview': 'Sedang diverifikasi — data terkunci.',
+	'kw.lockedReview': 'Menunggu verifikasi — Anda masih bisa melengkapi data.',
 
 	'ky.locked': 'Bagian ini terkunci saat verifikasi berjalan.',
 	'ky.docsLocked': 'Dokumen terkunci saat proses verifikasi berjalan.',

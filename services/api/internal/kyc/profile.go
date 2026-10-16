@@ -53,7 +53,7 @@ func (s *Service) profile(ctx context.Context, merchantID string, reveal bool) (
 	p := Profile{Status: m.Status, Recheck: sub.Recheck, SubmittedAt: sub.SubmittedAt,
 		ReviewedAt: sub.ReviewedAt, ReviewNote: m.ReviewNote, RecheckPolicy: s.cfg.RecheckPolicy}
 	p.Editable = editableStatus(m.Status)
-	p.Locked = m.Status == "submitted" || m.Status == "under_review"
+	p.Locked = !p.Editable
 
 	p.Company = buildCompany(&m, notes)
 	p.Company.Recheck = sub.rechecking("company")

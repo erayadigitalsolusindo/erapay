@@ -723,7 +723,7 @@ export const ja: Record<Key, string> = {
 	'kw.sending': '送信中…',
 	'kw.submit': '確認のために送信',
 	'kw.lockedApproved': 'データは認証済みでロックされています。変更が必要な場合は管理者にお問い合わせください。',
-	'kw.lockedReview': '確認中 — データはロックされています。',
+	'kw.lockedReview': '確認待ち — データはまだ入力・更新できます。',
 
 	'ky.locked': '確認中のため、このセクションはロックされています。',
 	'ky.docsLocked': '確認中のため、書類はロックされています。',

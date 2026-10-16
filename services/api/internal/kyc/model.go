@@ -153,7 +153,7 @@ type Profile struct {
 	ReviewedAt     *time.Time     `json:"reviewed_at,omitempty"`
 	ReviewNote     *string        `json:"review_note,omitempty"` // catatan penolakan global
 	Editable       bool           `json:"editable"`              // boleh mengubah isian sekarang
-	Locked         bool           `json:"locked"`                // SUBMITTED/IN_REVIEW: baca saja
+	Locked         bool           `json:"locked"`                // APPROVED/SUSPENDED: baca saja
 	Company        Company        `json:"company"`
 	Representative Representative `json:"representative"`
 	Brand          Brand          `json:"brand"`

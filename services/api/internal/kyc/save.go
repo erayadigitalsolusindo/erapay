@@ -25,12 +25,17 @@ func (s *Service) throttleCheck(ctx context.Context, kind, ip string, perIP int)
 	return nil
 }
 
-// editableStatus: boleh mengubah isian sekarang (SUBMITTED/IN_REVIEW = terkunci).
+// editableStatus: boleh mengubah isian sekarang. Hanya APPROVED (terverifikasi) dan SUSPENDED yang
+// terkunci; perubahan data terverifikasi hanya lewat admin (keputusan 16 Okt 2026).
+// SUBMITTED/UNDER_REVIEW tetap boleh dilengkapi: pendaftar yang mengisi identitas saat daftar langsung
+// berstatus submitted padahal belum pernah ditinjau, jadi tidak boleh terkunci (keputusan 16 Okt 2026).
 // REJECTED juga diizinkan: merchant dapat memperbaiki & mengajukan ulang (keputusan 15 Okt 2026).
-// APPROVED juga terkunci: data yang sudah terverifikasi tidak bisa diubah merchant,
-// perubahan hanya lewat admin (keputusan 16 Okt 2026).
 func editableStatus(status string) bool {
-	return status == "draft" || status == "action_required" || status == "rejected"
+	switch status {
+	case "draft", "submitted", "under_review", "action_required", "rejected":
+		return true
+	}
+	return false
 }
 
 // ensureEditable menolak (ErrLocked) bila status merchant tidak boleh diubah sendiri oleh merchant.
@@ -70,8 +75,7 @@ func (s *Service) SaveSection(ctx context.Context, in SaveSectionInput) error {
 	if err != nil {
 		return err
 	}
-	switch m.Status {
-	case "submitted", "under_review", "suspended", "approved":
+	if !editableStatus(m.Status) {
 		return ErrLocked
 	}
 

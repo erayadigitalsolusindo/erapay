@@ -183,7 +183,7 @@ export const enExtra: Record<keyof typeof idExtra, string> = {
 	'kw.sending': 'Submitting…',
 	'kw.submit': 'Submit for Verification',
 	'kw.lockedApproved': 'Data is verified and locked. Contact an admin if changes are needed.',
-	'kw.lockedReview': 'Under verification — data is locked.',
+	'kw.lockedReview': 'Awaiting verification — you can still complete your data.',
 
 	'ky.locked': 'This section is locked while verification is in progress.',
 	'ky.docsLocked': 'Documents are locked while verification is in progress.',

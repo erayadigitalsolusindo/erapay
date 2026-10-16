@@ -204,7 +204,7 @@
 				</button>
 			{:else if profile.status === 'approved'}
 				<span class="text-[13px] text-merah-gelap/60">{t('kw.lockedApproved')}</span>
-			{:else if !editable && profile.status === 'submitted'}
+			{:else if profile.status === 'submitted' || profile.status === 'under_review'}
 				<span class="text-[13px] text-merah-gelap/60">{t('kw.lockedReview')}</span>
 			{/if}
 		</div>

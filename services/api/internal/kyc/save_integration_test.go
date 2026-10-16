@@ -101,13 +101,15 @@ func TestSaveSectionConcurrent(t *testing.T) {
 	}
 }
 
-func TestSaveSectionLockedWhenSubmitted(t *testing.T) {
-	svc, mid, setStatus := newSvc(t)
-	setStatus("submitted")
-	err := svc.SaveSection(context.Background(), kyc.SaveSectionInput{
-		MerchantID: mid, Section: "company", Company: companyIn()})
-	if !errors.Is(err, kyc.ErrLocked) {
-		t.Fatalf("want ErrLocked, got %v", err)
+// submitted/under_review belum terverifikasi: isian masih boleh dilengkapi (hanya approved/suspended terkunci).
+func TestSaveSectionAllowedWhenNotYetVerified(t *testing.T) {
+	for _, st := range []string{"submitted", "under_review"} {
+		svc, mid, setStatus := newSvc(t)
+		setStatus(st)
+		if err := svc.SaveSection(context.Background(), kyc.SaveSectionInput{
+			MerchantID: mid, Section: "company", Company: companyIn()}); err != nil {
+			t.Fatalf("%s: want save ok, got %v", st, err)
+		}
 	}
 }
 
