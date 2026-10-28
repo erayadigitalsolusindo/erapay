@@ -27,6 +27,7 @@ const (
 // Account codes (Model B minimal set).
 const (
 	CashDokuClearing   = "cash_doku_clearing"
+	CashIDSClearing    = "cash_ids_clearing" // expected from IDS; separate so each gateway reconciles on its own
 	CashBankPT         = "cash_bank_pt"
 	MerchantPayable    = "merchant_payable"
 	PayoutInTransit    = "payout_in_transit"
@@ -176,6 +177,20 @@ func accountID(ctx context.Context, tx pgx.Tx, code, merchantID, currency string
 // Zero-valued legs are omitted. MDR is retained by the gateway and never enters
 // EraPay's books here; reconciliation compares it with the settlement report.
 func PaymentSucceeded(merchantID, paymentID string, b pricing.Breakdown) (Txn, error) {
+	return PaymentSucceededVia(CashDokuClearing, merchantID, paymentID, b)
+}
+
+// ClearingAccount is the "expected from the gateway" account of a gateway. Only IDS has its own;
+// every other gateway code keeps the DOKU clearing account, so existing books do not move.
+func ClearingAccount(gateway string) string {
+	if gateway == "ids" {
+		return CashIDSClearing
+	}
+	return CashDokuClearing
+}
+
+// PaymentSucceededVia is PaymentSucceeded with an explicit clearing account (see ClearingAccount).
+func PaymentSucceededVia(clearing, merchantID, paymentID string, b pricing.Breakdown) (Txn, error) {
 	if b.Gross != b.MDRFee+b.PlatformFee+b.MerchantNet || b.Gross <= 0 {
 		return Txn{}, fmt.Errorf("%w: breakdown does not add up", ErrInvalid)
 	}
@@ -188,7 +203,7 @@ func PaymentSucceeded(merchantID, paymentID string, b pricing.Breakdown) (Txn, e
 			t.Entries = append(t.Entries, Entry{acc, mid, d, amt})
 		}
 	}
-	add(CashDokuClearing, "", Debit, b.Gross-b.MDRFee)
+	add(clearing, "", Debit, b.Gross-b.MDRFee)
 	add(MerchantPayable, merchantID, Credit, b.MerchantNet)
 	add(PlatformFeeRevenue, "", Credit, b.PlatformFee)
 	return t, t.validate()

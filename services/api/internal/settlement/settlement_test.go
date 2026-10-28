@@ -27,7 +27,7 @@ func setup(t *testing.T) env {
 	ctx := context.Background()
 	a, _ := testdb.SeedMerchant(t, db, "A")
 	b, _ := testdb.SeedMerchant(t, db, "B")
-	for _, gw := range []string{"gw1", "gw2"} {
+	for _, gw := range []string{"gw1", "gw2", "ids"} {
 		var plan string
 		if err := db.QueryRow(ctx, `
 			INSERT INTO pricing_plans (code, version, gateway, payment_method, mdr_bps, mdr_rounding, platform_bps, platform_rounding)

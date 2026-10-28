@@ -442,6 +442,12 @@ func TestRevokeApprovalHTTP(t *testing.T) {
 	if plans != 2 {
 		t.Fatalf("plans = %d, want 2", plans)
 	}
+	// Setiap persetujuan juga membuat paket IDS yang setara, supaya transaksi lewat IDS punya harga.
+	var idsPlans int
+	_ = w.db.QueryRow(t.Context(), `SELECT count(*) FROM pricing_plans WHERE gateway = 'ids' AND code = 'ids-qris-'||$1::text`, mid).Scan(&idsPlans)
+	if idsPlans != 2 {
+		t.Fatalf("ids plans = %d, want 2", idsPlans)
+	}
 	// Ditolak: merchant boleh memperbaiki lagi.
 	if r := act(root, "revoke", `{"to":"rejected","note":"transaksi mencurigakan"}`); r.StatusCode != 200 || status() != "rejected" {
 		t.Fatalf("revoke -> rejected: %d %s", r.StatusCode, status())

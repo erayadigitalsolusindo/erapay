@@ -1,5 +1,7 @@
 # Menambah gateway baru [gw-new] (PRD §4.12)
 
+Pengecualian (keputusan pemilik, 28 Okt 2026): adapter `ids` (IDS Payment Service, upstream yang membungkus DOKU) sudah ada di `internal/gateway/ids`. Hanya QRIS, tanpa cancel/refund/payout. Dipilih per merchant lewat `merchant_gateway_accounts` (satu akun `active`, lainnya `suspended`). Belum bisa menerima uang nyata sebelum paket harga `ids` dan akun ledger diputuskan. Gateway lain tetap memakai gate di bawah.
+
 Belum aktif; gate wajib. Baca juga: `../PRD.md` (§0 #11), `gateway-adapter.md`, `architecture.md`.
 
 Sebelum menulis adapter gateway X (mis. Midtrans), semua harus terpenuhi:

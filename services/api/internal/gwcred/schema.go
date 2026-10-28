@@ -30,6 +30,14 @@ type Schema struct {
 }
 
 var schemas = []Schema{{
+	Gateway: "ids",
+	Label:   "IDS Payments",
+	Fields: []Field{
+		{Key: "base_url", Label: "Base URL", Hint: "Host API IDS, mis. https://payment.inodreamstudio.com", Required: true, pattern: regexp.MustCompile(`^https://[A-Za-z0-9.-]+(:[0-9]{2,5})?$`)},
+		{Key: "api_key", Label: "API key channel", Hint: "ids_<env>_<income_channel_id>_<secret>, tampil sekali di IDS", Required: true, Secret: true, pattern: regexp.MustCompile(`^ids_[A-Za-z0-9-]+_[A-Za-z0-9-]+_[\x21-\x7e]+$`)},
+		{Key: "callback_secret", Label: "Callback secret", Hint: "Sama dengan callback_secret channel di IDS (min 8 karakter)", Required: true, Secret: true, pattern: regexp.MustCompile(`^[\x21-\x7e]{8,256}$`)},
+	},
+}, {
 	Gateway: "doku",
 	Label:   "DOKU",
 	Fields: []Field{

@@ -96,7 +96,8 @@ func (in BatchInput) validate() error {
 // RecordBatch books one settlement batch atomically:
 //
 //	Dr cash_bank_pt        reported_net
-//	Cr cash_doku_clearing  expected_net      (equal: a mismatch is refused, never booked)
+//	Cr <gateway clearing>  expected_net      (equal: a mismatch is refused, never booked;
+//	                                          cash_ids_clearing for IDS, else cash_doku_clearing)
 //
 // It is idempotent per (gateway, batch_ref): the identical batch replays the stored result; a
 // different batch under the same reference is ErrBatchConflict. A payment can settle once
@@ -182,7 +183,7 @@ func (s *Service) recordTx(ctx context.Context, in BatchInput, a Actor) (Batch, 
 	j := ledger.Txn{DedupKey: "settlement:" + in.Gateway + ":" + in.BatchRef, SourceType: "settlement_batch", SourceID: batchID,
 		Currency: in.Currency, Entries: []ledger.Entry{
 			{Account: ledger.CashBankPT, Direction: ledger.Debit, Amount: in.ReportedNet},
-			{Account: ledger.CashDokuClearing, Direction: ledger.Credit, Amount: expected},
+			{Account: ledger.ClearingAccount(in.Gateway), Direction: ledger.Credit, Amount: expected},
 		}}
 	if _, err := ledger.PostTx(ctx, tx, j); err != nil {
 		return Batch{}, err

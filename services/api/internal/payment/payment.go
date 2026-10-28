@@ -223,14 +223,14 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	var cur string
-	var mid, currency, merchantRef, method string
+	var mid, currency, merchantRef, method, gw string
 	var amount, mdr, plat, net int64
 	var planVer int
 	err = tx.QueryRow(ctx, `
 		SELECT status, merchant_id::text, currency, amount, mdr_fee, platform_fee, merchant_net, plan_version,
-		       merchant_reference, payment_method
+		       merchant_reference, payment_method, gateway
 		FROM payments WHERE id = $1 FOR NO KEY UPDATE`, in.PaymentID).
-		Scan(&cur, &mid, &currency, &amount, &mdr, &plat, &net, &planVer, &merchantRef, &method)
+		Scan(&cur, &mid, &currency, &amount, &mdr, &plat, &net, &planVer, &merchantRef, &method, &gw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Result{}, ErrNotFound
 	}
@@ -292,7 +292,7 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 		return Result{}, err
 	}
 	if in.To == Succeeded {
-		j, err := ledger.PaymentSucceeded(mid, in.PaymentID, pricing.Breakdown{
+		j, err := ledger.PaymentSucceededVia(ledger.ClearingAccount(gw), mid, in.PaymentID, pricing.Breakdown{
 			Currency: currency, Gross: amount, MDRFee: mdr, PlatformFee: plat, MerchantNet: net, PlanVersion: planVer})
 		if err != nil {
 			return Result{}, err

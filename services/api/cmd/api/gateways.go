@@ -10,13 +10,20 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/doku"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/ids"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwcred"
 )
 
 // gatewayFactories is where gateway codes meet concrete adapter packages (PRD §0 #11). A new
 // gateway adds its credential schema in gwcred and its factory here.
 func gatewayFactories() map[string]gwcred.Factory {
-	return map[string]gwcred.Factory{doku.Code: dokuFromCreds}
+	return map[string]gwcred.Factory{doku.Code: dokuFromCreds, ids.Code: idsFromCreds}
+}
+
+// idsFromCreds builds the IDS adapter from credentials saved in the panel. IDS keys carry no
+// sandbox/production marker we can rely on, so the environment is not cross-checked here.
+func idsFromCreds(c map[string]string, _ string) (gateway.Adapter, error) {
+	return ids.New(ids.Config{BaseURL: c["base_url"], APIKey: c["api_key"], CallbackSecret: c["callback_secret"]})
 }
 
 // dokuFromCreds builds the DOKU adapter from credentials saved in the panel. Unlike the env path
@@ -45,6 +52,40 @@ func dokuFromCreds(c map[string]string, env string) (gateway.Adapter, error) {
 // or they fail to load, the environment is used exactly as before.
 func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (*gateway.Registry, error) {
 	reg := gateway.NewRegistry()
+	if err := registerDOKU(reg, cfg, log, creds); err != nil {
+		return nil, err
+	}
+	registerIDS(reg, cfg, log, creds)
+	return reg, nil
+}
+
+// registerIDS registers IDS only from credentials saved in the panel (there is no env fallback):
+// without them the gateway simply does not exist, and a merchant account pointing at it reports
+// PAYMENT_METHOD_UNAVAILABLE. Unreadable or rejected credentials are logged, never fatal, so a
+// broken IDS setup cannot stop DOKU from serving.
+func registerIDS(reg *gateway.Registry, cfg config.Config, log *slog.Logger, creds *gwcred.Service) {
+	if creds == nil {
+		return
+	}
+	env := apikey.EnvFromApp(cfg.Env)
+	vals, ok, err := creds.Load(context.Background(), ids.Code, env)
+	switch {
+	case err != nil:
+		log.Error("gateway credentials in database unreadable", "gateway", ids.Code)
+		return
+	case !ok:
+		return
+	}
+	a, err := idsFromCreds(vals, env)
+	if err != nil {
+		log.Error("gateway credentials in database rejected", "gateway", ids.Code, "reason", err.Error())
+		return
+	}
+	reg.Register(a)
+	log.Info("gateway registered from database credentials", "gateway", ids.Code, "env", env)
+}
+
+func registerDOKU(reg *gateway.Registry, cfg config.Config, log *slog.Logger, creds *gwcred.Service) error {
 	env := apikey.EnvFromApp(cfg.Env)
 	if creds != nil {
 		vals, ok, err := creds.Load(context.Background(), doku.Code, env)
@@ -59,20 +100,20 @@ func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (
 			}
 			reg.Register(a)
 			log.Info("gateway registered from database credentials", "gateway", doku.Code, "env", env)
-			return reg, nil
+			return nil
 		}
 	}
 	dc, err := config.LoadDOKU()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if dc == nil {
 		log.Warn("DOKU not configured: payments will report PAYMENT_METHOD_UNAVAILABLE")
-		return reg, nil
+		return nil
 	}
 	key, err := doku.ParsePrivateKey(dc.PrivateKeyPEM)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	base := dc.BaseURL
 	if base == "" && cfg.Env == "production" {
@@ -81,11 +122,11 @@ func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (
 	a, err := doku.New(doku.Config{BaseURL: base, ClientID: dc.ClientID, ClientSecret: dc.ClientSecret,
 		PrivateKey: key, TerminalID: dc.TerminalID, PostalCode: dc.PostalCode, StatusMapConfirmed: dc.StatusMapConfirmed})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	reg.Register(a)
 	log.Info("gateway registered", "gateway", doku.Code, "status_map_confirmed", dc.StatusMapConfirmed)
-	return reg, nil
+	return nil
 }
 
 // registryDisburser lets payouts follow the adapter currently registered, so rotating credentials

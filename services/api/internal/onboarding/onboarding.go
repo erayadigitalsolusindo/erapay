@@ -50,6 +50,11 @@ func invalid(format string, a ...any) error { return &ValidationError{Msg: fmt.S
 
 const signupWindow = time.Hour
 
+// PlanGateways are the gateways that get a QRIS pricing plan when a merchant is approved. A payment
+// is priced by the plan of the gateway that routes it (payment.CreateTx), so a gateway missing here
+// would answer ErrNoPricing for every merchant approved afterwards.
+var PlanGateways = []string{"doku", "ids"}
+
 // reviewable are the states a platform admin may still approve or reject from.
 var reviewable = []string{"submitted", "under_review", "action_required"}
 
@@ -659,17 +664,31 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 	if !complete {
 		return Merchant{}, ErrIdentityIncomplete
 	}
+	// One plan per gateway that can carry QRIS, with the same fees: the merchant pays EraPay's price
+	// whichever gateway routes the payment, and a gateway whose real MDR differs surfaces as a
+	// settlement mismatch instead of being booked. doku's code stays 'qris-<id>'.
 	var planID string
-	if err := tx.QueryRow(ctx, `INSERT INTO pricing_plans
-		(code, version, gateway, payment_method, mdr_bps, mdr_fixed, mdr_rounding, platform_bps, platform_fixed, platform_rounding, mdr_cap, mdr_cap_up_to, mdr_flat_up_to, mdr_flat_fee, created_by, approved_by)
-		SELECT 'qris-'||$1::text, COALESCE(max(version),0)+1, 'doku', 'QRIS', $2, $7, 'half_up', $3, $8, 'half_up', $5, $6, $9, $10, $4, $4
-		FROM pricing_plans WHERE code = 'qris-'||$1::text RETURNING id::text`,
-		in.MerchantID, in.MDRBPS, in.PlatformBPS, in.ActorID, s.cfg.MDRCap, s.cfg.MDRCapUpTo, in.MDRFixed, in.PlatformFixed, in.MDRFlatUpTo, in.MDRFlatFee).Scan(&planID); err != nil {
-		return Merchant{}, err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from, created_by)
-		VALUES ($1,$2,now(),$3)`, in.MerchantID, planID, in.ActorID); err != nil {
-		return Merchant{}, err
+	for _, gw := range PlanGateways {
+		code := gw + "-qris-" + in.MerchantID
+		if gw == "doku" {
+			code = "qris-" + in.MerchantID
+		}
+		var id string
+		if err := tx.QueryRow(ctx, `INSERT INTO pricing_plans
+			(code, version, gateway, payment_method, mdr_bps, mdr_fixed, mdr_rounding, platform_bps, platform_fixed, platform_rounding, mdr_cap, mdr_cap_up_to, mdr_flat_up_to, mdr_flat_fee, created_by, approved_by)
+			SELECT $1::text, COALESCE(max(version),0)+1, $11::text, 'QRIS', $2, $7, 'half_up', $3, $8, 'half_up', $5, $6, $9, $10, $4, $4
+			FROM pricing_plans WHERE code = $1::text RETURNING id::text`,
+			code, in.MDRBPS, in.PlatformBPS, in.ActorID, s.cfg.MDRCap, s.cfg.MDRCapUpTo, in.MDRFixed, in.PlatformFixed, in.MDRFlatUpTo, in.MDRFlatFee,
+			gw).Scan(&id); err != nil {
+			return Merchant{}, err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from, created_by)
+			VALUES ($1,$2,now(),$3)`, in.MerchantID, id, in.ActorID); err != nil {
+			return Merchant{}, err
+		}
+		if gw == "doku" {
+			planID = id
+		}
 	}
 	if _, err := tx.Exec(ctx, `UPDATE merchants SET onboarding_status='approved', review_note=NULL, reviewed_by=$2,
 		reviewed_at=now(), updated_at=now(), version=version+1 WHERE id=$1`, in.MerchantID, in.ActorID); err != nil {
