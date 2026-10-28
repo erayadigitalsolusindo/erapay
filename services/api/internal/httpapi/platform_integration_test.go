@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -172,6 +174,71 @@ func TestPlatformPortalAndSeparation(t *testing.T) {
 	}
 	if readCookie(rej, platformCookie) != "" {
 		t.Fatal("non-dewa got a platform cookie")
+	}
+}
+
+// A wrong password or an unknown email is a 401 the panel can show ("Email atau kata sandi salah"),
+// never a 500: the panel reads any non-401 failure as "service unavailable".
+func TestPlatformLoginWrongCredentialsIs401(t *testing.T) {
+	w := newPlatformWorld(t)
+	createDewa(t, w, "dewa@erapay.test")
+	for name, body := range map[string]string{
+		"wrong password": `{"email":"dewa@erapay.test","password":"bukan-password-yang-benar"}`,
+		"unknown email":  `{"email":"tidak-ada@erapay.test","password":"` + itPW + `"}`,
+	} {
+		r := w.do(t, &http.Client{}, "POST", "/v1/platform/auth/login", body, nil)
+		if r.StatusCode != 401 {
+			t.Errorf("%s: status %d, want 401", name, r.StatusCode)
+		}
+		if readCookie(r, platformCookie) != "" {
+			t.Errorf("%s: got a platform cookie", name)
+		}
+	}
+}
+
+// The panel tells the user how many tries are left and how long a lockout lasts, and a locked
+// email gets a shrinking "try again in" instead of a bare refusal.
+func TestPlatformLoginReportsAttemptsLeftAndLockoutCountdown(t *testing.T) {
+	w := newPlatformWorld(t)
+	createDewa(t, w, "dewa@erapay.test")
+	bad := `{"email":"dewa@erapay.test","password":"bukan-password-yang-benar"}`
+
+	first := w.do(t, &http.Client{}, "POST", "/v1/platform/auth/login", bad, nil)
+	if first.StatusCode != 401 {
+		t.Fatalf("first failure: %d", first.StatusCode)
+	}
+	if got := first.Header.Get("X-Attempts-Left"); got != "4" {
+		t.Errorf("X-Attempts-Left after 1st failure = %q, want 4", got)
+	}
+	if got := first.Header.Get("X-Lockout-Seconds"); got != "900" {
+		t.Errorf("X-Lockout-Seconds = %q, want 900 (15 minutes)", got)
+	}
+	var last *http.Response
+	for i := 2; i <= 5; i++ {
+		last = w.do(t, &http.Client{}, "POST", "/v1/platform/auth/login", bad, nil)
+		if last.StatusCode != 401 {
+			t.Fatalf("failure %d: %d", i, last.StatusCode)
+		}
+	}
+	if got := last.Header.Get("X-Attempts-Left"); got != "0" {
+		t.Errorf("X-Attempts-Left after 5th failure = %q, want 0", got)
+	}
+
+	// Locked now, even for the right password.
+	good := `{"email":"dewa@erapay.test","password":"` + itPW + `"}`
+	one := w.do(t, &http.Client{}, "POST", "/v1/platform/auth/login", good, nil)
+	if one.StatusCode != 429 {
+		t.Fatalf("locked login: %d, want 429", one.StatusCode)
+	}
+	s1, err := strconv.Atoi(one.Header.Get("Retry-After"))
+	if err != nil || s1 <= 0 || s1 > 900 {
+		t.Fatalf("Retry-After = %q, want 1..900 seconds", one.Header.Get("Retry-After"))
+	}
+	time.Sleep(1100 * time.Millisecond)
+	two := w.do(t, &http.Client{}, "POST", "/v1/platform/auth/login", good, nil)
+	s2, err := strconv.Atoi(two.Header.Get("Retry-After"))
+	if two.StatusCode != 429 || err != nil || s2 >= s1 {
+		t.Fatalf("second click: status %d Retry-After %q, want less than %d", two.StatusCode, two.Header.Get("Retry-After"), s1)
 	}
 }
 

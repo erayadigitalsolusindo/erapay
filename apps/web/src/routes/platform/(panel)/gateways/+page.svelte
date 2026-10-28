@@ -15,6 +15,16 @@
 	let busy = $state<string | null>(null);
 
 	const keyOf = (g: CredGateway, e: CredEnv) => `${g.gateway}/${e.environment}`;
+
+	const rf = $derived(form as { key?: string; error?: string; routed?: string } | null);
+	const routing = $derived(data.routing);
+	const LABEL: Record<string, string> = { doku: 'DOKU', ids: 'IDS Payments' };
+	// Pilihan di form; mengikuti pilihan tersimpan sampai admin mengubahnya.
+	let pick = $state('');
+	$effect(() => {
+		pick = routing?.gateway ?? '';
+	});
+	const mineRoute = $derived(rf?.key === 'route');
 </script>
 
 <svelte:head><title>{tx('pf.nav.gateways', 'Gateway')}</title></svelte:head>
@@ -28,6 +38,74 @@
 			{tx('pf.gc.lead', 'Kelola Client ID, secret, dan private key gateway dari sini tanpa mengedit .env di server. Nilai disimpan terenkripsi dan tidak pernah ditampilkan lagi setelah disimpan.')}
 		</p>
 	</section>
+
+	{#if routing}
+		<section class="card overflow-hidden" aria-labelledby="route-title">
+			<div class="space-y-1 p-4 sm:p-5">
+				<h2 id="route-title" class="font-display text-lg font-extrabold uppercase">{tx('pf.rt.title', 'Jalur pembayaran')}</h2>
+				<p class="text-xs leading-relaxed text-ink/70">
+					{tx('pf.rt.lead', 'Pilih gateway yang menerima transaksi baru. Berlaku untuk pembayaran berikutnya; transaksi yang sudah dibuat tetap di gateway-nya. Kalau gateway terpilih tidak bisa melayani seorang merchant, transaksi itu memakai akun gateway milik merchant tersebut.')}
+				</p>
+				<p class="text-[11px] font-semibold text-ink/60">
+					{#if routing.gateway}
+						{tx('pf.rt.now', 'Dipakai sekarang')}: <b>{LABEL[routing.gateway] ?? routing.gateway}</b> · v{routing.version} · {fmt(routing.updated_at)}
+					{:else}
+						{tx('pf.rt.none', 'Belum dipilih: tiap merchant memakai akun gateway aktifnya sendiri (biasanya DOKU).')}
+					{/if}
+				</p>
+			</div>
+			<form
+				method="POST"
+				action="?/route"
+				autocomplete="off"
+				use:enhance={() => {
+					busy = 'route';
+					return async ({ update }) => {
+						await update({ reset: false });
+						busy = null;
+					};
+				}}
+				class="space-y-3 border-t border-ink/10 p-4 sm:p-5"
+			>
+				<input type="hidden" name="environment" value={routing.server_environment} />
+				<input type="hidden" name="version" value={routing.version} />
+				<div class="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label={tx('pf.rt.title', 'Jalur pembayaran')}>
+					{#each routing.options as o (o.code)}
+						<label class="flex cursor-pointer items-start gap-3 rounded-2xl border p-3.5 transition {pick === o.code ? 'border-merah bg-merah/5' : 'border-ink/10 hover:bg-ink/[.03]'} {o.available ? '' : 'cursor-not-allowed opacity-60'}">
+							<input type="radio" name="gateway" value={o.code} bind:group={pick} disabled={!o.available} class="mt-1" />
+							<span class="min-w-0 flex-1">
+								<span class="flex flex-wrap items-center gap-2">
+									<b class="text-sm">{LABEL[o.code] ?? o.code}</b>
+									{#if routing.gateway === o.code}<span class="pill bg-merah/10 text-merah">{tx('pf.rt.current', 'Terpilih')}</span>{/if}
+									<span class="pill {o.available ? 'bg-emerald-500/15 text-emerald-700' : 'bg-amber-500/15 text-amber-700'}">{o.available ? tx('pf.rt.ready', 'Siap') : tx('pf.rt.notReady', 'Belum aktif di server')}</span>
+								</span>
+								<span class="muted mt-1 block text-[11px] leading-snug">
+									{#if !o.available}
+										{tx('pf.rt.needCreds', 'Simpan lalu Terapkan kredensialnya di bawah dulu.')}
+									{:else if o.platform_account}
+										{tx('pf.rt.platformAcct', 'Satu akun untuk seluruh platform: merchant yang sudah disetujui tidak perlu akun gateway sendiri.')}
+									{:else}
+										{tx('pf.rt.merchantAcct', 'Hanya merchant dengan akun gateway aktif yang dilayani; lainnya memakai akunnya sendiri.')}
+									{/if}
+								</span>
+							</span>
+						</label>
+					{/each}
+				</div>
+				<div>
+					<label class="lbl mb-1" for="route-note">{tx('pf.gw.fNote', 'Alasan (wajib, masuk audit)')}</label>
+					<input id="route-note" name="note" required minlength="3" maxlength="500" class="inp" placeholder="mis. DOKU sedang gangguan" />
+				</div>
+				<div class="flex flex-wrap items-center gap-3">
+					<button disabled={busy !== null || !pick || pick === routing.gateway} class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-merah-tua disabled:opacity-50">
+						{busy === 'route' ? 'Menyimpan…' : tx('pf.rt.save', 'Simpan jalur')}
+					</button>
+					{#if mineRoute && rf?.error}<p class="text-xs font-semibold text-red-700" role="alert">{rf.error}</p>{/if}
+					{#if mineRoute && rf?.routed}<p class="text-xs font-semibold text-emerald-700" role="status">{tx('pf.rt.saved', 'Tersimpan. Transaksi berikutnya lewat')} {LABEL[rf.routed] ?? rf.routed}.</p>{/if}
+				</div>
+			</form>
+		</section>
+	{/if}
 
 	{#if data.unavailable}
 		<p class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold leading-relaxed text-amber-900" role="status">

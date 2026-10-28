@@ -1,6 +1,6 @@
 # Menambah gateway baru [gw-new] (PRD §4.12)
 
-Pengecualian (keputusan pemilik, 28 Okt 2026): adapter `ids` (IDS Payment Service, upstream yang membungkus DOKU) sudah ada di `internal/gateway/ids`. Hanya QRIS, tanpa cancel/refund/payout. Dipilih per merchant lewat `merchant_gateway_accounts` (satu akun `active`, lainnya `suspended`). Belum bisa menerima uang nyata sebelum paket harga `ids` dan akun ledger diputuskan. Gateway lain tetap memakai gate di bawah.
+Pengecualian (keputusan pemilik, 28 Okt 2026): adapter `ids` (IDS Payment Service, upstream yang membungkus DOKU) sudah ada di `internal/gateway/ids`. Hanya QRIS, tanpa cancel/refund/payout. Gateway untuk transaksi baru dipilih DEWA di panel (Gateway → Jalur pembayaran, tabel `payment_routing`, per environment, tercatat di audit). Tanpa pilihan, tiap merchant memakai akun gateway aktifnya sendiri (`merchant_gateway_accounts`, yang paling lama). IDS memakai satu akun untuk seluruh platform (`Capabilities.PlatformAccount`), jadi tidak butuh akun per merchant. Bila gateway terpilih tidak bisa melayani seorang merchant, `route()` memakai akun merchant itu sendiri SEBELUM memanggil gateway; tidak ada failover setelah panggilan create yang ambigu. Belum bisa menerima uang nyata sebelum paket harga `ids` dan akun ledger diputuskan. Gateway lain tetap memakai gate di bawah.
 
 Belum aktif; gate wajib. Baca juga: `../PRD.md` (§0 #11), `gateway-adapter.md`, `architecture.md`.
 

@@ -80,7 +80,7 @@ func (a *Adapter) Code() string { return Code }
 
 func (a *Adapter) Capabilities() gateway.Capabilities {
 	// IDS has no cancel, refund, payout or settlement-report API: none of them is advertised.
-	return gateway.Capabilities{PaymentMethods: []string{methodQRIS}, Inquiry: true}
+	return gateway.Capabilities{PaymentMethods: []string{methodQRIS}, Inquiry: true, PlatformAccount: true}
 }
 
 // ---- transport ----
@@ -136,7 +136,11 @@ func (a *Adapter) do(ctx context.Context, method, path string, query url.Values,
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var env envelope
-	_ = json.Unmarshal(raw, &env)
+	if json.Unmarshal(raw, &env) != nil && resp.StatusCode >= 400 {
+		// An HTML or empty error page means we did not reach the IDS API at all (typically a base URL
+		// that points at the dashboard). Say so: the status code alone is a baffling 404.
+		env.Message = "respons bukan JSON dari IDS: periksa Base URL (harus host API, bukan dashboard)"
+	}
 	return env, resp.StatusCode, classify(resp.StatusCode, env)
 }
 

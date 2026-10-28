@@ -35,6 +35,9 @@ type Capabilities struct {
 	PartialRefund    bool
 	SettlementReport bool
 	Disbursement     bool
+	// PlatformAccount: the gateway is contracted once for the whole platform, so a merchant needs no
+	// merchant_gateway_accounts row (and no gateway-side merchant id) to be routed to it.
+	PlatformAccount bool
 }
 
 func (c Capabilities) SupportsMethod(m string) bool {

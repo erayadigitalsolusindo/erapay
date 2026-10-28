@@ -123,6 +123,7 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 		var bc *auth.BadCredentialsError
 		if errors.As(err, &bc) {
 			w.Header().Set("X-Attempts-Left", strconv.Itoa(max(bc.AttemptsLeft, 0)))
+			w.Header().Set("X-Lockout-Seconds", strconv.Itoa(int(d.Auth.LockoutWindow().Seconds())))
 		}
 		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "invalid credentials", false)
 		return

@@ -1,6 +1,8 @@
 import { dev } from '$app/env';
 import { fail, redirect } from '@sveltejs/kit';
 import { platformLogin, platformVerifyMfa, setPlatformSession } from '../../../../lib/server/platform';
+import type { PlatformLoginResult } from '../../../../lib/server/platform';
+import { invalidMessage, lockedMessage } from '../../../../lib/lockout';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
@@ -13,6 +15,13 @@ const MESSAGES: Record<string, { text: string; status: number }> = {
 	invalid_input: { text: 'Kode MFA tidak valid.', status: 400 },
 	unavailable: { text: 'Layanan panel sedang tidak tersedia. Coba lagi nanti.', status: 503 }
 };
+
+// Kredensial salah menampilkan sisa kesempatan; akun terkunci menampilkan sisa waktu (mengecil tiap klik).
+function loginError(r: Extract<PlatformLoginResult, { ok: false }>, fallback: string): string {
+	if (r.code === 'invalid') return invalidMessage(fallback, r.attemptsLeft, r.lockoutSeconds);
+	if (r.code === 'rate_limited') return lockedMessage(r.retryAfter);
+	return r.message ?? fallback;
+}
 
 export const actions: Actions = {
 	default: async ({ request, fetch, cookies, getClientAddress }) => {
@@ -38,7 +47,7 @@ export const actions: Actions = {
 		const r = await platformLogin(fetch, getClientAddress(), email, password);
 		if (!r.ok) {
 			const m = MESSAGES[r.code] ?? MESSAGES.invalid;
-			return fail(m.status, { email, error: r.message ?? m.text });
+			return fail(m.status, { email, error: loginError(r, m.text) });
 		}
 		if (r.ok === 'mfa') return { email: r.email, challenge_id: r.challengeId, mfa: true, error: null };
 		setPlatformSession(cookies, r.token, r.maxAge, !dev);

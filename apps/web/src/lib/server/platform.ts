@@ -18,6 +18,7 @@ export type PlatformLoginResult =
 			message?: string;
 			retryAfter?: number;
 			attemptsLeft?: number;
+			lockoutSeconds?: number; // lama akun dikunci bila kesempatan habis
 	  };
 
 async function platformPost(f: typeof fetch, clientIp: string, path: string, body: unknown): Promise<Response> {
@@ -50,12 +51,12 @@ export async function platformLogin(
 	if (res.status === 429) return { ok: false, code: 'rate_limited', retryAfter: Number(res.headers.get('retry-after')) || undefined };
 	if (res.status === 401) {
 		const left = res.headers.get('x-attempts-left');
-		const body = await res.json().catch(() => null);
+		const lock = res.headers.get('x-lockout-seconds');
 		return {
 			ok: false,
 			code: 'invalid',
-			message: body?.error?.message,
-			attemptsLeft: left === null ? undefined : Number(left)
+			attemptsLeft: left === null ? undefined : Number(left),
+			lockoutSeconds: lock === null ? undefined : Number(lock) || undefined
 		};
 	}
 	if (res.status === 400) return { ok: false, code: 'invalid', message: 'Email dan kata sandi wajib diisi.' };

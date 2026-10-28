@@ -32,6 +32,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payout"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/refund"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/routing"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/secretbox"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/settlement"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/webhook"
@@ -148,6 +149,8 @@ func run(log *slog.Logger) error {
 	}
 	paySvc := payment.NewService(pool)
 	flow := payment.NewOrchestrator(paySvc, pool, idempotency.NewStore(pool), reg, apikey.EnvFromApp(cfg.Env), log)
+	routingSvc := routing.NewService(pool, reg, apikey.EnvFromApp(cfg.Env))
+	flow.SetRouting(routingSvc)
 	go flow.RunPoller(ctx, 15*time.Second)
 	defer rdb.Close()
 
@@ -230,6 +233,7 @@ func run(log *slog.Logger) error {
 			KYC:           kycSvc,
 			GWAccounts:    gwaccount.NewService(pool, reg, apikey.EnvFromApp(cfg.Env)),
 			GWCreds:       credSvc,
+			Routing:       routingSvc,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 			ARUSProvisionToken: cfg.ARUSProvisionToken,
 			PlatformSetupToken: cfg.PlatformSetupToken,

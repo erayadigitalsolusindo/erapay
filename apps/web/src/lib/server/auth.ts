@@ -26,6 +26,7 @@ export type LoginResult =
 			message?: string;
 			retryAfter?: number; // detik sampai boleh mencoba lagi (rate_limited)
 			attemptsLeft?: number; // sisa kesempatan sebelum dikunci (invalid)
+			lockoutSeconds?: number; // lama akun dikunci bila kesempatan habis
 		  };
 
 export async function login(
@@ -48,7 +49,8 @@ export async function login(
 	if (res.status === 429) return { ok: false, code: 'rate_limited', retryAfter: Number(res.headers.get('retry-after')) || undefined };
 	if (res.status === 401) {
 		const left = res.headers.get('x-attempts-left');
-		return { ok: false, code: 'invalid', attemptsLeft: left === null ? undefined : Number(left) };
+		const lock = res.headers.get('x-lockout-seconds');
+		return { ok: false, code: 'invalid', attemptsLeft: left === null ? undefined : Number(left), lockoutSeconds: lock === null ? undefined : Number(lock) || undefined };
 	}
 	if (res.status === 400) {
 		const body = await res.json().catch(() => null);

@@ -46,6 +46,8 @@ type Orchestrator struct {
 	gws  Gateways
 	env  string // "sandbox" | "production": selects merchant_gateway_accounts rows
 	log  *slog.Logger
+
+	routing Routing // nil = no platform-level choice
 }
 
 func NewOrchestrator(svc *Service, db *pgxpool.Pool, idem *idempotency.Store, gws Gateways, env string, log *slog.Logger) *Orchestrator {
@@ -70,8 +72,66 @@ type Outcome struct {
 	Replayed bool
 }
 
-// route picks the merchant's active gateway account (MVP: one gateway per merchant+method).
+// Routing is the platform's choice of gateway for new payments (internal/routing). "" = no choice.
+type Routing interface {
+	Preferred(ctx context.Context) (string, error)
+}
+
+// SetRouting wires the platform's gateway choice. Without it, or while nothing is chosen, a
+// merchant's own oldest active gateway account decides, as before.
+func (o *Orchestrator) SetRouting(r Routing) { o.routing = r }
+
+// route picks the gateway for a NEW payment. The platform's choice wins when the gateway can take
+// this merchant right now; otherwise it falls back to the merchant's own active account. The fallback
+// happens here, before any gateway call, so it can never double-charge: failing over after an
+// ambiguous create is a different thing and is deliberately not done.
 func (o *Orchestrator) route(ctx context.Context, merchantID, method string) (gateway.Adapter, string, error) {
+	if o.routing != nil {
+		pref, err := o.routing.Preferred(ctx)
+		switch {
+		case err != nil:
+			o.log.Error("payment routing unreadable; using the merchant's own gateway account", "err", err)
+		case pref != "":
+			ad, ref, ok, err := o.routeTo(ctx, merchantID, pref, method)
+			if err != nil {
+				return nil, "", err
+			}
+			if ok {
+				return ad, ref, nil
+			}
+			o.log.Warn("preferred gateway cannot take this merchant; using the merchant's own gateway account",
+				"gateway", pref, "merchant_id", merchantID, "method", method)
+		}
+	}
+	return o.routeOwn(ctx, merchantID, method)
+}
+
+// routeTo resolves one specific gateway for the merchant. ok=false means it cannot serve them: not
+// registered, no such method, or (for a gateway that needs one) no active merchant account.
+func (o *Orchestrator) routeTo(ctx context.Context, merchantID, code, method string) (gateway.Adapter, string, bool, error) {
+	ad, found := o.gws.Get(code)
+	if !found || !ad.Capabilities().SupportsMethod(method) {
+		return nil, "", false, nil
+	}
+	if ad.Capabilities().PlatformAccount {
+		return ad, "", true, nil
+	}
+	var ref string
+	err := o.db.QueryRow(ctx, `
+		SELECT gateway_ref FROM merchant_gateway_accounts
+		WHERE merchant_id = $1 AND environment = $2 AND gateway = $3 AND activation_status = 'active' AND gateway_ref IS NOT NULL`,
+		merchantID, o.env, code).Scan(&ref)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, "", false, nil
+	}
+	if err != nil {
+		return nil, "", false, err
+	}
+	return ad, ref, true, nil
+}
+
+// routeOwn picks the merchant's own active gateway account (the oldest one).
+func (o *Orchestrator) routeOwn(ctx context.Context, merchantID, method string) (gateway.Adapter, string, error) {
 	var code, ref string
 	err := o.db.QueryRow(ctx, `
 		SELECT gateway, gateway_ref FROM merchant_gateway_accounts
@@ -257,8 +317,8 @@ func (o *Orchestrator) Inquire(ctx context.Context, paymentID string) error {
 	var merchantID, gw, gref, currency, status, acct string
 	var amount int64
 	err := o.db.QueryRow(ctx, `
-		SELECT p.merchant_id::text, p.gateway, COALESCE(p.gateway_reference,''), p.currency, p.status, p.amount, a.gateway_ref
-		FROM payments p JOIN merchant_gateway_accounts a
+		SELECT p.merchant_id::text, p.gateway, COALESCE(p.gateway_reference,''), p.currency, p.status, p.amount, COALESCE(a.gateway_ref,'')
+		FROM payments p LEFT JOIN merchant_gateway_accounts a
 		  ON a.merchant_id = p.merchant_id AND a.gateway = p.gateway AND a.environment = $2
 		WHERE p.id = $1`, paymentID, o.env).Scan(&merchantID, &gw, &gref, &currency, &status, &amount, &acct)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -278,6 +338,9 @@ func (o *Orchestrator) Inquire(ctx context.Context, paymentID string) error {
 	ad, ok := o.gws.Get(gw)
 	if !ok || !ad.Capabilities().Inquiry {
 		return gateway.ErrNotSupported
+	}
+	if acct == "" && !ad.Capabilities().PlatformAccount {
+		return ErrNotFound // a gateway that needs the merchant's account, and the account is gone
 	}
 
 	gctx, cancel := context.WithTimeout(ctx, 30*time.Second)

@@ -60,6 +60,10 @@ type Config struct {
 	MaxFailIP    int           // failed attempts per IP within window
 }
 
+// LockoutWindow is how long failed attempts count: after MaxFailEmail failures an email stays
+// locked until the oldest of them leaves this window. Shown to users so they know the stakes.
+func (s *Service) LockoutWindow() time.Duration { return s.cfg.AttemptWin }
+
 func DefaultConfig() Config {
 	return Config{SessionTTL: 12 * time.Hour, IdleTTL: 30 * time.Minute,
 		AttemptWin: 15 * time.Minute, MaxFailEmail: 5, MaxFailIP: 20}

@@ -97,6 +97,15 @@ func (d Deps) platformLogin(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", strconv.Itoa(secs))
 		writeError(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "too many attempts, try again later", true)
 		return
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		// Wrong email/password is a 401 the panel can show, not a 500 that reads as "service down".
+		var bc *auth.BadCredentialsError
+		if errors.As(err, &bc) {
+			w.Header().Set("X-Attempts-Left", strconv.Itoa(max(bc.AttemptsLeft, 0)))
+			w.Header().Set("X-Lockout-Seconds", strconv.Itoa(int(d.Auth.LockoutWindow().Seconds())))
+		}
+		writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "invalid credentials", false)
+		return
 	case errors.Is(err, auth.ErrMFARequired):
 		// Do not reveal the role yet: the DEWA check happens after MFA completes.
 		var mfaErr *auth.MFARequiredError
@@ -273,6 +282,11 @@ func (d Deps) mountPlatform(r chi.Router) {
 				r.Put("/gateway-credentials/{gateway}/{env}", d.platformSetGatewayCreds)
 				r.Post("/gateway-credentials/{gateway}/{env}/test", d.platformTestGatewayCreds)
 				r.Post("/gateway-credentials/{gateway}/{env}/apply", d.platformApplyGatewayCreds)
+			}
+			// Jalur pembayaran: gateway mana yang menerima transaksi baru.
+			if d.Routing != nil {
+				r.Get("/payment-routing", d.platformPaymentRouting)
+				r.Put("/payment-routing", d.platformSetPaymentRouting)
 			}
 			r.Get("/audit-logs", d.platformAudit)
 			r.Get("/stats", d.platformStats)

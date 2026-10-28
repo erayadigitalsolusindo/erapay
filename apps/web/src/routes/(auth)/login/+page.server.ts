@@ -1,6 +1,7 @@
 import { dev } from '$app/env';
 import { fail, redirect } from '@sveltejs/kit';
 import { login, verifyMfa, setSession } from '../../../lib/server/auth';
+import { invalidMessage, lockedMessage } from '../../../lib/lockout';
 import type { Actions, PageServerLoad } from './$types';
 import type { LoginResult } from '../../../lib/server/auth';
 
@@ -63,13 +64,7 @@ export const actions: Actions = {
 };
 
 function pesan(r: Extract<LoginResult, { ok: false }>): string {
-	if (r.code === 'rate_limited' && r.retryAfter) {
-		return `Terlalu banyak percobaan. Coba lagi dalam ${Math.ceil(r.retryAfter / 60)} menit.`;
-	}
-	if (r.code === 'invalid' && r.attemptsLeft !== undefined) {
-		return r.attemptsLeft > 0
-			? `${MESSAGES.invalid} Sisa ${r.attemptsLeft} kesempatan sebelum akun dikunci sementara.`
-			: `${MESSAGES.invalid} Percobaan berikutnya akan dikunci sementara.`;
-	}
+	if (r.code === 'rate_limited') return lockedMessage(r.retryAfter);
+	if (r.code === 'invalid') return invalidMessage(MESSAGES.invalid, r.attemptsLeft, r.lockoutSeconds);
 	return MESSAGES[r.code];
 }

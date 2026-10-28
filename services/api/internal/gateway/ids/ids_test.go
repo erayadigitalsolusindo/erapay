@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,6 +113,18 @@ func TestCreatePaymentClassification(t *testing.T) {
 		if gateway.IsAmbiguous(err) != c.ambiguous || gateway.IsRejected(err) == c.ambiguous {
 			t.Errorf("status %d: ambiguous=%v rejected=%v", c.status, gateway.IsAmbiguous(err), gateway.IsRejected(err))
 		}
+	}
+}
+
+func TestNonJSONErrorPointsAtBaseURL(t *testing.T) {
+	a := newTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("<!DOCTYPE html><html>not found</html>"))
+	})
+	steps := a.TestConnection(context.Background(), "", false)
+	if len(steps) != 1 || steps[0].OK || !strings.Contains(steps[0].Message, "Base URL") {
+		t.Fatalf("steps %+v", steps)
 	}
 }
 
