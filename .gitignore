@@ -36,3 +36,6 @@ Thumbs.db
 desktop.ini
 # berkas KYC lokal
 .data/
+
+# Dokumentasi BRIAPI hasil simpan halaman (30 MB), tidak di-commit
+docs/integrations/BRI Dev SNAP/
