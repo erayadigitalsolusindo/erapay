@@ -15,18 +15,18 @@ api: ## Jalankan Go API di :8080 (butuh `make up` dan file .env)
 	cd services/api && set -a && . ../../.env && set +a && go run ./cmd/api
 
 web: ## Jalankan SvelteKit dev server di :5173
-	cd apps/web && npm run dev
+	cd apps/web && bun --bun run dev
 
 install: ## Pasang dependensi frontend
-	cd apps/web && npm install
+	cd apps/web && bun install
 
 test: ## Jalankan semua test (Go + frontend)
 	cd services/api && go test ./...
-	cd apps/web && npm test
+	cd apps/web && bun --bun run test
 
 check: ## Cek format/tipe (Go + frontend)
 	cd services/api && test -z "$$(gofmt -l .)" && go vet ./...
-	cd apps/web && npm run check
+	cd apps/web && bun --bun run check
 
 migrate: ## Terapkan migrasi ke ERAPAY_DATABASE_URL (.env)
 	cd services/api && set -a && . ../../.env && set +a && go run ./cmd/migrate up

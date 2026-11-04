@@ -43,31 +43,31 @@
 
 <div data-theme={data.theme} class="adm flex min-h-screen flex-col bg-page font-sans text-ink antialiased lg:flex-row">
 	<!-- Sidebar: sticky di layar lebar, bar horizontal yang bisa digeser di HP -->
-	<aside class="z-20 flex shrink-0 flex-col bg-merah-gelap text-white lg:sticky lg:top-0 lg:h-screen lg:w-64">
-		<div class="flex items-center gap-3 px-4 py-3 lg:px-5 lg:py-6">
-			<span class="grid shrink-0 place-items-center rounded-xl bg-white/95 px-2 py-1"><Logo class="h-8" /></span>
+	<aside class="z-20 flex shrink-0 flex-col bg-merah-gelap text-white lg:sticky lg:top-0 lg:h-screen lg:w-52">
+		<div class="flex items-center gap-2 border-b border-dashed border-white/15 px-3 py-2 lg:py-3">
+			<span class="grid shrink-0 place-items-center rounded-md bg-white/95 px-1.5 py-0.5"><Logo class="h-6" /></span>
 			<div class="min-w-0 leading-tight">
-				<div class="truncate text-sm font-extrabold tracking-wide">{t('pf.brand')}</div>
+				<div class="truncate text-xs font-extrabold tracking-wide">{t('pf.brand')}</div>
 				<div class="-mt-0.5 text-[9px] tracking-[.2em] text-white/60 uppercase">DEWA · Platform Admin</div>
 			</div>
 		</div>
 
-		<nav class="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:pb-0" aria-label={t('pf.menu')}>
+		<nav class="flex gap-0.5 overflow-x-auto px-2 py-2 lg:flex-1 lg:flex-col lg:overflow-y-auto lg:overflow-x-visible lg:pb-0" aria-label={t('pf.menu')}>
 			{#each items as n (n.href)}
 				<a
 					href={n.href}
 					aria-current={current?.href === n.href ? 'page' : undefined}
-					class="flex shrink-0 items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-bold whitespace-nowrap text-white/70 transition hover:bg-white/10 hover:text-white aria-[current=page]:bg-merah aria-[current=page]:text-white aria-[current=page]:shadow-sm"
+					class="flex shrink-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-bold whitespace-nowrap text-white/70 transition hover:bg-white/10 hover:text-white aria-[current=page]:bg-merah aria-[current=page]:text-white aria-[current=page]:shadow-sm"
 				>
-					<svg viewBox="0 0 24 24" class="size-[18px] shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d={n.icon} /></svg>
+					<svg viewBox="0 0 24 24" class="size-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d={n.icon} /></svg>
 					{t(n.label)}
 				</a>
 			{/each}
 		</nav>
 
-		<div class="hidden border-t border-white/10 p-4 lg:block">
+		<div class="hidden border-t border-dashed border-white/15 p-2.5 lg:block">
 			<div class="flex items-center gap-3">
-				<span class="grid size-9 shrink-0 place-items-center rounded-full bg-merah text-xs font-bold text-white">{inisial}</span>
+				<span class="grid size-7 shrink-0 place-items-center rounded bg-merah text-[11px] font-bold text-white">{inisial}</span>
 				<span class="min-w-0 leading-tight">
 					<span class="block truncate text-xs font-bold">{nama}</span>
 					<span class="block truncate text-[10px] text-white/55">DEWA · {data.user.email}</span>
@@ -94,7 +94,7 @@
 	</aside>
 
 	<div class="flex min-w-0 flex-1 flex-col">
-		<main class="mx-auto w-full max-w-6xl flex-1 p-5 lg:p-8">
+		<main class="mx-auto w-full max-w-6xl flex-1 p-3 text-[13px] lg:p-4">
 			{@render children()}
 		</main>
 		<footer class="muted border-t border-ink/10 px-5 py-3 text-center text-[10px]">{t('footer.tagline')}</footer>

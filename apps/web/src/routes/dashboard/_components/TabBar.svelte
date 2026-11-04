@@ -135,7 +135,7 @@
 </script>
 
 {#if tabs.length}
-	<div class="flex items-stretch gap-2 border-t border-ink/10 bg-surface px-3 pt-2 lg:px-6">
+	<div class="flex items-stretch gap-2 border-t border-ink/20 bg-surface px-3 pt-1 lg:px-4">
 		<div class="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto" role="tablist" aria-label={t('tabs.label')}>
 			{#each tabs as tab (tab.href)}
 				{@const it = item(tab.href)}
@@ -144,8 +144,8 @@
 					<div
 						role="presentation"
 						oncontextmenu={(e) => bukaMenu(e, tab)}
-						class="group flex shrink-0 items-center rounded-t-xl border border-b-0 text-xs font-semibold {on
-							? 'border-ink/10 bg-page text-ink'
+						class="group flex shrink-0 items-center rounded-t-md border border-b-0 text-[11px] font-semibold {on
+							? 'border-ink/20 bg-page text-ink'
 							: 'border-transparent text-ink/60 hover:bg-ink/5 hover:text-ink'}"
 					>
 						<button
@@ -154,7 +154,7 @@
 							aria-selected={on}
 							onclick={() => buka(tab)}
 							onkeydown={(e) => onKey(e, tab)}
-							class="max-w-44 truncate py-2 pr-1 pl-3.5 focus-visible:ring-2 focus-visible:ring-emas/60"
+							class="max-w-44 truncate py-1 pr-1 pl-2.5 focus-visible:ring-2 focus-visible:ring-emas/60"
 						>
 							{t(it.label)}
 						</button>
@@ -163,7 +163,7 @@
 								type="button"
 								onclick={() => tutup(tab.href)}
 								aria-label={t('tabs.close', { name: t(it.label) })}
-								class="mr-1.5 grid size-5 place-items-center rounded-full text-ink/50 hover:bg-ink/10 hover:text-ink focus-visible:ring-2 focus-visible:ring-emas/60"
+								class="mr-1 grid size-4 place-items-center rounded text-ink/50 hover:bg-ink/10 hover:text-ink focus-visible:ring-2 focus-visible:ring-emas/60"
 							>
 								<svg viewBox="0 0 24 24" class="size-3" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
 							</button>
@@ -175,7 +175,7 @@
 		<button
 			type="button"
 			onclick={tutupSemua}
-			class="mb-1 shrink-0 self-center rounded-full border border-ink/10 px-3 py-1.5 text-[11px] font-semibold text-ink/70 hover:bg-ink/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-emas/60"
+			class="mb-1 shrink-0 self-center rounded-md border border-ink/20 px-2 py-0.5 text-[10px] font-semibold text-ink/70 hover:bg-ink/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-emas/60"
 		>
 			{t('tabs.closeAll')}
 		</button>

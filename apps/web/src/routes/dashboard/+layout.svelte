@@ -30,7 +30,7 @@
 
 <div
 	data-theme={theme}
-	class="adm font-sans min-h-screen bg-surface text-ink antialiased lg:grid lg:grid-cols-[248px_minmax(0,1fr)]"
+	class="adm font-sans min-h-screen bg-surface text-ink antialiased lg:grid lg:grid-cols-[208px_minmax(0,1fr)]"
 >
 	<Sidebar user={data.user} menus={data.menus} />
 	<div class="flex min-h-screen min-w-0 flex-col">
@@ -47,7 +47,7 @@
 				</form>
 			</div>
 		{/if}
-		<main class="flex-1 border-t border-ink/10 bg-page p-5 lg:p-8">
+		<main class="flex-1 border-t border-ink/20 bg-page p-3 text-[13px] lg:p-4">
 			{#if data.user.merchantId && !data.user.emailVerified}
 				<p class="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900" role="status">
 					{i18n.t('onb.banner.unverified')}
@@ -70,6 +70,6 @@
 			{/if}
 			{@render children()}
 		</main>
-		<footer class="muted border-t border-ink/10 bg-page px-5 py-3 text-[10px] lg:px-8">{i18n.t('footer.tagline')}</footer>
+		<footer class="muted border-t border-ink/10 bg-page px-3 py-1.5 text-[10px] lg:px-4">{i18n.t('footer.tagline')}</footer>
 	</div>
 </div>

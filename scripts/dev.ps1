@@ -31,7 +31,7 @@ function Invoke-Checked([scriptblock]$Cmd) {
 switch ($Task) {
     'up'      { Invoke-Checked { docker compose -f $Compose up -d } }
     'down'    { Invoke-Checked { docker compose -f $Compose down } }
-    'install' { Push-Location (Join-Path $Root 'apps/web'); try { Invoke-Checked { npm install } } finally { Pop-Location } }
+    'install' { Push-Location (Join-Path $Root 'apps/web'); try { Invoke-Checked { bun install } } finally { Pop-Location } }
     'api'     {
         Import-DotEnv
         Push-Location (Join-Path $Root 'services/api')
@@ -39,11 +39,11 @@ switch ($Task) {
     }
     'web'     {
         Import-DotEnv
-        Push-Location (Join-Path $Root 'apps/web'); try { Invoke-Checked { npm run dev } } finally { Pop-Location }
+        Push-Location (Join-Path $Root 'apps/web'); try { Invoke-Checked { bun --bun run dev } } finally { Pop-Location }
     }
     'test'    {
         Push-Location (Join-Path $Root 'services/api'); try { Invoke-Checked { go test ./... } } finally { Pop-Location }
-        Push-Location (Join-Path $Root 'apps/web');     try { Invoke-Checked { npm test } }       finally { Pop-Location }
+        Push-Location (Join-Path $Root 'apps/web');     try { Invoke-Checked { bun --bun run test } }       finally { Pop-Location }
     }
     'check'   {
         Push-Location (Join-Path $Root 'services/api')
@@ -52,7 +52,7 @@ switch ($Task) {
             if ($unformatted) { throw "File Go belum diformat:`n$unformatted" }
             Invoke-Checked { go vet ./... }
         } finally { Pop-Location }
-        Push-Location (Join-Path $Root 'apps/web'); try { Invoke-Checked { npm run check } } finally { Pop-Location }
+        Push-Location (Join-Path $Root 'apps/web'); try { Invoke-Checked { bun --bun run check } } finally { Pop-Location }
     }
     'migrate' { Import-DotEnv; Push-Location (Join-Path $Root 'services/api'); try { Invoke-Checked { go run ./cmd/migrate $MigrateArg } } finally { Pop-Location } }
     default {

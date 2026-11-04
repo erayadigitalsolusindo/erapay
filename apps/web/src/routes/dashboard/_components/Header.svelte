@@ -36,7 +36,7 @@
 		else document.documentElement.requestFullscreen?.();
 	}
 	const tombolBulat =
-		'grid size-10 place-items-center rounded-full bg-ink/5 hover:bg-ink/10 focus-visible:ring-4 focus-visible:ring-emas/60';
+		'grid size-7 place-items-center rounded-md bg-ink/5 hover:bg-ink/10 focus-visible:ring-4 focus-visible:ring-emas/60';
 </script>
 
 <!-- Tutup hanya saat klik di luar: klik di dalam menu (mis. tombol Keluar) harus tetap jalan. -->
@@ -50,37 +50,37 @@
 />
 
 <header class="relative bg-surface">
-	<div class="flex items-center justify-between gap-3 px-5 py-3.5 lg:px-8">
+	<div class="flex items-center justify-between gap-3 px-3 py-1.5 lg:px-4">
 		<div></div>
 
-		<div class="flex items-center gap-3">
+		<div class="flex items-center gap-2">
 			<button
 				type="button"
 				onclick={gantiTema}
 				title={gelapSekarang() ? t('hdr.theme.light') : t('hdr.theme.dark')}
 				aria-label={gelapSekarang() ? t('hdr.theme.light') : t('hdr.theme.dark')}
-				class="grid size-11 place-items-center rounded-full bg-emas/20 text-amber-600 hover:bg-emas/30 focus-visible:ring-4 focus-visible:ring-emas/60"
+				class="grid size-8 place-items-center rounded-md bg-emas/20 text-amber-600 hover:bg-emas/30 focus-visible:ring-4 focus-visible:ring-emas/60"
 			>
 				{#if gelapSekarang()}
-					<svg class="size-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>
+					<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>
 				{:else}
-					<svg class="size-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+					<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
 				{/if}
 			</button>
 
-			<div class="hidden items-center gap-1 rounded-full border border-ink/10 bg-surface p-1 shadow-sm sm:flex">
+			<div class="hidden items-center gap-1 rounded-md border border-ink/20 bg-surface p-0.5 sm:flex">
 				<LangSwitch btnClass={tombolBulat} />
 				<button type="button" onclick={layarPenuh} title={t('hdr.fullscreen')} aria-label={t('hdr.fullscreen')} class={tombolBulat}>
-					<svg class="size-[18px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+					<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
 				</button>
 			</div>
 
 			<div class="relative">
-				<button type="button" onclick={toggle('profil')} aria-expanded={menu === 'profil'} class="flex items-center gap-3 rounded-full border border-ink/10 bg-surface py-1.5 pr-4 pl-1.5 shadow-sm hover:bg-ink/5 focus-visible:ring-4 focus-visible:ring-emas/60">
-					<span class="grid size-10 place-items-center rounded-full bg-merah text-sm font-bold text-white">{inisial}</span>
-					<span class="hidden min-w-0 text-left md:block">
-						<span class="block max-w-44 truncate text-sm font-semibold">{nama}</span>
-						<span class="muted block max-w-44 truncate text-xs">{user.merchantId ? t('hdr.merchant', { id: user.merchantId }) : t('hdr.platform')}</span>
+				<button type="button" onclick={toggle('profil')} aria-expanded={menu === 'profil'} class="flex items-center gap-2 rounded-md border border-ink/20 bg-surface py-0.5 pr-2 pl-0.5 hover:bg-ink/5 focus-visible:ring-2 focus-visible:ring-emas/60">
+					<span class="grid size-7 place-items-center rounded bg-merah text-xs font-bold text-white">{inisial}</span>
+					<span class="hidden min-w-0 text-left leading-tight md:block">
+						<span class="block max-w-44 truncate text-xs font-semibold">{nama}</span>
+						<span class="muted block max-w-44 truncate text-[10px]">{user.merchantId ? t('hdr.merchant', { id: user.merchantId }) : t('hdr.platform')}</span>
 					</span>
 					<svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
 				</button>

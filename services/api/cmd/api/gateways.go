@@ -9,6 +9,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/bri"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/doku"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/ids"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwcred"
@@ -56,6 +57,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (
 		return nil, err
 	}
 	registerIDS(reg, cfg, log, creds)
+	registerBRI(reg, cfg, log)
 	return reg, nil
 }
 
@@ -83,6 +85,38 @@ func registerIDS(reg *gateway.Registry, cfg config.Config, log *slog.Logger, cre
 	}
 	reg.Register(a)
 	log.Info("gateway registered from database credentials", "gateway", ids.Code, "env", env)
+}
+
+// registerBRI registers BRI from BRI_* env (the panel credential form comes later). Like IDS it is
+// never fatal: missing or rejected settings are logged and BRI simply does not exist, so a
+// half-filled BRI setup cannot stop the other gateways from serving.
+func registerBRI(reg *gateway.Registry, cfg config.Config, log *slog.Logger) {
+	bc, err := config.LoadBRI()
+	if err != nil {
+		log.Error("BRI configuration rejected", "reason", err.Error())
+		return
+	}
+	if bc == nil {
+		return
+	}
+	key, err := bri.ParsePrivateKey(bc.PrivateKeyPEM)
+	if err != nil {
+		log.Error("BRI configuration rejected", "reason", err.Error())
+		return
+	}
+	base := bc.BaseURL
+	if base == "" && cfg.Env == "production" {
+		log.Error("BRI configuration rejected", "reason", "BRI_BASE_URL (production) is required when ERAPAY_ENV=production")
+		return
+	}
+	a, err := bri.New(bri.Config{BaseURL: base, ClientID: bc.ClientID, ClientSecret: bc.ClientSecret, PrivateKey: key,
+		PartnerID: bc.PartnerID, ChannelID: bc.ChannelID, MerchantID: bc.MerchantID, TerminalID: bc.TerminalID})
+	if err != nil {
+		log.Error("BRI configuration rejected", "reason", err.Error())
+		return
+	}
+	reg.Register(a)
+	log.Info("gateway registered", "gateway", bri.Code)
 }
 
 func registerDOKU(reg *gateway.Registry, cfg config.Config, log *slog.Logger, creds *gwcred.Service) error {
