@@ -239,3 +239,22 @@ export async function verifyMfa(
 	}
 	return { ok: false, code: 'unavailable' };
 }
+
+/** Tukar kode masuk-sekali dari ARUS menjadi sesi merchant. null bila kode tidak valid/kedaluwarsa. */
+export async function ssoExchange(f: typeof fetch, clientIp: string, code: string): Promise<{ token: string; maxAge: number } | null> {
+	try {
+		const res = await f(`${BASE}/v1/auth/sso/exchange`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', 'x-forwarded-for': clientIp },
+			body: JSON.stringify({ code })
+		});
+		if (!res.ok) return null;
+		for (const line of res.headers.getSetCookie()) {
+			const m = line.match(new RegExp(`^${SESSION_COOKIE}=([^;]+)`));
+			if (m) return { token: m[1], maxAge: Number(line.match(/Max-Age=(\d+)/i)?.[1]) || 3600 };
+		}
+	} catch {
+		/* API tidak terjangkau: jatuh ke halaman login biasa */
+	}
+	return null;
+}

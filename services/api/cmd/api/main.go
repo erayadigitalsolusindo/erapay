@@ -236,6 +236,7 @@ func run(log *slog.Logger) error {
 			Routing:       routingSvc,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 			ARUSProvisionToken: cfg.ARUSProvisionToken,
+			WebURL:             cfg.WebURL,
 			PlatformSetupToken: cfg.PlatformSetupToken,
 		}),
 		// Tanpa batas ini koneksi lambat (slowloris) bisa menahan goroutine tanpa batas waktu.

@@ -72,3 +72,45 @@ func TestARUSProvisioningLinksExistingAndCreatesIdempotently(t *testing.T) {
 		t.Fatal("owner setup email was not sent")
 	}
 }
+
+func TestARUSSSOCodeIsSingleUse(t *testing.T) {
+	w := setup(t)
+	if _, err := w.db.Exec(t.Context(), `UPDATE merchants SET legal_name = 'Legacy Toko', display_name = 'Legacy Toko' WHERE id = $1`, w.midA); err != nil {
+		t.Fatal(err)
+	}
+	const token = "arus-provision-test-token-that-is-long-enough"
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := httptest.NewServer(NewRouter(Deps{Log: log, Auth: w.svc, Onboarding: onboarding.NewService(w.db, w.acct, onboarding.Config{Log: log}),
+		ARUSProvisionToken: token, WebURL: "https://pay.test"}))
+	t.Cleanup(server.Close)
+
+	tenant := uuid.New()
+	link := arusRequest(t, server, token, http.MethodPost, "/v1/integrations/arus/tenants",
+		fmt.Sprintf(`{"tenant_id":%q,"business_name":"Legacy Toko","owner_name":"Pemilik Toko","owner_email":"owner@a.test","accepted_terms":true}`, tenant))
+	if link.StatusCode != http.StatusOK {
+		t.Fatalf("link: %d", link.StatusCode)
+	}
+	if r := arusRequest(t, server, token, http.MethodPost, "/v1/integrations/arus/tenants/"+uuid.NewString()+"/sso", ""); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("unlinked tenant sso: %d", r.StatusCode)
+	}
+	issued := decode(t, arusRequest(t, server, token, http.MethodPost, "/v1/integrations/arus/tenants/"+tenant.String()+"/sso", ""))
+	url, _ := issued["url"].(string)
+	code := strings.TrimPrefix(url, "https://pay.test/sso?code=")
+	if code == "" || code == url {
+		t.Fatalf("sso url: %v", issued)
+	}
+	exchange := func() *http.Response {
+		resp, err := http.Post(server.URL+"/v1/auth/sso/exchange", "application/json", strings.NewReader(fmt.Sprintf(`{"code":%q}`, code)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	first := exchange()
+	if first.StatusCode != http.StatusOK || readCookie(first, sessionCookie) == "" {
+		t.Fatalf("first exchange: %d", first.StatusCode)
+	}
+	if again := exchange(); again.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("replayed code: %d", again.StatusCode)
+	}
+}

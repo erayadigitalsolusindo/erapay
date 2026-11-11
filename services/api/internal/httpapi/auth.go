@@ -430,6 +430,7 @@ func (d Deps) mountV1(r chi.Router) {
 			r.Use(requireJSON)
 			r.Post("/auth/login", d.login)
 			r.Post("/auth/mfa/verify", d.mfaVerify) // Complete login with MFA code
+			r.Post("/auth/sso/exchange", d.ssoExchange)
 			if d.Onboarding != nil && d.Onboarding.CanRegister() {
 				r.Post("/auth/register", d.register)
 			}
