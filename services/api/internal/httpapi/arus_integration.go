@@ -90,7 +90,7 @@ func (d Deps) arusTenantSSO(w http.ResponseWriter, r *http.Request) {
 	}
 	code, ttl, err := d.Auth.IssueARUSSSOCode(r.Context(), tenantID, middleware.GetReqID(r.Context()))
 	if errors.Is(err, auth.ErrSSOUnavailable) {
-		writeError(w, r, http.StatusNotFound, "SSO_UNAVAILABLE", "tenant is not linked or owner uses MFA", false)
+		writeError(w, r, http.StatusNotFound, "SSO_UNAVAILABLE", "tenant is not linked", false)
 		return
 	}
 	if err != nil {

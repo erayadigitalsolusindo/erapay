@@ -15,7 +15,7 @@ import (
 
 // Masuk satu-klik dari ARUS: ARUS (server-to-server, token provisioning) meminta kode untuk
 // Owner tenant yang tertaut; browser menukarnya sekali jadi sesi merchant biasa.
-// Akun ber-MFA ditolak: SSO tidak boleh melewati faktor kedua, mereka login lewat halaman biasa.
+// Keputusan produk: ARUS sudah mengautentikasi Owner, jadi SSO tidak meminta MFA EraPay lagi (ekosistem).
 
 var (
 	ErrSSOUnavailable = errors.New("sso not available for this tenant")
@@ -26,15 +26,14 @@ var (
 // IssueARUSSSOCode returns a single-use code for the owner of the merchant linked to an ARUS tenant.
 func (s *Service) IssueARUSSSOCode(ctx context.Context, tenantID uuid.UUID, requestID string) (string, time.Duration, error) {
 	var uid, mid string
-	var mfa bool
 	err := s.db.QueryRow(ctx, `
-		SELECT l.owner_user_id::text, l.merchant_id::text, u.mfa_secret IS NOT NULL
+		SELECT l.owner_user_id::text, l.merchant_id::text
 		FROM merchant_external_links l
 		JOIN users u ON u.id = l.owner_user_id AND u.status = 'active'
 		JOIN merchant_users mu ON mu.merchant_id = l.merchant_id AND mu.user_id = l.owner_user_id
 		JOIN roles r ON r.id = mu.role_id AND r.code = 'merchant_owner'
-		WHERE l.source = 'arus' AND l.source_tenant_id = $1`, tenantID).Scan(&uid, &mid, &mfa)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && mfa) {
+		WHERE l.source = 'arus' AND l.source_tenant_id = $1`, tenantID).Scan(&uid, &mid)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return "", 0, ErrSSOUnavailable
 	}
 	if err != nil {
