@@ -161,9 +161,18 @@ func TestCreatePaymentInvalidRequests(t *testing.T) {
 }
 
 func TestGetPaymentByOurReference(t *testing.T) {
+	synced := false
 	a := newTest(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Query().Get("income_channel_transaction_id") != "erapay-pay-1" {
+		if r.URL.Query().Get("income_channel_transaction_id") != "erapay-pay-1" {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.String())
+		}
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/api/payments/status" {
+			synced = true
+			w.WriteHeader(429) // cooldown: GetPayment must still read
+			return
+		}
+		if r.Method != http.MethodGet || !synced {
+			t.Errorf("want GET after sync, got %s %s (synced=%v)", r.Method, r.URL.Path, synced)
 		}
 		_, _ = w.Write([]byte(`{"code":200,"payment":{"status":"PAID","amount":250000,"paid_amount":250000,"currency":"IDR","paid_at":"2026-10-28T10:00:00Z"}}`))
 	})

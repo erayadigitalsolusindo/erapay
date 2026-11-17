@@ -26,6 +26,7 @@ const (
 
 	pathPayments = "/v1/api/payments"
 	pathMethods  = "/v1/api/payment-methods"
+	pathStatus   = "/v1/api/payments/status"
 
 	// MethodQRIS is EraPay's method name; IDS spells it lower case.
 	methodQRIS    = "QRIS"
@@ -211,13 +212,16 @@ func (a *Adapter) CreatePayment(ctx context.Context, r gateway.CreateRequest) (g
 		RawStatus: env.Payment.Status, ResponseCode: itoa(env.Code)}, nil
 }
 
-// GetPayment reads IDS's state (it does not query DOKU). It is looked up by our payment id, so it
+// GetPayment syncs with DOKU through IDS (POST .../status) and then reads IDS's state. It is looked up by our payment id, so it
 // works even when we never saw IDS's payment_id.
 func (a *Adapter) GetPayment(ctx context.Context, r gateway.QueryRequest) (gateway.QueryResult, error) {
 	if r.Reference == "" {
 		return gateway.QueryResult{}, &gateway.Error{Kind: gateway.Rejected, Message: "invalid query request"}
 	}
 	q := url.Values{"income_channel_transaction_id": {r.Reference}}
+	// Best effort: GET alone never asks DOKU, so a lost callback would stay PENDING. A cooldown (429)
+	// or any failure here is ignored; the GET below is the read that counts.
+	_, _, _ = a.do(ctx, http.MethodPost, pathStatus, q, nil)
 	env, _, err := a.do(ctx, http.MethodGet, pathPayments, q, nil)
 	if err != nil {
 		return gateway.QueryResult{}, err
