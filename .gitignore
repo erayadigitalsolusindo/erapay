@@ -39,3 +39,4 @@ desktop.ini
 
 # Dokumentasi BRIAPI hasil simpan halaman (30 MB), tidak di-commit
 docs/integrations/BRI Dev SNAP/
+.local-data/
