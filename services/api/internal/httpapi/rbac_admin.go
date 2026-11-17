@@ -276,3 +276,23 @@ func (d Deps) platformStats(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, st)
 }
+
+// platformDeleteMerchant: DELETE /v1/platform/merchants/{id} — hapus tenant spam beserta semua datanya.
+func (d Deps) platformDeleteMerchant(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	err := d.Auth.DeleteMerchant(r.Context(), id, PrincipalFrom(r.Context()).UserID, middleware.GetReqID(r.Context()))
+	switch {
+	case errors.Is(err, auth.ErrMerchantNotFound):
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "not found", false)
+	case errors.Is(err, auth.ErrMerchantHasFinancial):
+		writeError(w, r, http.StatusConflict, "MERCHANT_HAS_FINANCIAL_RECORDS", "Tenant sudah punya transaksi/payout/refund/ledger dan tidak boleh dihapus. Tangguhkan saja.", false)
+	case err != nil:
+		d.Log.Error("platform.merchants.delete", "err", err)
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+	}
+}

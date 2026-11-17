@@ -33,15 +33,22 @@ var userDeleteBlockers = map[string]bool{
 // (created_by, approved_by, dst.) di-NULL-kan agar riwayat tetap ada. audit_logs append-only
 // dan tidak punya FK, jadi tetap utuh. Mengembalikan jumlah baris per tabel yang tersentuh.
 func (s *Service) DeleteUser(ctx context.Context, userID, actor, requestID string) (map[string]int64, error) {
-	if userID == actor {
-		return nil, fmt.Errorf("%w: cannot delete yourself", ErrUserProtected)
-	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	touched, err := deleteUserTx(ctx, tx, userID, actor, requestID)
+	if err != nil {
+		return nil, err
+	}
+	return touched, nil
+}
 
+func deleteUserTx(ctx context.Context, tx pgx.Tx, userID, actor, requestID string) (map[string]int64, error) {
+	if userID == actor {
+		return nil, fmt.Errorf("%w: cannot delete yourself", ErrUserProtected)
+	}
 	var email string
 	if err := tx.QueryRow(ctx, `SELECT email FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&email); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -131,5 +138,5 @@ func (s *Service) DeleteUser(ctx context.Context, userID, actor, requestID strin
 		EntityID: userID, RequestID: requestID, Metadata: map[string]any{"email": email, "relations": touched}}); err != nil {
 		return nil, err
 	}
-	return touched, tx.Commit(ctx)
+	return touched, nil
 }

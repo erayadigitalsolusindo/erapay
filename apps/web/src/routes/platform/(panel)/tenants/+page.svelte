@@ -195,7 +195,20 @@
 						>
 							{tx('pf.tn.gateway', 'Gateway')}
 						</a>
+						<form
+							method="POST"
+							action="?/remove"
+							use:enhance={({ cancel }) => {
+								if (!confirm(`Hapus tenant "${m.display_name}" beserta SEMUA datanya (gateway, API key, user pemilik)? Tidak bisa dibatalkan.`)) cancel();
+							}}
+						>
+							<input type="hidden" name="merchant_id" value={m.id} />
+							<button class="rounded-full border border-red-600/40 px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-600 hover:text-white">Hapus</button>
+						</form>
 					</div>
+					{#if form?.merchantId === m.id && form.removeError}
+						<p class="mt-2 text-xs font-semibold text-red-700" role="alert">{form.removeError}</p>
+					{/if}
 
 					{#if act === m.id || (form?.merchantId === m.id && (form?.activateError || form?.activated))}
 						<form method="POST" action="?/activate" use:enhance autocomplete="off" class="mt-4 space-y-2.5 rounded-xl border border-ink/10 bg-ink/[.03] p-4">

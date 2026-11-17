@@ -108,3 +108,50 @@ func TestPlatformStatsAndListUsers(t *testing.T) {
 		t.Fatalf("list users: %v %+v", err, us)
 	}
 }
+
+func TestDeleteMerchant(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.New(t)
+	s := NewService(db, DefaultConfig())
+	owner, err := s.CreateUser(ctx, "spam@erapay.test", pw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mid, rid string
+	if err := db.QueryRow(ctx, `INSERT INTO merchants (legal_name, display_name) VALUES ('Spam','Spam') RETURNING id::text`).Scan(&mid); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.QueryRow(ctx, `SELECT id::text FROM roles WHERE code='merchant_owner'`).Scan(&rid)
+	for _, q := range []string{
+		`INSERT INTO merchant_users (merchant_id, user_id, role_id) VALUES ($1,$2,$3)`,
+		`INSERT INTO merchant_gateway_accounts (merchant_id, gateway, environment) SELECT $1,'doku','sandbox' WHERE $2::text <> '' AND $3::text <> ''`,
+	} {
+		if _, err := db.Exec(ctx, q, mid, owner, rid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Dua hapus bersamaan: tepat satu berhasil, yang lain NotFound (idempoten).
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() { errs <- s.DeleteMerchant(ctx, mid, owner, "r") }()
+	}
+	ok, nf := 0, 0
+	for i := 0; i < 2; i++ {
+		switch err := <-errs; {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrMerchantNotFound):
+			nf++
+		default:
+			t.Fatal(err)
+		}
+	}
+	if ok != 1 || nf != 1 {
+		t.Fatalf("ok=%d notfound=%d", ok, nf)
+	}
+	var n int
+	_ = db.QueryRow(ctx, `SELECT (SELECT count(*) FROM merchants)+(SELECT count(*) FROM users WHERE id=$1)+(SELECT count(*) FROM merchant_gateway_accounts)`, owner).Scan(&n)
+	if n != 0 {
+		t.Fatalf("leftover rows: %d", n)
+	}
+}
