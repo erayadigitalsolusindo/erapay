@@ -55,7 +55,7 @@ Peta task → file yang dibaca (selain file ini):
 8. Fee/status/gateway ref dihitung/ditentukan server; tidak pernah diterima dari POS. Snapshot pricing tidak berubah retroaktif.
 9. Payment status ≠ settlement status ≠ refund status (tiga state machine terpisah, tampil terpisah di UI).
 10. Jangan mengarang endpoint/field/signature/format QR gateway mana pun. Pakai dokumentasi/SDK resmi; catat versinya di `docs/integrations/<gateway>.md`.
-11. Domain, API publik, ledger, dan UI tidak boleh bergantung pada skema/istilah satu gateway. Detail gateway hanya di adapter + mapping. Saat ini hanya adapter DOKU yang aktif; gateway lain = tidak ada kode adapter/stub, tidak tampil di UI/docs sebagai supported.
+11. Domain, API publik, ledger, dan UI tidak boleh bergantung pada skema/istilah satu gateway. Detail gateway hanya di adapter + mapping. Adapter gateway lain boleh ditulis (keputusan pemilik, 18 Nov 2026), tetapi baru aktif dan tampil di UI/docs sebagai supported setelah gate aktivasi `prd/gateway-new.md` terpenuhi.
 12. Secret tidak boleh ada di code, fixture, log, prompt, UI (tampil sekali saja). Gateway secret dienkripsi at-rest.
 13. Semua validasi keamanan & bisnis di Go; SvelteKit hanya UX. Tidak ada logic finansial/secret di browser.
 14. Model B: PT. Eraya Digital Solusindo menerima dana dari DOKU lalu membayar merchant. Dana merchant = kewajiban PT (`merchant_payable` di ledger), bukan pendapatan EraPay. Dilarang: memakai dana merchant untuk operasional, mencampur dengan dana operasional, atau mengeluarkan dana tanpa ledger + approval. Bukan wallet bebas/top-up/transfer antar pengguna.

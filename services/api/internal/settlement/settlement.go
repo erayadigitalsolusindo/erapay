@@ -97,7 +97,7 @@ func (in BatchInput) validate() error {
 //
 //	Dr cash_bank_pt        reported_net
 //	Cr <gateway clearing>  expected_net      (equal: a mismatch is refused, never booked;
-//	                                          cash_ids_clearing for IDS, else cash_doku_clearing)
+//	                                          cash_ids_clearing for IDS, cash_finpay_clearing for FINPAY, else cash_doku_clearing)
 //
 // It is idempotent per (gateway, batch_ref): the identical batch replays the stored result; a
 // different batch under the same reference is ErrBatchConflict. A payment can settle once

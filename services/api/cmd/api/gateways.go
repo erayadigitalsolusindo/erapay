@@ -11,6 +11,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/bri"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/doku"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/finpay"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/ids"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwcred"
 )
@@ -18,13 +19,23 @@ import (
 // gatewayFactories is where gateway codes meet concrete adapter packages (PRD §0 #11). A new
 // gateway adds its credential schema in gwcred and its factory here.
 func gatewayFactories() map[string]gwcred.Factory {
-	return map[string]gwcred.Factory{doku.Code: dokuFromCreds, ids.Code: idsFromCreds}
+	return map[string]gwcred.Factory{doku.Code: dokuFromCreds, ids.Code: idsFromCreds, finpay.Code: finpayFromCreds}
 }
 
 // idsFromCreds builds the IDS adapter from credentials saved in the panel. IDS keys carry no
 // sandbox/production marker we can rely on, so the environment is not cross-checked here.
 func idsFromCreds(c map[string]string, _ string) (gateway.Adapter, error) {
 	return ids.New(ids.Config{BaseURL: c["base_url"], APIKey: c["api_key"], CallbackSecret: c["callback_secret"]})
+}
+
+// finpayFromCreds builds the FINPAY adapter. The host follows the environment, so sandbox keys can
+// never reach production (or the reverse) by a copy-paste slip.
+func finpayFromCreds(c map[string]string, env string) (gateway.Adapter, error) {
+	base := finpay.SandboxURL
+	if env == "production" {
+		base = finpay.ProductionURL
+	}
+	return finpay.New(finpay.Config{BaseURL: base, MerchantID: c["merchant_id"], MerchantKey: c["merchant_key"], CallbackURL: c["callback_url"]})
 }
 
 // dokuFromCreds builds the DOKU adapter from credentials saved in the panel. Unlike the env path
@@ -56,35 +67,36 @@ func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (
 	if err := registerDOKU(reg, cfg, log, creds); err != nil {
 		return nil, err
 	}
-	registerIDS(reg, cfg, log, creds)
+	registerFromPanel(reg, cfg, log, creds, ids.Code, idsFromCreds)
+	registerFromPanel(reg, cfg, log, creds, finpay.Code, finpayFromCreds)
 	registerBRI(reg, cfg, log)
 	return reg, nil
 }
 
-// registerIDS registers IDS only from credentials saved in the panel (there is no env fallback):
+// registerFromPanel registers a gateway (IDS, FINPAY) only from credentials saved in the panel (there is no env fallback):
 // without them the gateway simply does not exist, and a merchant account pointing at it reports
 // PAYMENT_METHOD_UNAVAILABLE. Unreadable or rejected credentials are logged, never fatal, so a
-// broken IDS setup cannot stop DOKU from serving.
-func registerIDS(reg *gateway.Registry, cfg config.Config, log *slog.Logger, creds *gwcred.Service) {
+// broken setup cannot stop DOKU from serving.
+func registerFromPanel(reg *gateway.Registry, cfg config.Config, log *slog.Logger, creds *gwcred.Service, code string, build gwcred.Factory) {
 	if creds == nil {
 		return
 	}
 	env := apikey.EnvFromApp(cfg.Env)
-	vals, ok, err := creds.Load(context.Background(), ids.Code, env)
+	vals, ok, err := creds.Load(context.Background(), code, env)
 	switch {
 	case err != nil:
-		log.Error("gateway credentials in database unreadable", "gateway", ids.Code)
+		log.Error("gateway credentials in database unreadable", "gateway", code)
 		return
 	case !ok:
 		return
 	}
-	a, err := idsFromCreds(vals, env)
+	a, err := build(vals, env)
 	if err != nil {
-		log.Error("gateway credentials in database rejected", "gateway", ids.Code, "reason", err.Error())
+		log.Error("gateway credentials in database rejected", "gateway", code, "reason", err.Error())
 		return
 	}
 	reg.Register(a)
-	log.Info("gateway registered from database credentials", "gateway", ids.Code, "env", env)
+	log.Info("gateway registered from database credentials", "gateway", code, "env", env)
 }
 
 // registerBRI registers BRI from BRI_* env (the panel credential form comes later). Like IDS it is

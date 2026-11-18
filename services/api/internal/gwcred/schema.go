@@ -30,6 +30,14 @@ type Schema struct {
 }
 
 var schemas = []Schema{{
+	Gateway: "finpay",
+	Label:   "FINPAY",
+	Fields: []Field{
+		{Key: "merchant_id", Label: "Merchant ID", Required: true, pattern: regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)},
+		{Key: "merchant_key", Label: "Merchant key", Hint: "Secret dari dasbor FINPAY, tampil sebagai pratinjau tersamar setelah disimpan", Required: true, Secret: true, pattern: regexp.MustCompile(`^[\x21-\x7e]{1,256}$`)},
+		{Key: "callback_url", Label: "Callback URL", Hint: "FINPAY mewajibkannya saat membuat QR. HTTPS publik ke EraPay, mis. https://api.contoh.id/webhooks/finpay", Required: true, pattern: regexp.MustCompile(`^https://[A-Za-z0-9.-]+(:[0-9]{2,5})?(/[\x21-\x7e]*)?$`)},
+	},
+}, {
 	Gateway: "ids",
 	Label:   "IDS Payments",
 	Fields: []Field{
