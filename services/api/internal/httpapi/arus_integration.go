@@ -6,24 +6,84 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
 )
 
 func (d Deps) requireARUSProvisionToken(next http.Handler) http.Handler {
+	return requireBearer(d.ARUSProvisionToken, next)
+}
+
+// requireARUSKeyToken: token TERPISAH khusus penerbitan API key, agar bocornya token provisioning tidak memberi hak itu.
+func (d Deps) requireARUSKeyToken(next http.Handler) http.Handler {
+	return requireBearer(d.ARUSKeyToken, next)
+}
+
+func requireBearer(want string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if token == r.Header.Get("Authorization") || subtle.ConstantTimeCompare([]byte(token), []byte(d.ARUSProvisionToken)) != 1 {
+		if token == r.Header.Get("Authorization") || subtle.ConstantTimeCompare([]byte(token), []byte(want)) != 1 {
 			writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "integration authentication required", false)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// arusKeyName menandai key yang diterbitkan lewat integrasi ini; hanya satu yang boleh aktif per merchant.
+const arusKeyName = "ARUS (otomatis)"
+
+// arusIssueKey: POST /v1/integrations/arus/tenants/{tenant_id}/api-key — server-to-server.
+// Menerbitkan API key pembayaran (payment:create + payment:read saja, tanpa payout) untuk merchant yang sudah
+// tertaut DAN disetujui. Secret hanya ada di respons ini. Bila key ARUS aktif sudah ada: 409 (rotasi lewat dashboard ERAPAY).
+func (d Deps) arusIssueKey(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
+	if err != nil || d.Onboarding == nil || d.APIKeys == nil {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "invalid tenant_id or key issuing disabled", false)
+		return
+	}
+	link, err := d.Onboarding.ARUSTenantStatus(r.Context(), tenantID)
+	if errors.Is(err, onboarding.ErrNotFound) {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "tenant is not linked", false)
+		return
+	}
+	if err == nil && link.MerchantStatus != "approved" {
+		writeError(w, r, http.StatusConflict, "MERCHANT_NOT_APPROVED", "merchant must be approved before an API key can be issued", false)
+		return
+	}
+	var keys []apikey.Key
+	if err == nil {
+		keys, err = d.APIKeys.List(r.Context(), link.MerchantID.String())
+	}
+	if err != nil {
+		d.Log.Error("arus issue key", "err", err, "request_id", middleware.GetReqID(r.Context()))
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	now := time.Now()
+	for _, k := range keys {
+		if k.Name == arusKeyName && k.RevokedAt == nil && (k.ExpiresAt == nil || k.ExpiresAt.After(now)) {
+			writeError(w, r, http.StatusConflict, "API_KEY_EXISTS", "an active ARUS API key already exists; rotate it from the ERAPAY dashboard", false)
+			return
+		}
+	}
+	k, err := d.APIKeys.Create(r.Context(), apikey.CreateInput{
+		MerchantID: link.MerchantID.String(), Name: arusKeyName, Scopes: []string{"payment:create", "payment:read"},
+		RequestID: middleware.GetReqID(r.Context())})
+	if err != nil {
+		d.Log.Error("arus issue key", "err", err, "request_id", middleware.GetReqID(r.Context()))
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusCreated, k)
 }
 
 func (d Deps) arusTenantStatus(w http.ResponseWriter, r *http.Request) {

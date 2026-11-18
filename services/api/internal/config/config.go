@@ -54,6 +54,7 @@ type Config struct {
 	// computation is unchanged until the operator opts in (docs/integrations/doku.md §6).
 	MDRCap             int64  // ERAPAY_MDR_CAP, minor units
 	MDRCapUpTo         int64  // ERAPAY_MDR_CAP_UPTO, minor units
+	ARUSKeyToken       string // ERAPAY_ARUS_KEY_TOKEN: secret terpisah untuk penerbitan API key tenant ARUS
 	ARUSProvisionToken string // ERAPAY_ARUS_PROVISION_TOKEN: server-to-server tenant provisioning secret
 	PlatformSetupToken string // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars): bootstrap first DEWA at /platform/setup
 
@@ -73,6 +74,7 @@ func Load() (Config, error) {
 		RedisURL:    os.Getenv("ERAPAY_REDIS_URL"),
 
 		WebhookCapture:     os.Getenv("ERAPAY_WEBHOOK_CAPTURE") == "1",
+		ARUSKeyToken:       strings.TrimSpace(os.Getenv("ERAPAY_ARUS_KEY_TOKEN")),
 		ARUSProvisionToken: strings.TrimSpace(os.Getenv("ERAPAY_ARUS_PROVISION_TOKEN")),
 		PlatformSetupToken: strings.TrimSpace(os.Getenv("ERAPAY_PLATFORM_SETUP_TOKEN")),
 	}
@@ -84,6 +86,9 @@ func Load() (Config, error) {
 	}
 	if c.ARUSProvisionToken != "" && len(c.ARUSProvisionToken) < 32 {
 		return c, errors.New("ERAPAY_ARUS_PROVISION_TOKEN must be at least 32 characters")
+	}
+	if c.ARUSKeyToken != "" && (len(c.ARUSKeyToken) < 32 || c.ARUSKeyToken == c.ARUSProvisionToken) {
+		return c, errors.New("ERAPAY_ARUS_KEY_TOKEN must be at least 32 characters and differ from ERAPAY_ARUS_PROVISION_TOKEN")
 	}
 	if c.PlatformSetupToken != "" && len(c.PlatformSetupToken) < 32 {
 		return c, errors.New("ERAPAY_PLATFORM_SETUP_TOKEN must be at least 32 characters")

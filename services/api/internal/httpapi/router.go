@@ -52,6 +52,7 @@ type Deps struct {
 	GWAccounts         *gwaccount.Service  // nil disables /v1/platform/merchants/{id}/gateway-accounts
 	GWCreds            *gwcred.Service     // nil (no ERAPAY_ENCRYPTION_KEY) disables /v1/platform/gateway-credentials
 	Routing            *routing.Service    // nil disables /v1/platform/payment-routing
+	ARUSKeyToken       string              // token terpisah (min 32) untuk menerbitkan API key tenant ARUS; kosong = rute mati
 	ARUSProvisionToken string              // server-to-server token for ARUS tenant provisioning
 	WebURL             string              // public dashboard origin; target of ARUS single sign-on links
 	PlatformSetupToken string              // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars) enables /v1/platform/setup until the first DEWA exists
@@ -113,6 +114,9 @@ func NewRouter(d Deps) http.Handler {
 			ir.Post("/tenants", d.provisionARUSTenant)
 			ir.Post("/tenants/{tenant_id}/sso", d.arusTenantSSO)
 		})
+	}
+	if d.ARUSKeyToken != "" {
+		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/api-key", d.arusIssueKey)
 	}
 	if d.Webhooks != nil || (d.Gateways != nil && d.PaymentFlow != nil) {
 		d.mountWebhooks(r)

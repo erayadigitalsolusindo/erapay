@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
 )
 
@@ -112,5 +113,69 @@ func TestARUSSSOCodeIsSingleUse(t *testing.T) {
 	}
 	if again := exchange(); again.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("replayed code: %d", again.StatusCode)
+	}
+}
+
+// Token key terpisah: token provisioning TIDAK boleh menerbitkan key, dan rute mati bila token key kosong.
+func TestARUSKeyRouteNeedsItsOwnToken(t *testing.T) {
+	const provision, keyTok = "arus-provision-test-token-that-is-long-enough", "arus-key-test-token-that-is-long-enough-xx"
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	path := "/v1/integrations/arus/tenants/" + uuid.NewString() + "/api-key"
+	srv := httptest.NewServer(NewRouter(Deps{Log: log, ARUSProvisionToken: provision, ARUSKeyToken: keyTok}))
+	t.Cleanup(srv.Close)
+	if r := arusRequest(t, srv, provision, http.MethodPost, path, ""); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("provision token must not issue keys: %d", r.StatusCode)
+	}
+	if r := arusRequest(t, srv, "salah", http.MethodPost, path, ""); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong token: %d", r.StatusCode)
+	}
+	if r := arusRequest(t, srv, keyTok, http.MethodPost, path, ""); r.StatusCode != http.StatusBadRequest { // lolos auth; layanan belum dipasang
+		t.Fatalf("key token passes auth: %d", r.StatusCode)
+	}
+	off := httptest.NewServer(NewRouter(Deps{Log: log, ARUSProvisionToken: provision}))
+	t.Cleanup(off.Close)
+	if r := arusRequest(t, off, keyTok, http.MethodPost, path, ""); r.StatusCode == http.StatusCreated || r.StatusCode == http.StatusBadRequest {
+		t.Fatalf("route must be off without key token: %d", r.StatusCode)
+	}
+}
+
+func TestARUSIssueKeyRequiresApprovedMerchantAndIsSingle(t *testing.T) {
+	w := setup(t)
+	if _, err := w.db.Exec(t.Context(), `UPDATE merchants SET legal_name = 'Legacy Toko', display_name = 'Legacy Toko' WHERE id = $1`, w.midA); err != nil {
+		t.Fatal(err)
+	}
+	const provision, keyTok = "arus-provision-test-token-that-is-long-enough", "arus-key-test-token-that-is-long-enough-xx"
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := httptest.NewServer(NewRouter(Deps{Log: log, Onboarding: onboarding.NewService(w.db, w.acct, onboarding.Config{Log: log}),
+		APIKeys: apikey.NewService(w.db, "sandbox"), ARUSProvisionToken: provision, ARUSKeyToken: keyTok}))
+	t.Cleanup(server.Close)
+	tenant := uuid.New()
+	if r := arusRequest(t, server, keyTok, http.MethodPost, "/v1/integrations/arus/tenants/"+tenant.String()+"/api-key", ""); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("unlinked: %d", r.StatusCode)
+	}
+	link := arusRequest(t, server, provision, http.MethodPost, "/v1/integrations/arus/tenants",
+		fmt.Sprintf(`{"tenant_id":%q,"business_name":"Legacy Toko","owner_name":"Pemilik Toko","owner_email":"owner@a.test","accepted_terms":true}`, tenant))
+	if link.StatusCode != http.StatusOK {
+		t.Fatalf("link: %d", link.StatusCode)
+	}
+	url := "/v1/integrations/arus/tenants/" + tenant.String() + "/api-key"
+	if _, err := w.db.Exec(t.Context(), `UPDATE merchants SET onboarding_status = 'submitted' WHERE id = $1`, w.midA); err != nil {
+		t.Fatal(err)
+	}
+	if r := arusRequest(t, server, keyTok, http.MethodPost, url, ""); r.StatusCode != http.StatusConflict {
+		t.Fatalf("unapproved merchant: %d", r.StatusCode)
+	}
+	if _, err := w.db.Exec(t.Context(), `UPDATE merchants SET onboarding_status = 'approved' WHERE id = $1`, w.midA); err != nil {
+		t.Fatal(err)
+	}
+	first := arusRequest(t, server, keyTok, http.MethodPost, url, "")
+	issued := decode(t, first)
+	secret, _ := issued["secret"].(string)
+	scopes := fmt.Sprint(issued["scopes"])
+	if first.StatusCode != http.StatusCreated || !strings.HasPrefix(secret, "epk_") || scopes != "[payment:create payment:read]" {
+		t.Fatalf("issue: %d %v", first.StatusCode, issued)
+	}
+	if r := arusRequest(t, server, keyTok, http.MethodPost, url, ""); r.StatusCode != http.StatusConflict {
+		t.Fatalf("second key must be refused: %d", r.StatusCode)
 	}
 }

@@ -235,7 +235,7 @@ func run(log *slog.Logger) error {
 			GWCreds:       credSvc,
 			Routing:       routingSvc,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
-			ARUSProvisionToken: cfg.ARUSProvisionToken,
+			ARUSProvisionToken: cfg.ARUSProvisionToken, ARUSKeyToken: cfg.ARUSKeyToken,
 			WebURL:             cfg.WebURL,
 			PlatformSetupToken: cfg.PlatformSetupToken,
 		}),
