@@ -117,6 +117,7 @@ func NewRouter(d Deps) http.Handler {
 	}
 	if d.ARUSKeyToken != "" {
 		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/api-key", d.arusIssueKey)
+		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/approve", d.arusApprove)
 	}
 	if d.Webhooks != nil || (d.Gateways != nil && d.PaymentFlow != nil) {
 		d.mountWebhooks(r)

@@ -86,6 +86,47 @@ func (d Deps) arusIssueKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, k)
 }
 
+// arusApprove: POST /v1/integrations/arus/tenants/{tenant_id}/approve — server-to-server (token key).
+// Persetujuan merchant tertaut oleh Platform Admin ARUS (sudah diverifikasi ulang password + TOTP di ARUS).
+// Cek email/KYC dilewati (onboarding.ApproveInput.Via); tarif wajib dinyatakan eksplisit.
+func (d Deps) arusApprove(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
+	if err != nil || d.Onboarding == nil {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "invalid tenant_id or approval disabled", false)
+		return
+	}
+	var body struct {
+		MDRBPS        int    `json:"mdr_bps"`
+		PlatformBPS   int    `json:"platform_bps"`
+		MDRFixed      int64  `json:"mdr_fixed"`
+		PlatformFixed int64  `json:"platform_fixed"`
+		MDRFlatUpTo   int64  `json:"mdr_flat_up_to"`
+		MDRFlatFee    int64  `json:"mdr_flat_fee"`
+		Admin         string `json:"admin"`
+	}
+	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
+		return
+	}
+	link, err := d.Onboarding.ARUSTenantStatus(r.Context(), tenantID)
+	if errors.Is(err, onboarding.ErrNotFound) {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "tenant is not linked", false)
+		return
+	}
+	if err != nil {
+		d.Log.Error("arus approve", "err", err, "request_id", middleware.GetReqID(r.Context()))
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	m, err := d.Onboarding.Approve(r.Context(), onboarding.ApproveInput{
+		MerchantID: link.MerchantID.String(), RequestID: middleware.GetReqID(r.Context()), Via: "arus", Admin: body.Admin,
+		MDRBPS: body.MDRBPS, PlatformBPS: body.PlatformBPS, MDRFixed: body.MDRFixed, PlatformFixed: body.PlatformFixed,
+		MDRFlatUpTo: body.MDRFlatUpTo, MDRFlatFee: body.MDRFlatFee})
+	if !d.onboardingErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
 func (d Deps) arusTenantStatus(w http.ResponseWriter, r *http.Request) {
 	if d.Onboarding == nil {
 		writeError(w, r, http.StatusServiceUnavailable, "INTEGRATION_DISABLED", "tenant provisioning is unavailable", false)

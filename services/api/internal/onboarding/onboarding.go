@@ -608,6 +608,10 @@ type ApproveInput struct {
 	MDRFlatUpTo int64
 	MDRFlatFee  int64
 	RequestID   string
+	// Via != "" = disetujui lewat integrasi tepercaya (mis. "arus"): cek email terverifikasi & kelengkapan KYC
+	// dilewati dan ActorID boleh kosong. Hanya dipakai rute server-to-server berbasis token, tidak pernah dari input pengguna.
+	Via   string
+	Admin string // nama pemberi ACC di sistem asal, dicatat di audit
 }
 
 // MaxFixedFee membatasi biaya tetap agar salah ketik (mis. tambahan nol) tidak lolos: Rp 1.000.000.
@@ -641,28 +645,30 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 	if err := lockIn(ctx, tx, in.MerchantID, reviewable); err != nil {
 		return Merchant{}, err
 	}
-	var verified bool
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(bool_or(u.email_verified_at IS NOT NULL), false) FROM merchant_users mu
+	if in.Via == "" {
+		var verified bool
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(bool_or(u.email_verified_at IS NOT NULL), false) FROM merchant_users mu
 		JOIN users u ON u.id = mu.user_id JOIN roles r ON r.id = mu.role_id AND r.code = 'merchant_owner'
 		WHERE mu.merchant_id = $1`, in.MerchantID).Scan(&verified); err != nil {
-		return Merchant{}, err
-	}
-	if !verified {
-		return Merchant{}, ErrEmailUnverified
-	}
-	// The data diri is verified against what was submitted, so it must be complete first. The rule
-	// is read from the database, not the request: business accounts additionally need NPWP + NIB.
-	// Only the fields both onboarding paths collect are required: the KYC wizard (internal/kyc)
-	// stores NIK, NPWP and NIB but not birth data, gender or a personal address.
-	var complete bool
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(
+			return Merchant{}, err
+		}
+		if !verified {
+			return Merchant{}, ErrEmailUnverified
+		}
+		// The data diri is verified against what was submitted, so it must be complete first. The rule
+		// is read from the database, not the request: business accounts additionally need NPWP + NIB.
+		// Only the fields both onboarding paths collect are required: the KYC wizard (internal/kyc)
+		// stores NIK, NPWP and NIB but not birth data, gender or a personal address.
+		var complete bool
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(
 		owner_id_enc IS NOT NULL
 		AND (account_type IS DISTINCT FROM 'business' OR (business_npwp_enc IS NOT NULL AND business_nib IS NOT NULL))
 	, false) FROM merchants WHERE id = $1`, in.MerchantID).Scan(&complete); err != nil {
-		return Merchant{}, err
-	}
-	if !complete {
-		return Merchant{}, ErrIdentityIncomplete
+			return Merchant{}, err
+		}
+		if !complete {
+			return Merchant{}, ErrIdentityIncomplete
+		}
 	}
 	// One plan per gateway that can carry QRIS, with the same fees: the merchant pays EraPay's price
 	// whichever gateway routes the payment, and a gateway whose real MDR differs surfaces as a
@@ -676,21 +682,21 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 		var id string
 		if err := tx.QueryRow(ctx, `INSERT INTO pricing_plans
 			(code, version, gateway, payment_method, mdr_bps, mdr_fixed, mdr_rounding, platform_bps, platform_fixed, platform_rounding, mdr_cap, mdr_cap_up_to, mdr_flat_up_to, mdr_flat_fee, created_by, approved_by)
-			SELECT $1::text, COALESCE(max(version),0)+1, $11::text, 'QRIS', $2, $7, 'half_up', $3, $8, 'half_up', $5, $6, $9, $10, $4, $4
+			SELECT $1::text, COALESCE(max(version),0)+1, $11::text, 'QRIS', $2, $7, 'half_up', $3, $8, 'half_up', $5, $6, $9, $10, NULLIF($4,'')::uuid, NULLIF($4,'')::uuid
 			FROM pricing_plans WHERE code = $1::text RETURNING id::text`,
 			code, in.MDRBPS, in.PlatformBPS, in.ActorID, s.cfg.MDRCap, s.cfg.MDRCapUpTo, in.MDRFixed, in.PlatformFixed, in.MDRFlatUpTo, in.MDRFlatFee,
 			gw).Scan(&id); err != nil {
 			return Merchant{}, err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from, created_by)
-			VALUES ($1,$2,now(),$3)`, in.MerchantID, id, in.ActorID); err != nil {
+			VALUES ($1,$2,now(),NULLIF($3,'')::uuid)`, in.MerchantID, id, in.ActorID); err != nil {
 			return Merchant{}, err
 		}
 		if gw == "doku" {
 			planID = id
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE merchants SET onboarding_status='approved', review_note=NULL, reviewed_by=$2,
+	if _, err := tx.Exec(ctx, `UPDATE merchants SET onboarding_status='approved', review_note=NULL, reviewed_by=NULLIF($2,'')::uuid,
 		reviewed_at=now(), updated_at=now(), version=version+1 WHERE id=$1`, in.MerchantID, in.ActorID); err != nil {
 		return Merchant{}, err
 	}
@@ -698,7 +704,7 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 		EntityID: in.MerchantID, RequestID: in.RequestID,
 		Metadata: map[string]any{"plan_id": planID, "mdr_bps": in.MDRBPS, "platform_bps": in.PlatformBPS,
 			"mdr_fixed": in.MDRFixed, "platform_fixed": in.PlatformFixed,
-			"mdr_flat_up_to": in.MDRFlatUpTo, "mdr_flat_fee": in.MDRFlatFee}}); err != nil {
+			"mdr_flat_up_to": in.MDRFlatUpTo, "mdr_flat_fee": in.MDRFlatFee, "via": in.Via, "admin": in.Admin}}); err != nil {
 		return Merchant{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
