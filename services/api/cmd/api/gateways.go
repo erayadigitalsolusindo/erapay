@@ -44,15 +44,15 @@ func xenditFromCreds(c map[string]string, env string) (gateway.Adapter, error) {
 	return xendit.New(xendit.Config{SecretKey: c["secret_key"]})
 }
 
-// midtransFromCreds builds the Midtrans adapter. The host follows the environment and the server key
-// must carry the matching SB- marker, so a sandbox key never serves production (or the reverse).
-// The signature key has no marker we can rely on (the sandbox one is not SB-), so it is not cross-checked.
+// midtransFromCreds builds the Midtrans adapter. The host follows the server key marker (SB- = sandbox),
+// so a production server can run Midtrans sandbox keys for end-to-end tests (owner decision, 19 Nov 2026;
+// no real money moves). The sandbox environment still rejects a production key.
+// The signature key has no marker we can rely on, so it is not cross-checked.
 func midtransFromCreds(c map[string]string, env string) (gateway.Adapter, error) {
-	base, sandboxKey := midtrans.SandboxURL, strings.HasPrefix(c["server_key"], "SB-")
-	if env == "production" {
-		base = midtrans.ProductionURL
-	}
-	if sandboxKey != (env != "production") {
+	base, sandboxKey := midtrans.ProductionURL, strings.HasPrefix(c["server_key"], "SB-")
+	if sandboxKey {
+		base = midtrans.SandboxURL
+	} else if env != "production" {
 		return nil, errors.New("midtrans: server key does not match the environment")
 	}
 	return midtrans.New(midtrans.Config{BaseURL: base, ServerKey: c["server_key"], SignatureKey: c["signature_key"]})
