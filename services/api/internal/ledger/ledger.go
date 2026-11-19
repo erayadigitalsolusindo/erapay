@@ -26,16 +26,18 @@ const (
 
 // Account codes (Model B minimal set).
 const (
-	CashDokuClearing   = "cash_doku_clearing"
-	CashIDSClearing    = "cash_ids_clearing" // expected from IDS; separate so each gateway reconciles on its own
-	CashFinpayClearing = "cash_finpay_clearing"
-	CashBankPT         = "cash_bank_pt"
-	MerchantPayable    = "merchant_payable"
-	PayoutInTransit    = "payout_in_transit"
-	RefundPayable      = "refund_payable"
-	PlatformFeeRevenue = "platform_fee_revenue"
-	GatewayFeeExpense  = "gateway_fee_expense"
-	TaxPayable         = "tax_payable"
+	CashDokuClearing     = "cash_doku_clearing"
+	CashIDSClearing      = "cash_ids_clearing" // expected from IDS; separate so each gateway reconciles on its own
+	CashFinpayClearing   = "cash_finpay_clearing"
+	CashXenditClearing   = "cash_xendit_clearing"
+	CashMidtransClearing = "cash_midtrans_clearing"
+	CashBankPT           = "cash_bank_pt"
+	MerchantPayable      = "merchant_payable"
+	PayoutInTransit      = "payout_in_transit"
+	RefundPayable        = "refund_payable"
+	PlatformFeeRevenue   = "platform_fee_revenue"
+	GatewayFeeExpense    = "gateway_fee_expense"
+	TaxPayable           = "tax_payable"
 	// PayoutFeePayable holds the transfer fee the merchant bears: it is deducted from the
 	// payout nominal when the funds move (payout.md, doku.md §6) and settles with the
 	// gateway, so it is a platform liability, never revenue.
@@ -181,7 +183,7 @@ func PaymentSucceeded(merchantID, paymentID string, b pricing.Breakdown) (Txn, e
 	return PaymentSucceededVia(CashDokuClearing, merchantID, paymentID, b)
 }
 
-// ClearingAccount is the "expected from the gateway" account of a gateway. IDS and FINPAY have their
+// ClearingAccount is the "expected from the gateway" account of a gateway. IDS, FINPAY, Xendit, and Midtrans have their
 // own; every other gateway code keeps the DOKU clearing account, so existing books do not move.
 func ClearingAccount(gateway string) string {
 	switch gateway {
@@ -189,6 +191,10 @@ func ClearingAccount(gateway string) string {
 		return CashIDSClearing
 	case "finpay":
 		return CashFinpayClearing
+	case "xendit":
+		return CashXenditClearing
+	case "midtrans":
+		return CashMidtransClearing
 	}
 	return CashDokuClearing
 }

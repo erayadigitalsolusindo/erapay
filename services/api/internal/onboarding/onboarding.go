@@ -53,7 +53,7 @@ const signupWindow = time.Hour
 // PlanGateways are the gateways that get a QRIS pricing plan when a merchant is approved. A payment
 // is priced by the plan of the gateway that routes it (payment.CreateTx), so a gateway missing here
 // would answer ErrNoPricing for every merchant approved afterwards.
-var PlanGateways = []string{"doku", "ids", "finpay"}
+var PlanGateways = []string{"doku", "ids", "finpay", "xendit", "midtrans"}
 
 // reviewable are the states a platform admin may still approve or reject from.
 var reviewable = []string{"submitted", "under_review", "action_required"}

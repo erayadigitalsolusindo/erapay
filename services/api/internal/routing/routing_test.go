@@ -58,7 +58,7 @@ func TestNoChoiceByDefaultAndChoiceIsStored(t *testing.T) {
 		t.Fatalf("default: %q %v", gw, err)
 	}
 	ov, err := s.Overview(ctx)
-	if err != nil || ov.Gateway != "" || ov.Version != 0 || len(ov.Options) != 2 || !ov.Options[0].Available || !ov.Options[1].PlatformAccount {
+	if err != nil || ov.Gateway != "" || ov.Version != 0 || len(ov.Options) != len(Candidates) || !ov.Options[0].Available || !ov.Options[1].PlatformAccount {
 		t.Fatalf("overview: %+v %v", ov, err)
 	}
 

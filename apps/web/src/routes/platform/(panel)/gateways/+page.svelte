@@ -18,7 +18,7 @@
 
 	const rf = $derived(form as { key?: string; error?: string; routed?: string } | null);
 	const routing = $derived(data.routing);
-	const LABEL: Record<string, string> = { doku: 'DOKU', ids: 'IDS Payments', finpay: 'FINPAY' };
+	const LABEL: Record<string, string> = { doku: 'DOKU', ids: 'IDS Payments', finpay: 'FINPAY', xendit: 'Xendit', midtrans: 'Midtrans' };
 	// Pilihan di form; mengikuti pilihan tersimpan sampai admin mengubahnya.
 	let pick = $state('');
 	$effect(() => {

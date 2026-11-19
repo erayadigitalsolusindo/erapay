@@ -13,19 +13,48 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/doku"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/finpay"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/ids"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/midtrans"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/xendit"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwcred"
 )
 
 // gatewayFactories is where gateway codes meet concrete adapter packages (PRD §0 #11). A new
 // gateway adds its credential schema in gwcred and its factory here.
 func gatewayFactories() map[string]gwcred.Factory {
-	return map[string]gwcred.Factory{doku.Code: dokuFromCreds, ids.Code: idsFromCreds, finpay.Code: finpayFromCreds}
+	return map[string]gwcred.Factory{doku.Code: dokuFromCreds, ids.Code: idsFromCreds, finpay.Code: finpayFromCreds, xendit.Code: xenditFromCreds, midtrans.Code: midtransFromCreds}
 }
 
 // idsFromCreds builds the IDS adapter from credentials saved in the panel. IDS keys carry no
 // sandbox/production marker we can rely on, so the environment is not cross-checked here.
 func idsFromCreds(c map[string]string, _ string) (gateway.Adapter, error) {
 	return ids.New(ids.Config{BaseURL: c["base_url"], APIKey: c["api_key"], CallbackSecret: c["callback_secret"]})
+}
+
+// xenditFromCreds builds the Xendit adapter. Xendit has one host, so the environment is enforced on
+// the key prefix: a test key can never serve production (or the reverse) by a copy-paste slip.
+func xenditFromCreds(c map[string]string, env string) (gateway.Adapter, error) {
+	want := "xnd_development_"
+	if env == "production" {
+		want = "xnd_production_"
+	}
+	if !strings.HasPrefix(c["secret_key"], want) {
+		return nil, errors.New("xendit: secret key does not match the environment")
+	}
+	return xendit.New(xendit.Config{SecretKey: c["secret_key"]})
+}
+
+// midtransFromCreds builds the Midtrans adapter. The host follows the environment and the server key
+// must carry the matching SB- marker, so a sandbox key never serves production (or the reverse).
+// The signature key has no marker we can rely on (the sandbox one is not SB-), so it is not cross-checked.
+func midtransFromCreds(c map[string]string, env string) (gateway.Adapter, error) {
+	base, sandboxKey := midtrans.SandboxURL, strings.HasPrefix(c["server_key"], "SB-")
+	if env == "production" {
+		base = midtrans.ProductionURL
+	}
+	if sandboxKey != (env != "production") {
+		return nil, errors.New("midtrans: server key does not match the environment")
+	}
+	return midtrans.New(midtrans.Config{BaseURL: base, ServerKey: c["server_key"], SignatureKey: c["signature_key"]})
 }
 
 // finpayFromCreds builds the FINPAY adapter. The host follows the environment, so sandbox keys can
@@ -69,6 +98,8 @@ func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (
 	}
 	registerFromPanel(reg, cfg, log, creds, ids.Code, idsFromCreds)
 	registerFromPanel(reg, cfg, log, creds, finpay.Code, finpayFromCreds)
+	registerFromPanel(reg, cfg, log, creds, xendit.Code, xenditFromCreds)
+	registerFromPanel(reg, cfg, log, creds, midtrans.Code, midtransFromCreds)
 	registerBRI(reg, cfg, log)
 	return reg, nil
 }

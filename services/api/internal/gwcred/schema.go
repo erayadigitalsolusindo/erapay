@@ -30,6 +30,19 @@ type Schema struct {
 }
 
 var schemas = []Schema{{
+	Gateway: "midtrans",
+	Label:   "Midtrans",
+	Fields: []Field{
+		{Key: "server_key", Label: "Server key", Hint: "SB-Mid-server-... (sandbox) atau Mid-server-... (produksi), Settings > Access Keys di dasbor Midtrans, tampil sebagai pratinjau tersamar setelah disimpan", Required: true, Secret: true, pattern: regexp.MustCompile(`^(SB-)?Mid-server-[A-Za-z0-9_-]{8,100}$`)},
+		{Key: "signature_key", Label: "Signature key", Hint: "Secret untuk signature_key notifikasi (Mid-server-...). Di sandbox BUKAN server key SB-; konfirmasi nilainya ke Midtrans. Tanpa ini webhook ditolak", Required: true, Secret: true, pattern: regexp.MustCompile(`^(SB-)?Mid-server-[A-Za-z0-9_-]{8,100}$`)},
+	},
+}, {
+	Gateway: "xendit",
+	Label:   "Xendit",
+	Fields: []Field{
+		{Key: "secret_key", Label: "Secret API key", Hint: "xnd_development_... (sandbox) atau xnd_production_... dari dasbor Xendit, tampil sebagai pratinjau tersamar setelah disimpan", Required: true, Secret: true, pattern: regexp.MustCompile(`^xnd_(development|production)_[A-Za-z0-9]{8,200}$`)},
+	},
+}, {
 	Gateway: "finpay",
 	Label:   "FINPAY",
 	Fields: []Field{
