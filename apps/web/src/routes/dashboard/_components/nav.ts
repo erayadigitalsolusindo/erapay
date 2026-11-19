@@ -44,6 +44,13 @@ export const nav: NavItem[] = [
 		desc: 'nav.tutorial.desc'
 	},
 	{
+		href: '/dashboard/sandbox',
+		icon: '<path d="M9 3h6M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2.2h12.4a1.5 1.5 0 0 0 1.3-2.2L14 9V3"/><path d="M7.5 15h9"/>',
+		label: 'nav.sandbox',
+		desc: 'nav.sandbox.desc',
+		permission: 'merchant:read'
+	},
+	{
 		href: '/dashboard/merchant',
 		icon: '<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9v11h16V9"/>',
 		label: 'nav.myMerchant',

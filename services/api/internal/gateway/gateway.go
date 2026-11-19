@@ -133,6 +133,16 @@ type Adapter interface {
 	MapStatus(raw string) (Status, bool)
 }
 
+// Simulator is implemented only by sandbox-only adapters (the fake gateway): it builds the notification a real
+// gateway would send for an outcome ("paid", "expired", "failed"), so the sandbox simulator can apply it through
+// the same path as a verified webhook. Production adapters never implement it.
+type Simulator interface {
+	SimulateEvent(paymentID string, amount int64, currency, outcome string) (WebhookEvent, error)
+}
+
+// ErrUnknownOutcome: a simulator was asked for an outcome it does not know.
+var ErrUnknownOutcome = errors.New("gateway: unknown simulation outcome")
+
 // ConnectionStep is one check of a connection test. Message is safe to show to an operator
 // (never a secret or a raw gateway body).
 type ConnectionStep struct {

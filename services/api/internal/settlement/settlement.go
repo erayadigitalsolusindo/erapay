@@ -47,6 +47,8 @@ type BatchInput struct {
 	ReportedNet    int64     // read by Finance from the official report / bank statement
 	PaymentIDs     []string
 	Note           string
+	// AcceptVariance books the batch although ReportedNet != expected; Note (>= 3 chars) is then the required reason.
+	AcceptVariance bool
 }
 
 type Batch struct {
@@ -82,6 +84,8 @@ func (in BatchInput) validate() error {
 		return fmt.Errorf("%w: payment_ids must hold 1..%d ids", ErrValidation, MaxBatchPayments)
 	case len(in.Note) > 500:
 		return fmt.Errorf("%w: note too long", ErrValidation)
+	case in.AcceptVariance && len(in.Note) < 3:
+		return fmt.Errorf("%w: note (reason) is required to accept a variance", ErrValidation)
 	}
 	seen := map[string]bool{}
 	for _, id := range in.PaymentIDs {
@@ -133,7 +137,8 @@ func (s *Service) recordTx(ctx context.Context, in BatchInput, a Actor) (Batch, 
 		SELECT count(*), COALESCE(SUM(p.amount - p.mdr_fee), 0)
 		FROM payments p
 		WHERE p.id = ANY($1::uuid[]) AND p.status = 'succeeded' AND p.gateway = $2 AND p.currency = $3
-		  AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)`,
+		  AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)
+		  AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = p.merchant_id AND sm.is_sandbox)`,
 		ids, in.Gateway, in.Currency).Scan(&count, &expected)
 	if err != nil {
 		if isInvalidText(err) {
@@ -148,9 +153,9 @@ func (s *Service) recordTx(ctx context.Context, in BatchInput, a Actor) (Batch, 
 		INSERT INTO settlement_batches (gateway, batch_ref, currency, settlement_date, reported_net, expected_net,
 		                                payment_count, note, created_by)
 		SELECT $1::text,$2::text,$3::text,$4::date,$5::bigint,$6::bigint,$7::int,NULLIF($8::text,''),NULLIF($9::text,'')::uuid
-		WHERE $5::bigint = $6::bigint AND $7::int = $10::int
+		WHERE ($5::bigint = $6::bigint OR $11::bool) AND $7::int = $10::int
 		ON CONFLICT (gateway, batch_ref) DO NOTHING RETURNING id::text, created_at`,
-		in.Gateway, in.BatchRef, in.Currency, in.SettlementDate, in.ReportedNet, expected, count, in.Note, a.UserID, len(ids)).
+		in.Gateway, in.BatchRef, in.Currency, in.SettlementDate, in.ReportedNet, expected, count, in.Note, a.UserID, len(ids), in.AcceptVariance).
 		Scan(&batchID, &created)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -172,6 +177,7 @@ func (s *Service) recordTx(ctx context.Context, in BatchInput, a Actor) (Batch, 
 		INSERT INTO settlement_items (batch_id, payment_id, merchant_id, gross, mdr_fee, expected_net)
 		SELECT $1, p.id, p.merchant_id, p.amount, p.mdr_fee, p.amount - p.mdr_fee
 		FROM payments p WHERE p.id = ANY($2::uuid[]) AND p.status = 'succeeded'
+		  AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = p.merchant_id AND sm.is_sandbox)
 		ORDER BY p.id ON CONFLICT (payment_id) DO NOTHING`, batchID, ids)
 	if err != nil {
 		return Batch{}, err
@@ -180,17 +186,31 @@ func (s *Service) recordTx(ctx context.Context, in BatchInput, a Actor) (Batch, 
 		return Batch{}, ErrIneligible // a concurrent batch settled one of them first
 	}
 
+	entries := []ledger.Entry{
+		{Account: ledger.CashBankPT, Direction: ledger.Debit, Amount: in.ReportedNet},
+		{Account: ledger.ClearingAccount(in.Gateway), Direction: ledger.Credit, Amount: expected},
+	}
+	if v := in.ReportedNet - expected; v > 0 { // received more than expected
+		entries = append(entries, ledger.Entry{Account: ledger.SettlementVariance, Direction: ledger.Credit, Amount: v})
+	} else if v < 0 {
+		entries = append(entries, ledger.Entry{Account: ledger.SettlementVariance, Direction: ledger.Debit, Amount: -v})
+	}
 	j := ledger.Txn{DedupKey: "settlement:" + in.Gateway + ":" + in.BatchRef, SourceType: "settlement_batch", SourceID: batchID,
-		Currency: in.Currency, Entries: []ledger.Entry{
-			{Account: ledger.CashBankPT, Direction: ledger.Debit, Amount: in.ReportedNet},
-			{Account: ledger.ClearingAccount(in.Gateway), Direction: ledger.Credit, Amount: expected},
-		}}
+		Currency: in.Currency, Entries: entries}
 	if _, err := ledger.PostTx(ctx, tx, j); err != nil {
 		return Batch{}, err
 	}
+	if in.ReportedNet != expected { // accepted variance supersedes an earlier rejected attempt
+		if _, err := tx.Exec(ctx, `
+			UPDATE reconciliation_exceptions SET status = 'resolved', resolution_note = $3, resolved_by = NULLIF($4,'')::uuid, resolved_at = now()
+			WHERE kind = 'settlement_mismatch' AND gateway = $1 AND reference = $2 AND status = 'open'`,
+			in.Gateway, in.BatchRef, "variance accepted: "+in.Note, a.UserID); err != nil {
+			return Batch{}, err
+		}
+	}
 	if err := audit.Record(ctx, tx, audit.Entry{ActorID: a.UserID, Action: "settlement_batch.record",
 		EntityType: "settlement_batch", EntityID: batchID, RequestID: a.RequestID,
-		Metadata: map[string]any{"gateway": in.Gateway, "batch_ref": in.BatchRef, "net": expected, "payments": len(ids)}}); err != nil {
+		Metadata: map[string]any{"gateway": in.Gateway, "batch_ref": in.BatchRef, "net": expected, "reported_net": in.ReportedNet, "payments": len(ids)}}); err != nil {
 		return Batch{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

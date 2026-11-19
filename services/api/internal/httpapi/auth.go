@@ -456,6 +456,10 @@ func (d Deps) mountV1(r chi.Router) {
 			// nomor referensi transaksi, lalu menerapkan hasil dengan source=inquiry.
 			r.With(d.requireAnyAuth, requireJSON, requireTenant, requirePerm("payment:read")).Post("/payments/{id}/inquiry", d.paymentInquiry)
 		}
+		if d.APIKeys != nil && d.Payments != nil && d.PaymentFlow != nil && d.SandboxGateways != nil {
+			// Sandbox simulator: sandbox API keys only (checked in the handler), same scope as creating a payment.
+			r.With(d.requireAPIKey, requireJSON, requireTenant, requirePerm("payment:create")).Post("/sandbox/payments/{id}/simulate", d.simulatePayment)
+		}
 		if d.APIKeys != nil && d.Settlement != nil {
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("report:read")).Get("/balance", d.getBalance)
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("settlement:read")).Get("/settlement/unsettled", d.listMyUnsettled)
@@ -548,6 +552,18 @@ func (d Deps) mountV1(r chi.Router) {
 						r.Post("/api-keys/{id}/revoke", d.revokeAPIKey)
 						r.Post("/api-keys/{id}/rotate", d.rotateAPIKey)
 						r.Delete("/api-keys/{id}", d.deleteAPIKey)
+					})
+				}
+				if d.APIKeys != nil && d.Merchants != nil {
+					// Sandbox twin of this merchant; keys are issued for the twin, not for this merchant.
+					r.With(requirePerm("merchant:read")).Get("/sandbox", d.sandboxStatus)
+					r.With(requirePerm("merchant:write")).Post("/sandbox", d.enableSandbox)
+					r.With(requirePerm("merchant:read")).Post("/sandbox/switch", d.switchSandbox)
+					r.Group(func(r chi.Router) {
+						r.Use(requirePerm("api_key:manage"))
+						r.Post("/sandbox/api-keys", d.createSandboxAPIKey)
+						r.Get("/sandbox/api-keys", d.listSandboxAPIKeys)
+						r.Post("/sandbox/api-keys/{id}/revoke", d.revokeSandboxAPIKey)
 					})
 				}
 				if d.Refunds != nil {

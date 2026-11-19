@@ -19,15 +19,30 @@ var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[
 // Nothing changes when: the reference is not one of our payments of this gateway
 // (ErrNotFound), the status has no confirmed mapping, or a "success" reports a different
 // amount/currency (ErrAmountMismatch, logged for review).
+//
+// A notification only ever applies to a payment of its own world: ApplyWebhook to real merchants'
+// payments, ApplyWebhookSandbox (the /webhooks/sandbox/... URL, sandbox credentials) to sandbox
+// merchants'. A payment of the other world is simply "not found".
 func (o *Orchestrator) ApplyWebhook(ctx context.Context, gw string, ev gateway.WebhookEvent) (Result, error) {
+	return o.applyWebhook(ctx, false, gw, ev)
+}
+
+// ApplyWebhookSandbox is ApplyWebhook for sandbox merchants' payments.
+func (o *Orchestrator) ApplyWebhookSandbox(ctx context.Context, gw string, ev gateway.WebhookEvent) (Result, error) {
+	return o.applyWebhook(ctx, true, gw, ev)
+}
+
+func (o *Orchestrator) applyWebhook(ctx context.Context, sandbox bool, gw string, ev gateway.WebhookEvent) (Result, error) {
 	if !uuidRe.MatchString(ev.PaymentRef) {
 		return Result{}, ErrNotFound
 	}
 	var pgw, currency string
 	var amount int64
-	err := o.db.QueryRow(ctx, `SELECT gateway, currency, amount FROM payments WHERE id = $1`, ev.PaymentRef).
-		Scan(&pgw, &currency, &amount)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && pgw != gw) {
+	var isSandbox bool
+	err := o.db.QueryRow(ctx, `SELECT p.gateway, p.currency, p.amount, m.is_sandbox
+		FROM payments p JOIN merchants m ON m.id = p.merchant_id WHERE p.id = $1`, ev.PaymentRef).
+		Scan(&pgw, &currency, &amount, &isSandbox)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (pgw != gw || isSandbox != sandbox)) {
 		return Result{}, ErrNotFound
 	}
 	if err != nil {

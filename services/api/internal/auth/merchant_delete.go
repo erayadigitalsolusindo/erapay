@@ -32,17 +32,33 @@ func (s *Service) DeleteMerchant(ctx context.Context, merchantID, actor, request
 		}
 		return err
 	}
-	var fin bool
-	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM payments WHERE merchant_id = $1)
-		    OR EXISTS (SELECT 1 FROM payouts WHERE merchant_id = $1)
-		    OR EXISTS (SELECT 1 FROM refunds WHERE merchant_id = $1)
-		    OR EXISTS (SELECT 1 FROM ledger_entries e JOIN ledger_accounts a ON a.id = e.account_id WHERE a.merchant_id = $1)`,
-		merchantID).Scan(&fin); err != nil {
+	// The sandbox twin (if any) goes with its merchant, but only while it too has no financial trace
+	// (the ledger is append-only, so a twin with sandbox journals can never be removed).
+	var twin string
+	if err := tx.QueryRow(ctx, `SELECT id::text FROM merchants WHERE parent_id = $1 FOR UPDATE`, merchantID).Scan(&twin); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	if fin {
-		return ErrMerchantHasFinancial
+	for _, id := range []string{merchantID, twin} {
+		if id == "" {
+			continue
+		}
+		var fin bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM payments WHERE merchant_id = $1)
+			    OR EXISTS (SELECT 1 FROM payouts WHERE merchant_id = $1)
+			    OR EXISTS (SELECT 1 FROM refunds WHERE merchant_id = $1)
+			    OR EXISTS (SELECT 1 FROM ledger_entries e JOIN ledger_accounts a ON a.id = e.account_id WHERE a.merchant_id = $1)`,
+			id).Scan(&fin); err != nil {
+			return err
+		}
+		if fin {
+			return ErrMerchantHasFinancial
+		}
+	}
+	if twin != "" {
+		if err := cascadeDelete(ctx, tx, "merchants", "id = $1", twin, 0); err != nil {
+			return err
+		}
 	}
 
 	// User yang hanya terhubung ke tenant ini (bukan staf platform) ikut dihapus.

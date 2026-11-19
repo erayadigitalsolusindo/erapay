@@ -60,7 +60,7 @@ export const actions: Actions = {
 		const f = await request.formData();
 		const amount = int(f, 'amount');
 		if (!Number.isSafeInteger(amount) || amount <= 0) return fail(400, { message: 'Nominal harus berupa angka rupiah penuh.' });
-		const r = await call(fetch, token, 'POST', '/v1/payouts', { bank_account_id: str(f, 'bank_account_id'), amount, currency: 'IDR' }, str(f, 'idem'));
+		const r = await call(fetch, token, 'POST', '/v1/payouts', { bank_account_id: str(f, 'bank_account_id'), amount, currency: 'IDR', method: str(f, 'method') === 'manual' ? 'manual' : 'auto' }, str(f, 'idem'));
 		return done(r);
 	},
 	cancel: async ({ request, cookies, fetch, locals }) => {

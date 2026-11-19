@@ -141,6 +141,7 @@ func (d Deps) requestPayout(w http.ResponseWriter, r *http.Request) {
 		BankAccountID string `json:"bank_account_id"`
 		Amount        int64  `json:"amount"`
 		Currency      string `json:"currency"`
+		Method        string `json:"method"`
 	}
 	raw, ok := decodeStrict(w, r, 4<<10, &body)
 	if !ok {
@@ -153,7 +154,7 @@ func (d Deps) requestPayout(w http.ResponseWriter, r *http.Request) {
 	}
 	p := PrincipalFrom(r.Context())
 	out, replayed, err := d.Payouts.Request(r.Context(), payout.RequestInput{MerchantID: p.MerchantID, RequestedBy: p.UserID,
-		BankAccountID: body.BankAccountID, Amount: body.Amount, Currency: body.Currency, IdempotencyKey: key,
+		BankAccountID: body.BankAccountID, Amount: body.Amount, Currency: body.Currency, Method: body.Method, IdempotencyKey: key,
 		RequestHash: hash, RequestID: middleware.GetReqID(r.Context())})
 	if !d.payoutErr(w, r, err) {
 		return

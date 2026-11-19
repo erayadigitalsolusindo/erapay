@@ -11,6 +11,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/bri"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/doku"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/fake"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/finpay"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/ids"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/midtrans"
@@ -102,6 +103,37 @@ func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (
 	registerFromPanel(reg, cfg, log, creds, midtrans.Code, midtransFromCreds)
 	registerBRI(reg, cfg, log)
 	return reg, nil
+}
+
+// buildSandboxRegistry holds the adapters sandbox merchants use on a production server. Only credentials
+// saved for the sandbox environment feed it (no env fallback), so production keys can never end up here.
+func buildSandboxRegistry(log *slog.Logger, creds *gwcred.Service, fakeGW bool) *gateway.Registry {
+	reg := gateway.NewRegistry()
+	if fakeGW {
+		reg.Register(fake.New()) // sandbox only: it has no upstream and never exists in the production registry
+		log.Info("gateway registered", "gateway", fake.Code, "env", "sandbox")
+	}
+	if creds == nil {
+		return reg
+	}
+	for code, build := range gatewayFactories() {
+		vals, ok, err := creds.Load(context.Background(), code, "sandbox")
+		if err != nil {
+			log.Error("sandbox gateway credentials unreadable", "gateway", code)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		a, err := build(vals, "sandbox")
+		if err != nil {
+			log.Error("sandbox gateway credentials rejected", "gateway", code, "reason", err.Error())
+			continue
+		}
+		reg.Register(a)
+		log.Info("gateway registered from database credentials", "gateway", code, "env", "sandbox")
+	}
+	return reg
 }
 
 // registerFromPanel registers a gateway (IDS, FINPAY) only from credentials saved in the panel (there is no env fallback):

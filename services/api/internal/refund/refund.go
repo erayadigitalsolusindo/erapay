@@ -182,6 +182,7 @@ func (s *Service) List(ctx context.Context, merchantID, status, paymentID string
 		limit = 50
 	}
 	rows, err := s.db.Query(ctx, `SELECT `+cols+` FROM refunds WHERE ($1 = '' OR merchant_id::text = $1) AND ($2 = '' OR status = $2)
+		AND ($1 <> '' OR NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = refunds.merchant_id AND sm.is_sandbox)) -- platform queue: no sandbox
 		AND ($3 = '' OR payment_id::text = $3) ORDER BY created_at DESC, id LIMIT $4`, merchantID, status, paymentID, limit)
 	if err != nil {
 		return nil, err

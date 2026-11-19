@@ -45,7 +45,8 @@ func BalanceOf(ctx context.Context, q Querier, merchantID, currency string) (Bal
 		    WHERE merchant_id = $1 AND currency = $2 AND code = 'merchant_payable'),
 		  (SELECT COALESCE(SUM(p.merchant_net), 0) FROM payments p
 		    WHERE p.merchant_id = $1 AND p.currency = $2 AND p.status = 'succeeded'
-		      AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)),
+		      AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)
+		      AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = p.merchant_id AND sm.is_sandbox)), -- sandbox funds are available at once: they are never settled
 		  (SELECT -COALESCE(SUM(debit_minus_credit), 0) FROM ledger_account_balances
 		    WHERE merchant_id = $1 AND currency = $2 AND code = 'payout_in_transit'),
 		  (SELECT -COALESCE(SUM(debit_minus_credit), 0) FROM ledger_account_balances
@@ -78,6 +79,7 @@ func (s *Service) ListUnsettled(ctx context.Context, gateway, currency string, l
 		FROM payments p
 		WHERE p.status = 'succeeded' AND ($1 = '' OR p.gateway = $1) AND ($2 = '' OR p.currency = $2)
 		  AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)
+		  AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = p.merchant_id AND sm.is_sandbox)
 		ORDER BY p.final_at, p.id LIMIT $3`, gateway, currency, limit)
 	if err != nil {
 		return nil, err

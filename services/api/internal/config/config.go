@@ -27,6 +27,7 @@ type Config struct {
 
 	// Payout policy: PRD payout.md leaves these OPEN, so they are configuration with conservative defaults.
 	PayoutLive       bool          // ERAPAY_PAYOUT_LIVE=1 allows real payouts in production (go/no-go gate)
+	SandboxFake      bool          // ERAPAY_SANDBOX_FAKE=1: sandbox merchants get the fake gateway + simulator (production server only; default off)
 	PayoutMin        int64         // ERAPAY_PAYOUT_MIN, minor units
 	PayoutMax        int64         // ERAPAY_PAYOUT_MAX
 	PayoutDailyLimit int64         // ERAPAY_PAYOUT_DAILY_LIMIT, rolling 24h per merchant
@@ -94,6 +95,7 @@ func Load() (Config, error) {
 		return c, errors.New("ERAPAY_PLATFORM_SETUP_TOKEN must be at least 32 characters")
 	}
 	c.PayoutLive = os.Getenv("ERAPAY_PAYOUT_LIVE") == "1"
+	c.SandboxFake = os.Getenv("ERAPAY_SANDBOX_FAKE") == "1"
 	c.SMTPHost, c.SMTPPort, c.SMTPUser, c.SMTPPass, c.SMTPFrom =
 		os.Getenv("ERAPAY_SMTP_HOST"), get("ERAPAY_SMTP_PORT", "587"), os.Getenv("ERAPAY_SMTP_USER"), os.Getenv("ERAPAY_SMTP_PASSWORD"), os.Getenv("ERAPAY_SMTP_FROM")
 	c.WebURL = strings.TrimRight(strings.TrimSpace(os.Getenv("ERAPAY_WEB_URL")), "/")

@@ -38,6 +38,8 @@ const (
 	PlatformFeeRevenue   = "platform_fee_revenue"
 	GatewayFeeExpense    = "gateway_fee_expense"
 	TaxPayable           = "tax_payable"
+	// SettlementVariance holds the accepted difference between cash received and expected net of a manual settlement batch.
+	SettlementVariance = "settlement_variance"
 	// PayoutFeePayable holds the transfer fee the merchant bears: it is deducted from the
 	// payout nominal when the funds move (payout.md, doku.md §6) and settles with the
 	// gateway, so it is a platform liability, never revenue.
@@ -146,8 +148,12 @@ func PostTx(ctx context.Context, tx pgx.Tx, t Txn) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	live, err := livemode(ctx, tx, t)
+	if err != nil {
+		return Result{}, err
+	}
 	for _, e := range t.Entries {
-		acc, err := accountID(ctx, tx, e.Account, e.MerchantID, t.Currency)
+		acc, err := accountID(ctx, tx, e.Account, e.MerchantID, t.Currency, live)
 		if err != nil {
 			return Result{}, err
 		}
@@ -161,14 +167,39 @@ func PostTx(ctx context.Context, tx pgx.Tx, t Txn) (Result, error) {
 }
 
 // accountID gets or creates the account (race-safe via the unique expression index).
-func accountID(ctx context.Context, tx pgx.Tx, code, merchantID, currency string) (string, error) {
+func accountID(ctx context.Context, tx pgx.Tx, code, merchantID, currency string, live bool) (string, error) {
 	var id string
 	err := tx.QueryRow(ctx, `
-		INSERT INTO ledger_accounts (code, merchant_id, currency) VALUES ($1, NULLIF($2,'')::uuid, $3)
-		ON CONFLICT (code, COALESCE(merchant_id, '00000000-0000-0000-0000-000000000000'::uuid), currency)
+		INSERT INTO ledger_accounts (code, merchant_id, currency, livemode) VALUES ($1, NULLIF($2,'')::uuid, $3, $4)
+		ON CONFLICT (code, COALESCE(merchant_id, '00000000-0000-0000-0000-000000000000'::uuid), currency, livemode)
 		DO UPDATE SET currency = EXCLUDED.currency RETURNING id::text`,
-		code, merchantID, currency).Scan(&id)
+		code, merchantID, currency, live).Scan(&id)
 	return id, err
+}
+
+// livemode tells which world a journal belongs to from the merchants in its entries: sandbox merchants
+// post to sandbox platform accounts, never to real ones. A journal with only platform accounts is real;
+// mixing sandbox and real merchants is rejected (the database enforces the same rule).
+func livemode(ctx context.Context, tx pgx.Tx, t Txn) (bool, error) {
+	var ids []string
+	for _, e := range t.Entries {
+		if e.MerchantID != "" {
+			ids = append(ids, e.MerchantID)
+		}
+	}
+	if len(ids) == 0 {
+		return true, nil
+	}
+	var sandbox, total int
+	if err := tx.QueryRow(ctx,
+		`SELECT count(*) FILTER (WHERE is_sandbox), count(*) FROM merchants WHERE id::text = ANY($1)`,
+		ids).Scan(&sandbox, &total); err != nil {
+		return false, err
+	}
+	if sandbox != 0 && sandbox != total {
+		return false, fmt.Errorf("%w: sandbox and live merchants in one journal", ErrInvalid)
+	}
+	return sandbox == 0, nil
 }
 
 // PaymentSucceeded builds the Model B journal for a successful payment:

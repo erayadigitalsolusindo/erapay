@@ -50,7 +50,7 @@ func sampleOnce(ctx context.Context, pool *pgxpool.Pool) {
 	SetReconciliationOpen(openExceptions)
 
 	var payoutsPending int
-	_ = pool.QueryRow(cctx, `SELECT count(*) FROM payouts WHERE status IN ('pending','approved')`).Scan(&payoutsPending)
+	_ = pool.QueryRow(cctx, `SELECT count(*) FROM payouts p WHERE status IN ('pending','approved') AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = p.merchant_id AND sm.is_sandbox)`).Scan(&payoutsPending)
 	SetPayoutsPending(payoutsPending)
 
 	var ledgerTotal int

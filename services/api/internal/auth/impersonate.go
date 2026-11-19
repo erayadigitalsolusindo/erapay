@@ -139,7 +139,7 @@ func (s *Service) SearchMerchants(ctx context.Context, q string, limit int) ([]M
 	rows, err := s.db.Query(ctx, `
 		SELECT id::text, display_name, legal_name, onboarding_status, created_at
 		FROM merchants
-		WHERE $1 = '' OR display_name ILIKE '%'||$1||'%' OR legal_name ILIKE '%'||$1||'%' OR id::text LIKE $1||'%'
+		WHERE NOT is_sandbox AND ($1 = '' OR display_name ILIKE '%'||$1||'%' OR legal_name ILIKE '%'||$1||'%' OR id::text LIKE $1||'%')
 		ORDER BY created_at DESC LIMIT $2`, escapeLike(q), limit)
 	if err != nil {
 		return nil, err

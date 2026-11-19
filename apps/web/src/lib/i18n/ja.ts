@@ -1,6 +1,7 @@
 import type { Key } from './messages';
 import { pfJa } from './platform';
 import { prJa } from './profile';
+import { sbJa } from './sandbox';
 
 // 日本語辞書。キーはインドネシア語・英語と同一。
 export const ja: Record<Key, string> = {
@@ -299,6 +300,9 @@ export const ja: Record<Key, string> = {
 	'po.account': '出金先口座',
 	'po.noAccounts': '確認済みの口座がありません。',
 	'po.amount': '金額 (Rp)',
+	'po.method': '出金方法',
+	'po.methodAuto': '自動：承認後にゲートウェイ経由で送金されます。',
+	'po.methodManual': '手動：承認後、営業時間内に Finance が送金します。',
 	'po.requestBtn': '出金を申請',
 	'po.list': '出金履歴',
 	'po.none': '出金はまだありません。',
@@ -378,6 +382,7 @@ export const ja: Record<Key, string> = {
 	'fin.date': '精算日',
 	'fin.reportedNet': 'レポート上の純額 (Rp)',
 	'fin.recordBtn': '記録して計上',
+	'fin.acceptVariance': '差異を承認：サーバー計算と異なっていても、レポートの純額で計上します（理由としてメモが必須）。差額は settlement_variance 勘定に計上され、加盟店の残高は変わりません。',
 	'fin.mismatch': '不一致: レポート {reported}、サーバー計算 {expected}（差額 {diff}）。例外を作成しました。何も計上されていません。',
 	'fin.booked': 'バッチを計上しました: {n} 件の決済、純額 {net}。',
 	'fin.batches': '精算バッチ',
@@ -967,5 +972,6 @@ export const ja: Record<Key, string> = {
 	'reg.afterTitle': '確認用データはログイン後に入力します。',
 	'reg.afterBody': 'それまでアカウントは下書き状態で、決済を受け取れません。EraPayチームが確認できるよう、ダッシュボードで4つの本人情報セクション（会社、代表者、ブランド、書類）を入力してください。',
 	...pfJa,
-	...prJa
+	...prJa,
+	...sbJa
 };

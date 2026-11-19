@@ -56,7 +56,8 @@ export const actions: Actions = {
 			settlement_date: str(f, 'settlement_date'),
 			reported_net: net,
 			payment_ids: ids,
-			note: str(f, 'note') || undefined
+			note: str(f, 'note') || undefined,
+			accept_variance: f.get('accept_variance') === 'on'
 		});
 		if (r.ok) return { booked: r.value };
 		if (r.status === 422 && r.body?.expected_net !== undefined) {

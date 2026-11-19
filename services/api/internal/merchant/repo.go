@@ -12,7 +12,10 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-type Repo struct{ db *pgxpool.Pool }
+type Repo struct {
+	db   *pgxpool.Pool
+	fake bool // see SetFakeGateway
+}
 
 func NewRepo(db *pgxpool.Pool) *Repo { return &Repo{db: db} }
 

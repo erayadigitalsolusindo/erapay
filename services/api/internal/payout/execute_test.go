@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 )
 
 // fakeDisburser is a TEST-ONLY executor gateway: it answers the disbursement contract
@@ -344,5 +345,32 @@ func TestExecuteRequiresDisburserAndSender(t *testing.T) {
 	}
 	if out, _ := e.svc.GetAny(context.Background(), p.ID); out.Status != "approved" {
 		t.Fatalf("a bad submit must leave the payout untouched: %s", out.Status)
+	}
+}
+
+func TestManualPayoutIsNeverExecutedViaGateway(t *testing.T) {
+	e := execSetup(t)
+	f := &fakeDisburser{code: "doku", inquiry: gateway.BankInquiryResult{SessionID: "I", AccountName: "PT MERCHANT"}, transfer: gateway.TransferResult{GatewayReference: "K"}}
+	e.svc.SetDisburser(f)
+	e.fund(t, e.a, 200_000)
+	acct := e.account(t, e.a, e.ua)
+	h, _ := idempotency.HashJSON([]byte(`{"m":1}`))
+	in := RequestInput{MerchantID: e.a, RequestedBy: e.ua, BankAccountID: acct, Amount: 100_000, Currency: "IDR", Method: "bogus", IdempotencyKey: "idem-manual-01", RequestHash: h}
+	if _, _, err := e.svc.Request(context.Background(), in); !errors.Is(err, ErrValidation) {
+		t.Fatalf("bad method accepted: %v", err)
+	}
+	in.Method = "manual"
+	p, _, err := e.svc.Request(context.Background(), in)
+	if err != nil || p.Method != "manual" {
+		t.Fatalf("%+v %v", p, err)
+	}
+	if _, err := e.svc.Approve(context.Background(), p.ID, Actor{UserID: e.fin}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Execute(context.Background(), p.ID, Actor{UserID: e.fin}); !errors.Is(err, ErrState) || f.transfers.Load() != 0 {
+		t.Fatalf("manual payout executed: %v transfers=%d", err, f.transfers.Load())
+	}
+	if out, err := e.svc.MarkPaid(context.Background(), p.ID, "BANK-REF-1", Actor{UserID: e.fin}); err != nil || out.Status != "paid" {
+		t.Fatalf("manual mark-paid: %+v %v", out, err)
 	}
 }

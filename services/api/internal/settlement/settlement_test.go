@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/ledger"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/testdb"
 )
@@ -388,5 +389,45 @@ func TestListUnsettledAndBatches(t *testing.T) {
 	}
 	if bs, _ := e.svc.ListBatches(ctx, "gw1", 10); len(bs) != 1 || bs[0].BatchRef != "L1" || bs[0].SettlementDate != "2026-10-12" {
 		t.Fatalf("batches: %+v", bs)
+	}
+}
+
+func TestAcceptedVarianceBooksDifferenceOnceAndKeepsMerchantNet(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	p1, p2 := e.ok(t, e.a, "gw1", "V1", 100000), e.ok(t, e.a, "gw1", "V2", 50000)
+	want := net(100000) + net(50000)
+	before := e.bal(t, e.a)
+
+	in := e.batch("VAR-1", want-500, p1, p2)
+	in.AcceptVariance = true
+	if _, err := e.svc.RecordBatch(ctx, in, Actor{}); !errors.Is(err, ErrValidation) {
+		t.Fatalf("variance without a reason accepted: %v", err)
+	}
+	var mm *Mismatch
+	if _, err := e.svc.RecordBatch(ctx, e.batch("VAR-1", want-500, p1, p2), Actor{}); !errors.As(err, &mm) {
+		t.Fatalf("variance without the flag: %v", err)
+	}
+	in.Note = "MDR kecil tidak sesuai laporan"
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ { // concurrent identical submissions book once
+		wg.Add(1)
+		go func() { defer wg.Done(); e.svc.RecordBatch(ctx, in, Actor{}) }() //nolint:errcheck
+	}
+	wg.Wait()
+	if b, err := e.svc.RecordBatch(ctx, in, Actor{}); err != nil || !b.Replayed {
+		t.Fatalf("replay: %+v %v", b, err)
+	}
+	if e.n(t, `SELECT count(*) FROM settlement_batches`) != 1 || e.n(t, `SELECT count(*) FROM ledger_transactions WHERE source_type = 'settlement_batch'`) != 1 {
+		t.Fatal("variance batch booked more than once")
+	}
+	if got := e.account(t, ledger.SettlementVariance); got != 500 { // debit-side loss of 500
+		t.Fatalf("variance account = %d", got)
+	}
+	if after := e.bal(t, e.a); after.Pending != 0 || after.Available != before.Available+before.Pending {
+		t.Fatalf("merchant balance must follow expected net, not the variance: %+v -> %+v", before, after)
+	}
+	if e.n(t, `SELECT count(*) FROM reconciliation_exceptions WHERE status = 'open'`) != 0 {
+		t.Fatal("exception stayed open after the variance was accepted")
 	}
 }

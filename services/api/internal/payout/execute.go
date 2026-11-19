@@ -33,6 +33,12 @@ func (s Sender) validate() error {
 	return nil
 }
 
+// isDryRow reports whether the payout was recorded as a dry run (false when unknown).
+func (s *Service) isDryRow(ctx context.Context, id string) bool {
+	var dry bool
+	return s.db.QueryRow(ctx, `SELECT dry_run FROM payouts WHERE id::text = $1`, id).Scan(&dry) == nil && dry
+}
+
 // Execute moves an approved payout through the gateway. Idempotent per payout: a second
 // call on the same payout fails with ErrState, and the gateway dedupes the partner
 // reference anyway. Requires the executor gateway (SetDisburser) and the live gate.
@@ -40,14 +46,15 @@ func (s *Service) Execute(ctx context.Context, id string, a Actor) (Payout, erro
 	if s.dis == nil {
 		return Payout{}, ErrNoDisburser
 	}
-	if !s.cfg.DryRun && !s.cfg.LiveEnabled {
+	if !s.cfg.DryRun && !s.cfg.LiveEnabled && !s.isDryRow(ctx, id) {
 		return Payout{}, ErrDisabled
 	}
 	p, d, err := s.loadForExecution(ctx, id, "approved")
 	if err != nil {
 		return Payout{}, err
 	}
-	if s.cfg.DryRun {
+	// The payout's own flag decides too: a sandbox merchant's payout (dry_run = true) never reaches the gateway.
+	if s.cfg.DryRun || p.DryRun {
 		// Non-production: no gateway call, no money. Record the submit so the rest of
 		// the machine can be exercised; Finance confirms with MarkPaid as usual.
 		if s.cfg.FeeFlat >= p.Amount {
@@ -226,7 +233,7 @@ func (s *Service) loadForExecution(ctx context.Context, id string, allowed ...st
 			ok = true
 		}
 	}
-	if !ok {
+	if !ok || p.Method == "manual" { // manual payouts are paid by Finance by hand (mark-paid), never via the gateway
 		return Payout{}, destination{}, ErrState
 	}
 	var d destination

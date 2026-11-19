@@ -490,7 +490,8 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Principal, e
 		               WHERE ur.user_id = s.user_id)
 		       ELSE
 		         ARRAY(SELECT rp.permission_code FROM merchant_users mu JOIN role_permissions rp ON rp.role_id = mu.role_id
-		               WHERE mu.user_id = s.user_id AND mu.merchant_id = s.merchant_id)
+		               WHERE mu.user_id = s.user_id
+		                 AND mu.merchant_id = COALESCE((SELECT m.parent_id FROM merchants m WHERE m.id = s.merchant_id), s.merchant_id))
 		       END
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > $2

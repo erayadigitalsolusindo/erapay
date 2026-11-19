@@ -57,6 +57,11 @@ func (d Deps) apiKeySelf(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) createAPIKey(w http.ResponseWriter, r *http.Request) {
+	d.issueAPIKey(w, r, PrincipalFrom(r.Context()).MerchantID)
+}
+
+// issueAPIKey creates a key for merchantID (the signed-in merchant, or its sandbox twin).
+func (d Deps) issueAPIKey(w http.ResponseWriter, r *http.Request, merchantID string) {
 	var body struct {
 		Name      string     `json:"name"`
 		Scopes    []string   `json:"scopes"`
@@ -78,7 +83,7 @@ func (d Deps) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	k, err := d.APIKeys.Create(r.Context(), apikey.CreateInput{
-		MerchantID: p.MerchantID, CreatedBy: p.UserID, Name: strings.TrimSpace(body.Name),
+		MerchantID: merchantID, CreatedBy: p.UserID, Name: strings.TrimSpace(body.Name),
 		Scopes: body.Scopes, ExpiresAt: body.ExpiresAt, RequestID: middleware.GetReqID(r.Context())})
 	if err != nil {
 		d.Log.Error("create api key", "err", err)
@@ -90,7 +95,11 @@ func (d Deps) createAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) listAPIKeys(w http.ResponseWriter, r *http.Request) {
-	keys, err := d.APIKeys.List(r.Context(), PrincipalFrom(r.Context()).MerchantID)
+	d.listKeysOf(w, r, PrincipalFrom(r.Context()).MerchantID)
+}
+
+func (d Deps) listKeysOf(w http.ResponseWriter, r *http.Request, merchantID string) {
+	keys, err := d.APIKeys.List(r.Context(), merchantID)
 	if err != nil {
 		d.Log.Error("list api keys", "err", err)
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
@@ -100,8 +109,12 @@ func (d Deps) listAPIKeys(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) revokeAPIKey(w http.ResponseWriter, r *http.Request) {
+	d.revokeKeyOf(w, r, PrincipalFrom(r.Context()).MerchantID)
+}
+
+func (d Deps) revokeKeyOf(w http.ResponseWriter, r *http.Request, merchantID string) {
 	p := PrincipalFrom(r.Context())
-	err := d.APIKeys.Revoke(r.Context(), p.MerchantID, chi.URLParam(r, "id"), p.UserID, "revoked by user", middleware.GetReqID(r.Context()))
+	err := d.APIKeys.Revoke(r.Context(), merchantID, chi.URLParam(r, "id"), p.UserID, "revoked by user", middleware.GetReqID(r.Context()))
 	if !d.keyErr(w, r, err) {
 		return
 	}

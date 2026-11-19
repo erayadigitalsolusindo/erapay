@@ -545,7 +545,7 @@ func (s *Service) List(ctx context.Context, status string, limit int) ([]Merchan
 	if status == "submitted" {
 		order = "m.created_at ASC"
 	}
-	rows, err := s.db.Query(ctx, `SELECT `+merchantCols+` FROM merchants m WHERE m.onboarding_status = $1
+	rows, err := s.db.Query(ctx, `SELECT `+merchantCols+` FROM merchants m WHERE m.onboarding_status = $1 AND NOT m.is_sandbox
 		ORDER BY `+order+` LIMIT $2`, status, limit)
 	if err != nil {
 		return nil, err

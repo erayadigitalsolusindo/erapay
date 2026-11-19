@@ -83,6 +83,26 @@ func EnvFromApp(appEnv string) string {
 	return "sandbox"
 }
 
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// MerchantEnv is the environment a merchant works in. Only a production server hosts sandbox twins;
+// on any other server every merchant is already sandbox.
+func MerchantEnv(ctx context.Context, q rowQuerier, appEnv, merchantID string) (string, error) {
+	if appEnv != "production" {
+		return "sandbox", nil
+	}
+	var sbx bool
+	if err := q.QueryRow(ctx, `SELECT is_sandbox FROM merchants WHERE id::text = $1`, merchantID).Scan(&sbx); err != nil {
+		return "", err
+	}
+	if sbx {
+		return "sandbox", nil
+	}
+	return "production", nil
+}
+
 func envTag(env string) string {
 	if env == "production" {
 		return "prd"
@@ -141,7 +161,15 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Issued, error) {
 	return out, tx.Commit(ctx)
 }
 
+// HostsSandbox: only a production server hosts sandbox merchants next to real ones.
+func (s *Service) HostsSandbox() bool { return s.env == "production" }
+
 func (s *Service) insert(ctx context.Context, tx pgx.Tx, in CreateInput, rotatedFrom string) (Issued, error) {
+	// A key lives in its merchant's environment: a sandbox merchant only ever gets epk_sbx_ keys.
+	env, err := MerchantEnv(ctx, tx, s.env, in.MerchantID)
+	if err != nil {
+		return Issued{}, err
+	}
 	for attempt := 0; attempt < 5; attempt++ {
 		prefix, err := randHex(4)
 		if err != nil {
@@ -151,7 +179,7 @@ func (s *Service) insert(ctx context.Context, tx pgx.Tx, in CreateInput, rotated
 		if err != nil {
 			return Issued{}, err
 		}
-		full := "epk_" + envTag(s.env) + "_" + prefix + "_" + secret
+		full := "epk_" + envTag(env) + "_" + prefix + "_" + secret
 		// Savepoint so a prefix collision doesn't abort the surrounding transaction.
 		sp, err := tx.Begin(ctx)
 		if err != nil {
@@ -162,7 +190,7 @@ func (s *Service) insert(ctx context.Context, tx pgx.Tx, in CreateInput, rotated
 			INSERT INTO api_keys (merchant_id, name, environment, prefix, secret_hash, scopes, created_by, expires_at, rotated_from)
 			VALUES ($1,$2,$3,$4,$5,$6,NULLIF($7,'')::uuid,$8,NULLIF($9,'')::uuid)
 			RETURNING id::text, name, environment, prefix, scopes, created_at, expires_at`,
-			in.MerchantID, in.Name, s.env, prefix, hashSecret(secret), in.Scopes, in.CreatedBy, in.ExpiresAt, rotatedFrom,
+			in.MerchantID, in.Name, env, prefix, hashSecret(secret), in.Scopes, in.CreatedBy, in.ExpiresAt, rotatedFrom,
 		).Scan(&k.ID, &k.Name, &k.Environment, &k.Prefix, &k.Scopes, &k.CreatedAt, &k.ExpiresAt)
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "prefix") {
@@ -188,20 +216,18 @@ func (s *Service) Verify(ctx context.Context, presented string) (*Identity, erro
 	if len(parts) != 4 || parts[0] != "epk" || len(parts[2]) != 8 || len(parts[3]) != 64 {
 		return nil, ErrInvalidKey
 	}
-	if parts[1] != envTag(s.env) {
-		return nil, ErrInvalidKey // sandbox and production keys never cross environments
-	}
 	var (
 		id, mid, env string
+		sandbox      bool
 		hash         []byte
 		scopes       []string
 		last         *time.Time
 	)
 	err := s.db.QueryRow(ctx, `
-		SELECT id::text, merchant_id::text, environment, secret_hash, scopes, last_used_at
-		FROM api_keys
-		WHERE prefix = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > $2)`,
-		parts[2], s.now()).Scan(&id, &mid, &env, &hash, &scopes, &last)
+		SELECT k.id::text, k.merchant_id::text, k.environment, m.is_sandbox, k.secret_hash, k.scopes, k.last_used_at
+		FROM api_keys k JOIN merchants m ON m.id = k.merchant_id
+		WHERE k.prefix = $1 AND k.revoked_at IS NULL AND (k.expires_at IS NULL OR k.expires_at > $2)`,
+		parts[2], s.now()).Scan(&id, &mid, &env, &sandbox, &hash, &scopes, &last)
 	if errors.Is(err, pgx.ErrNoRows) {
 		subtle.ConstantTimeCompare(hashSecret(parts[3]), hashSecret("x")) // keep timing similar
 		return nil, ErrInvalidKey
@@ -209,7 +235,13 @@ func (s *Service) Verify(ctx context.Context, presented string) (*Identity, erro
 	if err != nil {
 		return nil, err
 	}
-	if subtle.ConstantTimeCompare(hashSecret(parts[3]), hash) != 1 || env != s.env {
+	// Sandbox and production keys never cross environments: the key text, the key row and the merchant
+	// must all agree, and a non-production server accepts only sandbox keys.
+	want := "production"
+	if sandbox || s.env != "production" {
+		want = "sandbox"
+	}
+	if subtle.ConstantTimeCompare(hashSecret(parts[3]), hash) != 1 || env != want || parts[1] != envTag(env) {
 		return nil, ErrInvalidKey
 	}
 	if last == nil || s.now().Sub(*last) > touchEvery {

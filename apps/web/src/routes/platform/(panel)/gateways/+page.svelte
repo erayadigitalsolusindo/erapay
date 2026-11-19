@@ -12,6 +12,8 @@
 
 	const fm = $derived(form as { key?: string; error?: string; saved?: boolean; result?: { ok: boolean; applied: boolean; steps: CredStep[] } } | null);
 	const serverEnv = $derived(data.overview?.server_environment ?? '');
+	// Server production juga melayani sandbox (adapter terpisah); server sandbox tidak bisa menguji production.
+	const served = (e: string) => e === serverEnv || (e === 'sandbox' && serverEnv === 'production');
 	let busy = $state<string | null>(null);
 
 	const keyOf = (g: CredGateway, e: CredEnv) => `${g.gateway}/${e.environment}`;
@@ -210,7 +212,7 @@
 								</div>
 							</form>
 
-							{#if e.environment === serverEnv}
+							{#if served(e.environment)}
 								<div class="flex flex-wrap gap-2 border-t border-ink/10 px-4 py-3">
 									{#each [{ action: 'test', label: 'Tes koneksi', cls: 'border border-sky-500/40 bg-sky-500/10 text-sky-700 hover:bg-sky-500/20' }, { action: 'apply', label: 'Terapkan ke server', cls: 'bg-ink text-surface hover:opacity-90' }] as b (b.action)}
 										<form

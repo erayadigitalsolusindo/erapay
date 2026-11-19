@@ -58,6 +58,7 @@ type Deps struct {
 	PlatformSetupToken string              // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars) enables /v1/platform/setup until the first DEWA exists
 	Webhooks           *webhook.Store      // optional raw capture (ERAPAY_WEBHOOK_CAPTURE); see webhooks.go
 	Gateways           payment.Gateways    // adapters implementing gateway.WebhookVerifier enable verified webhooks
+	SandboxGateways    payment.Gateways    // sandbox adapters (production server only): serves /webhooks/sandbox/{gateway}
 	SecureCookies      bool
 	TrustedProxies     []netip.Prefix // peers allowed to set X-Forwarded-For
 	Log                *slog.Logger
@@ -119,7 +120,7 @@ func NewRouter(d Deps) http.Handler {
 		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/api-key", d.arusIssueKey)
 		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/approve", d.arusApprove)
 	}
-	if d.Webhooks != nil || (d.Gateways != nil && d.PaymentFlow != nil) {
+	if d.Webhooks != nil || (d.Gateways != nil && d.PaymentFlow != nil) || (d.SandboxGateways != nil && d.PaymentFlow != nil) {
 		d.mountWebhooks(r)
 	}
 	return r

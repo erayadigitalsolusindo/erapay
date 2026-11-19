@@ -18,15 +18,27 @@ import (
 // (PRD §0 #2: a validated webhook is an allowed source; inquiry remains the safety net).
 // The path is a catch-all under /webhooks/{gateway} so whatever URL DOKU is given works.
 // Bodies and headers are never logged (PII/secrets); only the capture id context is.
-func (d Deps) captureWebhook(w http.ResponseWriter, r *http.Request) {
+func (d Deps) captureWebhook(w http.ResponseWriter, r *http.Request) { d.handleWebhook(w, r, false) }
+
+// captureSandboxWebhook serves /webhooks/sandbox/{gateway}: the URL given to a gateway's SANDBOX
+// account. It verifies with the sandbox adapters and touches sandbox merchants' payments only.
+func (d Deps) captureSandboxWebhook(w http.ResponseWriter, r *http.Request) {
+	d.handleWebhook(w, r, true)
+}
+
+func (d Deps) handleWebhook(w http.ResponseWriter, r *http.Request, sandbox bool) {
 	gw := chi.URLParam(r, "gateway")
+	captureAs := gw
+	if sandbox {
+		captureAs = "sandbox-" + gw // keeps sandbox captures apart from real ones
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, webhook.MaxBody+1))
 	if err != nil {
 		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "unreadable body", false)
 		return
 	}
 	if d.Webhooks != nil {
-		stored, err := d.Webhooks.Capture(r.Context(), gw, r, body)
+		stored, err := d.Webhooks.Capture(r.Context(), captureAs, r, body)
 		if err != nil {
 			// 5xx makes the gateway retry, so the notification is not lost.
 			d.Log.Error("webhook capture failed", "request_id", middleware.GetReqID(r.Context()), "gateway", gw, "err", err)
@@ -37,7 +49,7 @@ func (d Deps) captureWebhook(w http.ResponseWriter, r *http.Request) {
 			d.Log.Warn("webhook capture cap reached", "gateway", gw)
 		}
 	}
-	if code := d.applyWebhook(r, gw, body); code != http.StatusOK {
+	if code := d.applyWebhook(r, sandbox, gw, body); code != http.StatusOK {
 		writeError(w, r, code, "WEBHOOK_REJECTED", "notification rejected", code >= 500)
 		return
 	}
@@ -48,11 +60,15 @@ func (d Deps) captureWebhook(w http.ResponseWriter, r *http.Request) {
 // It returns the HTTP status to answer. Only a bad signature (400) or a transient failure
 // (500, so the gateway retries) is not 200: an unknown payment, an unmapped status or an
 // amount mismatch cannot be fixed by a retry, so they are logged and acknowledged.
-func (d Deps) applyWebhook(r *http.Request, gw string, body []byte) int {
-	if d.Gateways == nil || d.PaymentFlow == nil {
+func (d Deps) applyWebhook(r *http.Request, sandbox bool, gw string, body []byte) int {
+	gws, apply := d.Gateways, d.PaymentFlow.ApplyWebhook
+	if sandbox {
+		gws, apply = d.SandboxGateways, d.PaymentFlow.ApplyWebhookSandbox
+	}
+	if gws == nil || d.PaymentFlow == nil {
 		return http.StatusOK // capture-only
 	}
-	ad, ok := d.Gateways.Get(gw)
+	ad, ok := gws.Get(gw)
 	if !ok {
 		return http.StatusOK
 	}
@@ -70,7 +86,7 @@ func (d Deps) applyWebhook(r *http.Request, gw string, body []byte) int {
 		d.Log.Warn("webhook authentic but unusable", "request_id", rid, "gateway", gw, "err", err)
 		return http.StatusOK
 	}
-	res, err := d.PaymentFlow.ApplyWebhook(r.Context(), gw, ev)
+	res, err := apply(r.Context(), gw, ev)
 	switch {
 	case errors.Is(err, payment.ErrNotFound):
 		d.Log.Warn("webhook for unknown payment", "request_id", rid, "gateway", gw)
@@ -87,6 +103,10 @@ func (d Deps) applyWebhook(r *http.Request, gw string, body []byte) int {
 }
 
 func (d Deps) mountWebhooks(r chi.Router) {
+	if d.SandboxGateways != nil && d.PaymentFlow != nil {
+		r.Handle("/webhooks/sandbox/{gateway}", http.HandlerFunc(d.captureSandboxWebhook))
+		r.Handle("/webhooks/sandbox/{gateway}/*", http.HandlerFunc(d.captureSandboxWebhook))
+	}
 	r.Handle("/webhooks/{gateway}", http.HandlerFunc(d.captureWebhook))
 	r.Handle("/webhooks/{gateway}/*", http.HandlerFunc(d.captureWebhook))
 }

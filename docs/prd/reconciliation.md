@@ -18,3 +18,8 @@ Baca juga: `../PRD.md`, `ledger.md`, `payout.md`.
 - **Status terpisah (invarian #9):** `GET /v1/payments/{id}` memuat `settlement_status` = `not_expected | expected | settled`, terpisah dari `status`.
 - **Saldo (`GET /v1/balance`, butuh `report:read`):** `payable` (ledger `merchant_payable`), `pending` (merchant_net payment sukses yang belum settle), `available = payable − pending`. Dana `available` hanya yang sudah settle (kebijakan float belum disetujui). `on_hold` / `in_payout` menyusul bersama payout dan refund.
 - **Admin:** `GET /v1/admin/unsettled-payments`, `GET /v1/admin/settlement-batches`, `GET /v1/admin/reconciliation-exceptions`, `POST /v1/admin/reconciliation-exceptions/{id}/resolve {note}` (izin `settlement:read|manage`; `ops_support` hanya baca).
+
+## Selisih diterima manual (keputusan pemilik, 19 Nov 2026)
+- `POST /v1/admin/settlement-batches` menerima `accept_variance: true` (+ `note` ≥ 3 karakter sebagai alasan wajib). Batch dibukukan walau `reported_net != expected_net`; tanpa flag, perilaku di atas tetap (`422 SETTLEMENT_MISMATCH`).
+- Jurnal: `Dr cash_bank_pt reported_net / Cr clearing expected_net` + leg selisih ke akun `settlement_variance` (Dr bila kurang diterima, Cr bila lebih). Saldo merchant tetap mengikuti `expected_net` (gross − MDR saat payment); selisih ditanggung PT. Exception terbuka untuk `(gateway, batch_ref)` yang sama otomatis `resolved`.
+- DB: `CHECK (reported_net = expected_net OR char_length(note) >= 3)`; migration `0043`. Ini mengubah catatan "jangan ditutup manual" di atas: kini boleh, dengan alasan tercatat di batch + audit. Izin tetap `settlement:manage` (belum maker-checker).

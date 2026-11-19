@@ -54,6 +54,8 @@
 
 	type Acc = { id: string; gateway: string; environment: Env; gateway_ref?: string; activation_status: string; created_at: string };
 	const serverEnv = $derived((data.overview?.server_environment ?? '') as Env | '');
+	// Server production juga melayani sandbox (adapter terpisah); server sandbox tidak bisa menguji production.
+	const served = (e: string) => e === serverEnv || (e === 'sandbox' && serverEnv === 'production');
 	const gateways = $derived(data.overview?.gateways ?? []);
 	// Gateway yang dikontrak sekali untuk platform: tidak butuh ID toko per merchant.
 	const isPlatform = (g: string) => (data.overview?.platform_gateways ?? []).includes(g);
@@ -281,7 +283,7 @@
 								<button type="button" onclick={() => edit(g, e)} class="rounded-full border border-ink/25 px-4 py-1.5 text-xs font-bold transition hover:bg-ink hover:text-surface">
 									{a ? tx('pf.gw.edit', 'Ubah') : tx('pf.gw.configure', 'Konfigurasi')}
 								</button>
-								{#if e === serverEnv}
+								{#if served(e)}
 									<form
 										method="POST"
 										action="?/test"
@@ -325,7 +327,7 @@
 								{/if}
 							</div>
 
-							{#if e !== serverEnv}
+							{#if !served(e)}
 								<p class="muted border-t border-ink/10 px-4 py-2.5 text-[11px]">{tx('pf.gw.otherEnv', 'Tidak bisa diuji dari server ini karena server berjalan di environment lain.')}</p>
 							{/if}
 

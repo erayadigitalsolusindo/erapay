@@ -19,6 +19,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwaccount"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwcred"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
@@ -147,8 +148,21 @@ func run(log *slog.Logger) error {
 	if credSvc != nil {
 		credSvc.SetLive(reg)
 	}
+	// A production server also serves sandbox merchants, from their own adapters.
+	var sbxReg *gateway.Registry
+	if cfg.Env == "production" && (credSvc != nil || cfg.SandboxFake) {
+		sbxReg = buildSandboxRegistry(log, credSvc, cfg.SandboxFake)
+		if credSvc != nil {
+			credSvc.SetSandbox(sbxReg)
+		}
+	}
+	merchants := merchant.NewRepo(pool)
+	merchants.SetFakeGateway(cfg.SandboxFake && sbxReg != nil)
 	paySvc := payment.NewService(pool)
 	flow := payment.NewOrchestrator(paySvc, pool, idempotency.NewStore(pool), reg, apikey.EnvFromApp(cfg.Env), log)
+	if sbxReg != nil {
+		flow.SetSandbox(sbxReg)
+	}
 	routingSvc := routing.NewService(pool, reg, apikey.EnvFromApp(cfg.Env))
 	flow.SetRouting(routingSvc)
 	go flow.RunPoller(ctx, 15*time.Second)
@@ -177,6 +191,15 @@ func run(log *slog.Logger) error {
 		log.Warn("ERAPAY_ENCRYPTION_KEY not set: outbound merchant webhooks, bank accounts, payouts and self sign-up are disabled")
 	}
 
+	gwAccounts := gwaccount.NewService(pool, reg, apikey.EnvFromApp(cfg.Env))
+	if sbxReg != nil {
+		gwAccounts.SetSandbox(sbxReg)
+	}
+
+	var sbxGateways payment.Gateways // stays a true nil interface when there is no sandbox registry
+	if sbxReg != nil {
+		sbxGateways = sbxReg
+	}
 	var hooks *webhook.Store
 	if cfg.WebhookCapture {
 		hooks = webhook.NewStore(pool)
@@ -226,12 +249,12 @@ func run(log *slog.Logger) error {
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			Webhooks: hooks, Gateways: reg, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onb, Account: acct,
+			Webhooks: hooks, Gateways: reg, SandboxGateways: sbxGateways, Outbound: out, Settlement: settlement.NewService(pool), Payouts: payouts, Refunds: refund.NewService(pool), Onboarding: onb, Account: acct,
 			Log: log, DB: pool, Redis: redisPinger{rdb},
-			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchant.NewRepo(pool),
+			Auth: auth.NewService(pool, auth.DefaultConfig()), Merchants: merchants,
 			APIKeys: apikey.NewService(pool, apikey.EnvFromApp(cfg.Env)), Payments: paySvc, PaymentFlow: flow,
 			KYC:           kycSvc,
-			GWAccounts:    gwaccount.NewService(pool, reg, apikey.EnvFromApp(cfg.Env)),
+			GWAccounts:    gwAccounts,
 			GWCreds:       credSvc,
 			Routing:       routingSvc,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,

@@ -96,6 +96,7 @@
 				<label class="lbl mb-1.5" for="b-note">{t('c.note')}</label>
 				<input id="b-note" class="inp" name="note" maxlength="500" />
 			</div>
+			<label class="flex items-start gap-2 text-xs"><input type="checkbox" name="accept_variance" class="mt-0.5 accent-merah" /><span>{t('fin.acceptVariance')}</span></label>
 			<button type="submit" class="btn btn-red" disabled={selected.length === 0}>{t('fin.recordBtn')}</button>
 		</form>
 	{/if}

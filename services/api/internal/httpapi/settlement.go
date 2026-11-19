@@ -58,6 +58,7 @@ func (d Deps) recordSettlementBatch(w http.ResponseWriter, r *http.Request) {
 		ReportedNet    int64    `json:"reported_net"`
 		PaymentIDs     []string `json:"payment_ids"`
 		Note           string   `json:"note"`
+		AcceptVariance bool     `json:"accept_variance"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 256<<10)
 	dec := json.NewDecoder(r.Body)
@@ -79,7 +80,7 @@ func (d Deps) recordSettlementBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := d.Settlement.RecordBatch(r.Context(), settlement.BatchInput{
 		Gateway: body.Gateway, BatchRef: body.BatchRef, Currency: body.Currency, SettlementDate: date,
-		ReportedNet: body.ReportedNet, PaymentIDs: body.PaymentIDs, Note: body.Note}, d.settleActor(r))
+		ReportedNet: body.ReportedNet, PaymentIDs: body.PaymentIDs, Note: body.Note, AcceptVariance: body.AcceptVariance}, d.settleActor(r))
 	var mm *settlement.Mismatch
 	switch {
 	case err == nil:

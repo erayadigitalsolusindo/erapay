@@ -47,6 +47,15 @@
 				</form>
 			</div>
 		{/if}
+		{#if data.sandbox?.active}
+			<div class="flex flex-wrap items-center justify-between gap-3 bg-emas px-5 py-2 text-xs font-bold text-merah-gelap" role="status">
+				<span>{i18n.t('sb.banner')}</span>
+				<form method="POST" action="/dashboard/sandbox?/switch">
+					<input type="hidden" name="mode" value="live" />
+					<button type="submit" class="rounded-full bg-merah-gelap px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-merah-tua focus-visible:ring-2 focus-visible:ring-white/60">{i18n.t('sb.banner.leave')}</button>
+				</form>
+			</div>
+		{/if}
 		<main class="flex-1 border-t border-ink/20 bg-page p-3 text-[13px] lg:p-4">
 			{#if data.user.merchantId && !data.user.emailVerified}
 				<p class="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900" role="status">

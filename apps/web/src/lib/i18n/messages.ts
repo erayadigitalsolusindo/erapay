@@ -4,6 +4,7 @@ import { enExtra } from './extra.en';
 import { ja } from './ja';
 import { pfId, pfEn } from './platform';
 import { prId, prEn } from './profile';
+import { sbId, sbEn } from './sandbox';
 
 export const LANGS = ['id', 'en', 'ja'] as const;
 export type Lang = (typeof LANGS)[number];
@@ -305,6 +306,9 @@ const idBase = {
 	'po.account': 'Rekening tujuan',
 	'po.noAccounts': 'Belum ada rekening terverifikasi.',
 	'po.amount': 'Nominal (Rp)',
+	'po.method': 'Metode pencairan',
+	'po.methodAuto': 'Otomatis: ditransfer lewat gateway setelah disetujui.',
+	'po.methodManual': 'Manual: ditransfer oleh Finance pada jam kerja setelah disetujui.',
 	'po.requestBtn': 'Ajukan payout',
 	'po.list': 'Riwayat payout',
 	'po.none': 'Belum ada payout.',
@@ -384,6 +388,7 @@ const idBase = {
 	'fin.date': 'Tanggal settlement',
 	'fin.reportedNet': 'Net menurut laporan (Rp)',
 	'fin.recordBtn': 'Catat & bukukan',
+	'fin.acceptVariance': 'Terima selisih: bukukan sesuai net laporan walau berbeda dari hitungan server (catatan wajib diisi sebagai alasan). Selisih dibukukan ke akun settlement_variance; saldo merchant tidak berubah.',
 	'fin.mismatch': 'Tidak cocok: laporan {reported}, hitungan server {expected} (selisih {diff}). Exception dibuat, tidak ada yang dibukukan.',
 	'fin.booked': 'Batch dibukukan: {n} pembayaran, net {net}.',
 	'fin.batches': 'Batch settlement',
@@ -551,7 +556,7 @@ const idBase = {
 	'ov.day': '{date}: {n} transaksi, {amount}'
 };
 
-const id = { ...idBase, ...idExtra, ...pfId, ...prId };
+const id = { ...idBase, ...idExtra, ...pfId, ...prId, ...sbId };
 
 const enBase: Record<keyof typeof idBase, string> = {
 	'nav.workspace': 'Workspace',
@@ -851,6 +856,9 @@ const enBase: Record<keyof typeof idBase, string> = {
 	'po.account': 'Destination account',
 	'po.noAccounts': 'No verified accounts yet.',
 	'po.amount': 'Amount (Rp)',
+	'po.method': 'Payout method',
+	'po.methodAuto': 'Automatic: transferred via the gateway once approved.',
+	'po.methodManual': 'Manual: transferred by Finance during working hours once approved.',
 	'po.requestBtn': 'Request payout',
 	'po.list': 'Payout history',
 	'po.none': 'No payouts yet.',
@@ -930,6 +938,7 @@ const enBase: Record<keyof typeof idBase, string> = {
 	'fin.date': 'Settlement date',
 	'fin.reportedNet': 'Net per report (Rp)',
 	'fin.recordBtn': 'Record & book',
+	'fin.acceptVariance': 'Accept variance: book at the reported net even if it differs from the server calculation (a note is required as the reason). The difference goes to the settlement_variance account; merchant balances are unchanged.',
 	'fin.mismatch': 'Mismatch: report {reported}, server calculation {expected} (difference {diff}). An exception was opened; nothing was booked.',
 	'fin.booked': 'Batch booked: {n} payments, net {net}.',
 	'fin.batches': 'Settlement batches',
@@ -1097,7 +1106,7 @@ const enBase: Record<keyof typeof idBase, string> = {
 	'ov.day': '{date}: {n} transactions, {amount}'
 };
 
-const en: Record<keyof typeof id, string> = { ...enBase, ...enExtra, ...pfEn, ...prEn };
+const en: Record<keyof typeof id, string> = { ...enBase, ...enExtra, ...pfEn, ...prEn, ...sbEn };
 
 export type Key = keyof typeof id;
 export const messages: Record<Lang, Record<Key, string>> = { id, en, ja };

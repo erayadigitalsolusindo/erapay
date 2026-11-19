@@ -60,6 +60,11 @@
 					<label class="lbl mb-1.5" for="amount">{t('po.amount')}</label>
 					<input id="amount" class="inp" name="amount" inputmode="numeric" pattern="[0-9.]*" required />
 				</div>
+				<fieldset class="space-y-2">
+					<legend class="lbl mb-1.5">{t('po.method')}</legend>
+					<label class="flex items-start gap-2 text-xs"><input type="radio" name="method" value="auto" checked class="mt-0.5 accent-merah" /><span>{t('po.methodAuto')}</span></label>
+					<label class="flex items-start gap-2 text-xs"><input type="radio" name="method" value="manual" class="mt-0.5 accent-merah" /><span>{t('po.methodManual')}</span></label>
+				</fieldset>
 				<button type="submit" class="btn btn-red">{t('po.requestBtn')}</button>
 			{/if}
 		</form>

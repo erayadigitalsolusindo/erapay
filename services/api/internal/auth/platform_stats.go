@@ -74,7 +74,7 @@ func (s *Service) PlatformStats(ctx context.Context) (PlatformStats, error) {
 		FROM users`).Scan(&st.Users.Total, &st.Users.Active, &st.Users.Disabled, &st.Users.Staff, &st.Users.MFA)
 
 	st.Merchants = map[string]int{}
-	if rows, err := s.db.Query(ctx, `SELECT onboarding_status, count(*) FROM merchants GROUP BY 1`); err == nil {
+	if rows, err := s.db.Query(ctx, `SELECT onboarding_status, count(*) FROM merchants WHERE NOT is_sandbox GROUP BY 1`); err == nil {
 		for rows.Next() {
 			var k string
 			var n int
@@ -104,7 +104,7 @@ func (s *Service) PlatformStats(ctx context.Context) (PlatformStats, error) {
 		       count(*) FILTER (WHERE created_at > now() - interval '24 hours' AND status IN ('failed','expired','cancelled')),
 		       count(*) FILTER (WHERE status IN ('created','pending','unknown')),
 		       COALESCE(sum(amount) FILTER (WHERE created_at > now() - interval '24 hours' AND status = 'succeeded'), 0)
-		FROM payments`).
+		FROM payments WHERE NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = payments.merchant_id AND sm.is_sandbox)`).
 		Scan(&st.Payments.Total24h, &st.Payments.Succeeded24h, &st.Payments.Failed24h, &st.Payments.Pending, &st.Payments.Volume24h)
 
 	_ = s.db.QueryRow(ctx, `

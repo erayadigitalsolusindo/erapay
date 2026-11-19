@@ -263,6 +263,7 @@ type Payout struct {
 	Currency      string     `json:"currency"`
 	Status        string     `json:"status"`
 	DryRun        bool       `json:"dry_run"`
+	Method        string     `json:"method"` // manual | auto
 	RequestedBy   string     `json:"requested_by,omitempty"`
 	ApprovedAt    *time.Time `json:"approved_at"`
 	DecisionNote  *string    `json:"decision_note"`
@@ -278,12 +279,12 @@ type Payout struct {
 }
 
 const payoutCols = `id::text, merchant_id::text, bank_account_id::text, amount, currency, status, dry_run, requested_by::text,
-	approved_at, decision_note, bank_reference, paid_at, failure_reason, created_at, fee_amount, COALESCE(gateway,'')`
+	approved_at, decision_note, bank_reference, paid_at, failure_reason, created_at, fee_amount, COALESCE(gateway,''), method`
 
 func scanPayout(row pgx.Row) (Payout, error) {
 	var p Payout
 	err := row.Scan(&p.ID, &p.MerchantID, &p.BankAccountID, &p.Amount, &p.Currency, &p.Status, &p.DryRun, &p.RequestedBy,
-		&p.ApprovedAt, &p.DecisionNote, &p.BankReference, &p.PaidAt, &p.FailureReason, &p.CreatedAt, &p.Fee, &p.Gateway)
+		&p.ApprovedAt, &p.DecisionNote, &p.BankReference, &p.PaidAt, &p.FailureReason, &p.CreatedAt, &p.Fee, &p.Gateway, &p.Method)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -296,6 +297,7 @@ type RequestInput struct {
 	BankAccountID  string
 	Amount         int64
 	Currency       string
+	Method         string // "manual" | "auto"; empty = auto
 	IdempotencyKey string
 	RequestHash    []byte
 	RequestID      string
@@ -310,8 +312,18 @@ func (s *Service) Request(ctx context.Context, in RequestInput) (Payout, bool, e
 	if in.Amount <= 0 || in.Currency != "IDR" || in.BankAccountID == "" {
 		return Payout{}, false, fmt.Errorf("%w: bank_account_id, amount > 0 and currency IDR are required", ErrValidation)
 	}
+	if in.Method == "" {
+		in.Method = "auto"
+	}
+	if in.Method != "manual" && in.Method != "auto" {
+		return Payout{}, false, fmt.Errorf("%w: method must be manual or auto", ErrValidation)
+	}
 	if !s.cfg.DryRun && !s.cfg.LiveEnabled {
-		return Payout{}, false, ErrDisabled
+		// The production gate (go/no-go) never applies to a sandbox merchant: its payouts are always dry runs.
+		var sandbox bool
+		if err := s.db.QueryRow(ctx, `SELECT is_sandbox FROM merchants WHERE id::text = $1`, in.MerchantID).Scan(&sandbox); err != nil || !sandbox {
+			return Payout{}, false, ErrDisabled
+		}
 	}
 	sc := idempotency.Scope{MerchantID: in.MerchantID, Operation: "payout.request", Key: in.IdempotencyKey}
 	resp, replayed, err := s.idem.Do(ctx, sc, in.RequestHash, func(ctx context.Context, tx pgx.Tx) (idempotency.Response, error) {
@@ -328,9 +340,12 @@ func (s *Service) Request(ctx context.Context, in RequestInput) (Payout, bool, e
 func (s *Service) createTx(ctx context.Context, tx pgx.Tx, in RequestInput) (string, error) {
 	// Serializes payout requests of one merchant: the balance read below cannot go stale before the reserve posts.
 	var status string
-	if err := tx.QueryRow(ctx, `SELECT onboarding_status FROM merchants WHERE id = $1 FOR NO KEY UPDATE`, in.MerchantID).Scan(&status); err != nil {
+	var sandbox bool
+	if err := tx.QueryRow(ctx, `SELECT onboarding_status, is_sandbox FROM merchants WHERE id = $1 FOR NO KEY UPDATE`, in.MerchantID).Scan(&status, &sandbox); err != nil {
 		return "", err
 	}
+	// A sandbox merchant's payout is ALWAYS a dry run, whatever the server's config says (no real transfer, ever).
+	dryRun := s.cfg.DryRun || sandbox
 	if status != "approved" {
 		return "", ErrMerchantState
 	}
@@ -366,16 +381,16 @@ func (s *Service) createTx(ctx context.Context, tx pgx.Tx, in RequestInput) (str
 	}
 	var id string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO payouts (merchant_id, bank_account_id, amount, currency, dry_run, requested_by)
-		VALUES ($1,$2,$3,$4,$5,$6) RETURNING id::text`,
-		in.MerchantID, in.BankAccountID, in.Amount, in.Currency, s.cfg.DryRun, in.RequestedBy).Scan(&id); err != nil {
+		INSERT INTO payouts (merchant_id, bank_account_id, amount, currency, dry_run, requested_by, method)
+		VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id::text`,
+		in.MerchantID, in.BankAccountID, in.Amount, in.Currency, dryRun, in.RequestedBy, in.Method).Scan(&id); err != nil {
 		return "", err
 	}
 	if _, err := ledger.PostTx(ctx, tx, reserveJournal(in.MerchantID, id, in.Currency, in.Amount)); err != nil {
 		return "", err
 	}
 	return id, audit.Record(ctx, tx, audit.Entry{ActorID: in.RequestedBy, Action: "payout.request", EntityType: "payout", EntityID: id,
-		RequestID: in.RequestID, Metadata: map[string]any{"merchant_id": in.MerchantID, "amount": in.Amount, "currency": in.Currency, "dry_run": s.cfg.DryRun}})
+		RequestID: in.RequestID, Metadata: map[string]any{"merchant_id": in.MerchantID, "amount": in.Amount, "currency": in.Currency, "dry_run": dryRun, "method": in.Method}})
 }
 
 // Journals. The reserve moves the liability from "owed" to "in payout"; the bank leg happens only on paid.
@@ -423,6 +438,7 @@ func (s *Service) List(ctx context.Context, merchantID, status string, limit int
 		limit = 50
 	}
 	rows, err := s.db.Query(ctx, `SELECT `+payoutCols+` FROM payouts WHERE ($1 = '' OR merchant_id::text = $1)
+		AND ($1 <> '' OR NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = payouts.merchant_id AND sm.is_sandbox)) -- platform queue: no sandbox
 		AND ($2 = '' OR status = $2) ORDER BY created_at DESC, id LIMIT $3`, merchantID, status, limit)
 	if err != nil {
 		return nil, err
@@ -446,7 +462,7 @@ func lock(ctx context.Context, tx pgx.Tx, id, merchantID string) (lockedPayout, 
 	err := tx.QueryRow(ctx, `SELECT `+payoutCols+`, COALESCE(approved_by::text,'') FROM payouts
 		WHERE id::text = $1 AND ($2 = '' OR merchant_id::text = $2) FOR NO KEY UPDATE`, id, merchantID).
 		Scan(&lp.ID, &lp.MerchantID, &lp.BankAccountID, &lp.Amount, &lp.Currency, &lp.Status, &lp.DryRun, &lp.RequestedBy,
-			&lp.ApprovedAt, &lp.DecisionNote, &lp.BankReference, &lp.PaidAt, &lp.FailureReason, &lp.CreatedAt, &lp.Fee, &lp.Gateway,
+			&lp.ApprovedAt, &lp.DecisionNote, &lp.BankReference, &lp.PaidAt, &lp.FailureReason, &lp.CreatedAt, &lp.Fee, &lp.Gateway, &lp.Method,
 			&lp.approvedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return lp, ErrNotFound

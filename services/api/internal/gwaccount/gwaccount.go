@@ -43,7 +43,22 @@ type Gateways interface {
 type Service struct {
 	db  *pgxpool.Pool
 	gws Gateways
-	env string // "sandbox" | "production": the environment this server's adapters are wired to
+	sbx Gateways // sandbox adapters on a production server; nil = none
+	env string   // "sandbox" | "production": the environment this server's adapters are wired to
+}
+
+// SetSandbox wires the adapters used to test a sandbox account on a production server.
+func (s *Service) SetSandbox(g Gateways) { s.sbx = g }
+
+// gatewaysFor returns the adapters serving an environment, or false when this server does not serve it.
+func (s *Service) gatewaysFor(env string) (Gateways, bool) {
+	switch {
+	case env == s.env:
+		return s.gws, true
+	case env == "sandbox" && s.env == "production" && s.sbx != nil:
+		return s.sbx, true
+	}
+	return nil, false
 }
 
 func NewService(db *pgxpool.Pool, gws Gateways, env string) *Service {
@@ -203,10 +218,11 @@ type TestResult struct {
 // Test checks the server's credentials for a gateway and, when deep, the merchant's gateway_ref.
 // It never changes the account; it only writes an audit entry.
 func (s *Service) Test(ctx context.Context, in TestInput) (TestResult, error) {
-	if in.Environment != s.env {
+	gws, served := s.gatewaysFor(in.Environment)
+	if !served {
 		return TestResult{}, ErrWrongEnv
 	}
-	ad, ok := s.gws.Get(in.Gateway)
+	ad, ok := gws.Get(in.Gateway)
 	if !ok {
 		return TestResult{}, invalid("unknown gateway")
 	}

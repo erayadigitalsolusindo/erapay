@@ -143,3 +143,15 @@ API (sesi dashboard, `Idempotency-Key` wajib): `POST /bank-accounts`, `POST /pay
 ## 8. Sandbox
 
 Gunakan key `epk_sbx_…`. Payout di luar produksi adalah *dry run*: seluruh alur dan pembukuan berjalan, tetapi tidak ada transfer nyata.
+
+Aktifkan sandbox dari akun produksi Anda: menu **Sandbox** di dashboard (atau `POST /v1/sandbox`, sesi dashboard, pemilik merchant yang sudah disetujui). Di dashboard, tombol **Masuk ke Sandbox** memindahkan sesi Anda ke lingkungan uji (banner SANDBOX tampil di semua halaman; **Kembali ke Live** dari banner). Lalu buat key lewat `POST /v1/sandbox/api-keys` (`GET` untuk daftar, `POST /v1/sandbox/api-keys/{id}/revoke` untuk mencabut). Sandbox adalah merchant terpisah: transaksi, saldo, dan webhook-nya tidak bercampur dengan produksi, dan key sandbox tidak berlaku di produksi (sebaliknya juga).
+
+Simulator (jika diaktifkan di server): setelah `POST /v1/payments` dengan key sandbox, ubah hasilnya tanpa memindai QR:
+
+```
+POST /v1/sandbox/payments/{id}/simulate
+Authorization: Bearer epk_sbx_…
+{"outcome": "paid"}        // paid | expired | failed
+```
+
+Jawabannya `{"payment": {...}, "applied": true}`. Webhook keluar dan pembukuan sandbox berjalan seperti pembayaran asli. Status final tidak berbalik (`applied: false`). Dana merchant sandbox langsung tersedia (tanpa settlement), jadi payout dan refund bisa dicoba; payout selalu dry run.

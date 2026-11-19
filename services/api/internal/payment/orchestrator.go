@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/observability"
@@ -47,7 +48,8 @@ type Orchestrator struct {
 	env  string // "sandbox" | "production": selects merchant_gateway_accounts rows
 	log  *slog.Logger
 
-	routing Routing // nil = no platform-level choice
+	routing Routing  // nil = no platform-level choice
+	sbx     Gateways // adapters for sandbox merchants; nil = this server has none
 }
 
 func NewOrchestrator(svc *Service, db *pgxpool.Pool, idem *idempotency.Store, gws Gateways, env string, log *slog.Logger) *Orchestrator {
@@ -77,6 +79,25 @@ type Routing interface {
 	Preferred(ctx context.Context) (string, error)
 }
 
+// SetSandbox wires the adapters sandbox merchants use. It only applies on a production server (see
+// apikey.MerchantEnv); a sandbox merchant never reaches the production adapters or the platform's choice.
+func (o *Orchestrator) SetSandbox(g Gateways) { o.sbx = g }
+
+// world is the adapter set and environment name that serve this merchant.
+func (o *Orchestrator) world(ctx context.Context, merchantID string) (Gateways, string, error) {
+	if o.sbx == nil {
+		return o.gws, o.env, nil
+	}
+	env, err := apikey.MerchantEnv(ctx, o.db, o.env, merchantID)
+	if err != nil {
+		return nil, "", err
+	}
+	if env == "sandbox" && o.env == "production" {
+		return o.sbx, env, nil
+	}
+	return o.gws, o.env, nil
+}
+
 // SetRouting wires the platform's gateway choice. Without it, or while nothing is chosen, a
 // merchant's own oldest active gateway account decides, as before.
 func (o *Orchestrator) SetRouting(r Routing) { o.routing = r }
@@ -86,13 +107,17 @@ func (o *Orchestrator) SetRouting(r Routing) { o.routing = r }
 // happens here, before any gateway call, so it can never double-charge: failing over after an
 // ambiguous create is a different thing and is deliberately not done.
 func (o *Orchestrator) route(ctx context.Context, merchantID, method string) (gateway.Adapter, string, error) {
-	if o.routing != nil {
+	gws, env, err := o.world(ctx, merchantID)
+	if err != nil {
+		return nil, "", err
+	}
+	if o.routing != nil && env == o.env {
 		pref, err := o.routing.Preferred(ctx)
 		switch {
 		case err != nil:
 			o.log.Error("payment routing unreadable; using the merchant's own gateway account", "err", err)
 		case pref != "":
-			ad, ref, ok, err := o.routeTo(ctx, merchantID, pref, method)
+			ad, ref, ok, err := o.routeTo(ctx, gws, env, merchantID, pref, method)
 			if err != nil {
 				return nil, "", err
 			}
@@ -103,13 +128,13 @@ func (o *Orchestrator) route(ctx context.Context, merchantID, method string) (ga
 				"gateway", pref, "merchant_id", merchantID, "method", method)
 		}
 	}
-	return o.routeOwn(ctx, merchantID, method)
+	return o.routeOwn(ctx, gws, env, merchantID, method)
 }
 
 // routeTo resolves one specific gateway for the merchant. ok=false means it cannot serve them: not
 // registered, no such method, or (for a gateway that needs one) no active merchant account.
-func (o *Orchestrator) routeTo(ctx context.Context, merchantID, code, method string) (gateway.Adapter, string, bool, error) {
-	ad, found := o.gws.Get(code)
+func (o *Orchestrator) routeTo(ctx context.Context, gws Gateways, env, merchantID, code, method string) (gateway.Adapter, string, bool, error) {
+	ad, found := gws.Get(code)
 	if !found || !ad.Capabilities().SupportsMethod(method) {
 		return nil, "", false, nil
 	}
@@ -120,7 +145,7 @@ func (o *Orchestrator) routeTo(ctx context.Context, merchantID, code, method str
 	err := o.db.QueryRow(ctx, `
 		SELECT gateway_ref FROM merchant_gateway_accounts
 		WHERE merchant_id = $1 AND environment = $2 AND gateway = $3 AND activation_status = 'active' AND gateway_ref IS NOT NULL`,
-		merchantID, o.env, code).Scan(&ref)
+		merchantID, env, code).Scan(&ref)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, "", false, nil
 	}
@@ -131,19 +156,19 @@ func (o *Orchestrator) routeTo(ctx context.Context, merchantID, code, method str
 }
 
 // routeOwn picks the merchant's own active gateway account (the oldest one).
-func (o *Orchestrator) routeOwn(ctx context.Context, merchantID, method string) (gateway.Adapter, string, error) {
+func (o *Orchestrator) routeOwn(ctx context.Context, gws Gateways, env, merchantID, method string) (gateway.Adapter, string, error) {
 	var code, ref string
 	err := o.db.QueryRow(ctx, `
 		SELECT gateway, gateway_ref FROM merchant_gateway_accounts
 		WHERE merchant_id = $1 AND environment = $2 AND activation_status = 'active' AND gateway_ref IS NOT NULL
-		ORDER BY created_at LIMIT 1`, merchantID, o.env).Scan(&code, &ref)
+		ORDER BY created_at LIMIT 1`, merchantID, env).Scan(&code, &ref)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, "", ErrMethodUnavailable
 	}
 	if err != nil {
 		return nil, "", err
 	}
-	ad, ok := o.gws.Get(code)
+	ad, ok := gws.Get(code)
 	if !ok || !ad.Capabilities().SupportsMethod(method) {
 		return nil, "", ErrMethodUnavailable
 	}
@@ -316,11 +341,20 @@ func (o *Orchestrator) attempt(ctx context.Context, paymentID, gw, op, outcome s
 func (o *Orchestrator) Inquire(ctx context.Context, paymentID string) error {
 	var merchantID, gw, gref, currency, status, acct string
 	var amount int64
-	err := o.db.QueryRow(ctx, `
+	if err := o.db.QueryRow(ctx, `SELECT merchant_id::text FROM payments WHERE id = $1`, paymentID).Scan(&merchantID); errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	gws, env, err := o.world(ctx, merchantID)
+	if err != nil {
+		return err
+	}
+	err = o.db.QueryRow(ctx, `
 		SELECT p.merchant_id::text, p.gateway, COALESCE(p.gateway_reference,''), p.currency, p.status, p.amount, COALESCE(a.gateway_ref,'')
 		FROM payments p LEFT JOIN merchant_gateway_accounts a
 		  ON a.merchant_id = p.merchant_id AND a.gateway = p.gateway AND a.environment = $2
-		WHERE p.id = $1`, paymentID, o.env).Scan(&merchantID, &gw, &gref, &currency, &status, &amount, &acct)
+		WHERE p.id = $1`, paymentID, env).Scan(&merchantID, &gw, &gref, &currency, &status, &amount, &acct)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -335,7 +369,7 @@ func (o *Orchestrator) Inquire(ctx context.Context, paymentID string) error {
 		// Nothing to query. Say so instead of pretending the check succeeded.
 		return ErrNotSentToGateway
 	}
-	ad, ok := o.gws.Get(gw)
+	ad, ok := gws.Get(gw)
 	if !ok || !ad.Capabilities().Inquiry {
 		return gateway.ErrNotSupported
 	}

@@ -52,6 +52,7 @@ type Service struct {
 	box       *secretbox.Box
 	env       string // the environment this server's adapters are wired to
 	live      Live
+	sbxLive   Live // sandbox adapters on a production server; nil = none
 	factories map[string]Factory
 }
 
@@ -62,6 +63,21 @@ func NewService(db *pgxpool.Pool, box *secretbox.Box, env string, live Live, fac
 // SetLive wires the registry that Apply swaps adapters into. It is separate from NewService
 // because the registry itself is built from these credentials at startup.
 func (s *Service) SetLive(l Live) { s.live = l }
+
+// SetSandbox wires the registry for sandbox credentials on a production server, so Test and Apply
+// also work for the sandbox environment that sandbox merchants use.
+func (s *Service) SetSandbox(l Live) { s.sbxLive = l }
+
+// liveFor is where an environment's adapters live; nil when this server does not serve that environment.
+func (s *Service) liveFor(env string) Live {
+	switch {
+	case env == s.env:
+		return s.live
+	case env == "sandbox" && s.env == "production":
+		return s.sbxLive
+	}
+	return nil
+}
 
 // Env is the environment this server's adapters are wired to.
 func (s *Service) Env() string { return s.env }
@@ -298,7 +314,7 @@ type TestResult struct {
 // candidate builds an adapter from the stored credentials without touching the live one, and
 // runs the credentials-only connection test (no merchant data, no money).
 func (s *Service) candidate(ctx context.Context, gw, env string) (gateway.Adapter, TestResult, error) {
-	if env != s.env {
+	if s.liveFor(env) == nil {
 		return nil, TestResult{}, ErrWrongEnv
 	}
 	fac := s.factories[gw]
@@ -360,7 +376,7 @@ func (s *Service) Apply(ctx context.Context, in ActInput) (TestResult, bool, err
 	}
 	applied := res.OK && ad != nil
 	if applied {
-		s.live.Replace(ad)
+		s.liveFor(in.Environment).Replace(ad)
 	}
 	if err := audit.Record(ctx, s.db, audit.Entry{ActorID: in.ActorID, Action: "gateway_credentials.applied", EntityType: "gateway",
 		EntityID: in.Gateway, RequestID: in.RequestID, Metadata: map[string]any{"environment": in.Environment, "ok": res.OK, "applied": applied}}); err != nil {
