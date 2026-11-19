@@ -141,6 +141,11 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 												<button type="submit" class="btn btn-danger">{t('keys.revoke')}</button>
 											</form>
 										</div>
+									{:else if keyState(k) === 'revoked'}
+										<form method="POST" action="?/keyDelete" use:enhance={withConfirm({ variant: 'danger', title: 'Hapus permanen', successMessage: 'Key dihapus.', confirmText: 'Ya, hapus', message: `Hapus permanen key "${k.name}"? Tindakan ini tidak bisa dibatalkan.` })}>
+											<input type="hidden" name="id" value={k.id} />
+											<button type="submit" class="btn btn-danger">Hapus</button>
+										</form>
 									{/if}
 								</td>
 							</tr>

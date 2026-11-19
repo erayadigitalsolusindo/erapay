@@ -168,24 +168,8 @@
 	to { opacity: 1; }
 }
 
-/* Batik tipis: hanya garis samar, tidak boleh mengganggu keterbacaan nav. */
-.sidebar-laut-shell::before {
-	content: '';
-	position: absolute;
-	inset: 0;
-	z-index: 0;
-	pointer-events: none;
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'%3E%3Cg fill='none' stroke='%230b5f73' stroke-opacity='.07' stroke-width='1.2'%3E%3Cellipse cx='22' cy='11' rx='6' ry='10'/%3E%3Cellipse cx='22' cy='33' rx='6' ry='10'/%3E%3Cellipse cx='11' cy='22' rx='10' ry='6'/%3E%3Cellipse cx='33' cy='22' rx='10' ry='6'/%3E%3C/g%3E%3Ccircle cx='22' cy='22' r='2' fill='%23c8102e' fill-opacity='.08'/%3E%3C/svg%3E");
-	background-size: 44px 44px;
-	animation: batik-geser 48s linear infinite;
-	-webkit-mask-image: linear-gradient(180deg, #000 0%, rgb(0 0 0 / 0.4) 62%, rgb(0 0 0 / 0.15) 100%);
-	mask-image: linear-gradient(180deg, #000 0%, rgb(0 0 0 / 0.4) 62%, rgb(0 0 0 / 0.15) 100%);
-}
 .sidebar-laut {
 	z-index: 0;
-}
-@keyframes batik-geser {
-	to { background-position: 80px 80px; }
 }
 .tombol-kilau::after {
 	content: '';
@@ -225,9 +209,9 @@
 
 /* Tema terang/gelap panel admin. Nilai default = terang; "system" mengikuti OS, light/dark eksplisit dari cookie. */
 .adm { --color-ink: var(--ink); --color-surface: var(--surface); --color-page: var(--page); --ink: #4a0510; --surface: #fff; --page: #fff8f0; --muted: #806b6b; color-scheme: light; }
-.adm[data-theme='dark'] { --ink: #f6e7e7; --surface: #271216; --page: #1a0c0f; --muted: #b99ea0; color-scheme: dark; }
+.adm[data-theme='dark'] { --ink: #ececee; --surface: #17171a; --page: #0d0d0f; --muted: #9b9ba3; color-scheme: dark; }
 @media (prefers-color-scheme: dark) {
-	.adm[data-theme='system'] { --ink: #f6e7e7; --surface: #271216; --page: #1a0c0f; --muted: #b99ea0; color-scheme: dark; }
+	.adm[data-theme='system'] { --ink: #ececee; --surface: #17171a; --page: #0d0d0f; --muted: #9b9ba3; color-scheme: dark; }
 }
 
 /*
@@ -305,42 +289,42 @@
 	sedangkan busa tetap terang supaya ikan, manta, dan gelembung tetap terbaca.
 */
 .adm[data-theme='dark'] .sidebar-laut-shell {
-	background: linear-gradient(180deg, #2c030b 0%, #5c0718 42%, #8a0a1f 72%, #ab1a22 100%);
-	--w1: #c4404f;
-	--w2: #5c0718;
-	--foam: #ffe7e2;
+	background: linear-gradient(180deg, #08080a 0%, #0c0e11 55%, #0a1a20 100%);
+	--w1: #23a8a5;
+	--w2: #0a3c4f;
+	--foam: #d8f4f2;
 	--sand: #c9a06a;
 	--trunk: #a67c5a;
 	--palm: #2fae80;
-	--cr: rgb(40 4 12 / 0.75);
-	--glow: drop-shadow(0 0 4px rgb(255 138 107 / 0.35));
+	--cr: rgb(4 20 28 / 0.75);
+	--glow: none;
 }
 .sidebar-laut-shell { filter: var(--glow); }
 @media (prefers-color-scheme: dark) {
 	.adm[data-theme='system'] .sidebar-laut-shell {
-		background: linear-gradient(180deg, #2c030b 0%, #5c0718 42%, #8a0a1f 72%, #ab1a22 100%);
-		--w1: #c4404f;
-		--w2: #5c0718;
-		--foam: #ffe7e2;
+		background: linear-gradient(180deg, #08080a 0%, #0c0e11 55%, #0a1a20 100%);
+		--w1: #23a8a5;
+		--w2: #0a3c4f;
+		--foam: #d8f4f2;
 		--sand: #c9a06a;
 		--trunk: #a67c5a;
 		--palm: #2fae80;
-		--cr: rgb(40 4 12 / 0.75);
-		--glow: drop-shadow(0 0 4px rgb(255 138 107 / 0.35));
+		--cr: rgb(4 20 28 / 0.75);
+		--glow: none;
 	}
 }
 
 /* Mode gelap halaman masuk/daftar: latar digelapkan lewat overlay di layout, kartu memakai warna panel admin. */
-.auth-gelap .kartu { background: #271216; color: #f6e7e7; }
+.auth-gelap .kartu { background: #17171a; color: #ececee; }
 .auth-gelap .kartu .text-merah-gelap { color: #fff; }
 .auth-gelap .kartu .text-merah { color: #ff7a8c; }
-.auth-gelap .kartu .text-neutral-800, .auth-gelap .kartu .text-neutral-700 { color: #f6e7e7; }
-.auth-gelap .kartu .text-neutral-600, .auth-gelap .kartu .text-neutral-500 { color: #d3bcbe; }
-.auth-gelap .kartu .text-neutral-400 { color: #b99ea0; }
-.auth-gelap .kartu input:not([type='radio']):not([type='checkbox']) { background: #1a0c0f; border-color: #5a3a40; color: #f6e7e7; }
-.auth-gelap .kartu .bg-neutral-200\/70 { background: #1a0c0f; }
-.auth-gelap .kartu .bg-neutral-200 { background: #4a2f34; }
-.auth-gelap .kartu input[type='radio'] + span { color: #d3bcbe; }
-.auth-gelap .kartu input[type='radio']:checked + span { background: #3a1c22; color: #ff7a8c; }
+.auth-gelap .kartu .text-neutral-800, .auth-gelap .kartu .text-neutral-700 { color: #ececee; }
+.auth-gelap .kartu .text-neutral-600, .auth-gelap .kartu .text-neutral-500 { color: #c4c4cb; }
+.auth-gelap .kartu .text-neutral-400 { color: #9b9ba3; }
+.auth-gelap .kartu input:not([type='radio']):not([type='checkbox']) { background: #0d0d0f; border-color: #34343a; color: #ececee; }
+.auth-gelap .kartu .bg-neutral-200\/70 { background: #0d0d0f; }
+.auth-gelap .kartu .bg-neutral-200 { background: #2c2c32; }
+.auth-gelap .kartu input[type='radio'] + span { color: #c4c4cb; }
+.auth-gelap .kartu input[type='radio']:checked + span { background: #25252b; color: #ff7a8c; }
 .auth-gelap .kartu .bg-red-50 { background: #3a1418; border-color: #7a2630; color: #ffc9d0; }
 .auth-gelap .kartu .text-red-800 { color: #ffc9d0; }

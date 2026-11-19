@@ -38,6 +38,12 @@ export const nav: NavItem[] = [
 		desc: 'nav.integrations.desc'
 	},
 	{
+		href: '/dashboard/tutorial',
+		icon: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M8 7h7M8 11h5"/>',
+		label: 'nav.tutorial',
+		desc: 'nav.tutorial.desc'
+	},
+	{
 		href: '/dashboard/merchant',
 		icon: '<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9v11h16V9"/>',
 		label: 'nav.myMerchant',

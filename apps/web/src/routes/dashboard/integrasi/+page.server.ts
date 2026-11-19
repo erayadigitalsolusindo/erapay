@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { SESSION_COOKIE } from '../../../lib/server/auth';
-import { SCOPES, createKey, listKeys, revokeKey, rotateKey } from '../../../lib/server/apikeys';
+import { SCOPES, createKey, deleteKey, listKeys, revokeKey, rotateKey } from '../../../lib/server/apikeys';
 import { call, done, read, str } from '../../../lib/server/gw';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -75,6 +75,12 @@ export const actions: Actions = {
 		const id = String((await request.formData()).get('id') ?? '');
 		const res = await revokeKey(fetch, token, id);
 		return res.ok ? { revoked: id } : fail(400, { message: res.message });
+	},
+	keyDelete: async ({ request, cookies, fetch, locals }) => {
+		const token = session(locals, cookies, KEY);
+		const id = String((await request.formData()).get('id') ?? '');
+		const res = await deleteKey(fetch, token, id);
+		return res.ok ? { deleted: id } : fail(400, { message: res.message });
 	},
 	keyRotate: async ({ request, cookies, fetch, locals }) => {
 		const token = session(locals, cookies, KEY);

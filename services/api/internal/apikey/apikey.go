@@ -27,6 +27,7 @@ var (
 	ErrInvalidKey = errors.New("invalid api key")
 	ErrBadScope   = errors.New("invalid scope")
 	ErrNotFound   = errors.New("api key not found")
+	ErrNotRevoked = errors.New("api key must be revoked before deletion")
 )
 
 // AllowedScopes are the only permissions a key may carry (never admin/user/key management).
@@ -244,6 +245,37 @@ func (s *Service) Revoke(ctx context.Context, merchantID, keyID, actor, reason, 
 	}
 	if err := audit.Record(ctx, tx, audit.Entry{ActorID: actor, Action: "api_key.revoked", EntityType: "api_key",
 		EntityID: keyID, RequestID: requestID, Metadata: map[string]any{"merchant_id": merchantID, "reason": reason}}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// Delete permanently removes a revoked key of the merchant. Active keys -> ErrNotRevoked.
+func (s *Service) Delete(ctx context.Context, merchantID, keyID, actor, requestID string) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var revoked *time.Time
+	if err := tx.QueryRow(ctx, `SELECT revoked_at FROM api_keys WHERE id = $1 AND merchant_id = $2 FOR UPDATE`,
+		keyID, merchantID).Scan(&revoked); errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	if revoked == nil {
+		return ErrNotRevoked
+	}
+	// Rotation lineage is informational; detach children so the FK does not block.
+	if _, err := tx.Exec(ctx, `UPDATE api_keys SET rotated_from = NULL WHERE rotated_from = $1`, keyID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM api_keys WHERE id = $1`, keyID); err != nil {
+		return err
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: actor, Action: "api_key.deleted", EntityType: "api_key",
+		EntityID: keyID, RequestID: requestID, Metadata: map[string]any{"merchant_id": merchantID}}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

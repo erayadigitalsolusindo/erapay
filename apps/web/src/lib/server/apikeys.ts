@@ -55,6 +55,10 @@ export async function revokeKey(f: typeof fetch, token: string, id: string) {
 	return result<void>(await call(f, token, `/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: '{}' }), 'Gagal mencabut API key.');
 }
 
+export async function deleteKey(f: typeof fetch, token: string, id: string) {
+	return result<void>(await call(f, token, `/${encodeURIComponent(id)}`, { method: 'DELETE' }), 'Gagal menghapus API key.');
+}
+
 /** Rotasi: key lama tetap berlaku selama `graceSeconds` agar klien sempat mengganti. */
 export async function rotateKey(f: typeof fetch, token: string, id: string, graceSeconds: number) {
 	return result<CreatedKey>(

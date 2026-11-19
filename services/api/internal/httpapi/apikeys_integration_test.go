@@ -65,6 +65,14 @@ func TestAPIKeyLifecycleHTTP(t *testing.T) {
 		t.Fatalf("revoked key: %d", r.StatusCode)
 	}
 
+	// Delete: only revoked keys, permanently.
+	if r := w.do(t, owner, "DELETE", "/v1/api-keys/"+id, "", nil); r.StatusCode != 204 { // id was revoked by rotate
+		t.Fatalf("delete revoked: %d", r.StatusCode)
+	}
+	if r := w.do(t, owner, "DELETE", "/v1/api-keys/"+id, "", nil); r.StatusCode != 404 {
+		t.Fatalf("delete twice: %d", r.StatusCode)
+	}
+
 	// Missing / malformed credentials.
 	for _, h := range []map[string]string{nil, {"Authorization": "Bearer nope"}, {"Authorization": "Basic abc"}} {
 		if r := w.do(t, anon, "GET", "/v1/api-keys/self", "", h); r.StatusCode != 401 {

@@ -108,6 +108,15 @@ func (d Deps) revokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (d Deps) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	err := d.APIKeys.Delete(r.Context(), p.MerchantID, chi.URLParam(r, "id"), p.UserID, middleware.GetReqID(r.Context()))
+	if !d.keyErr(w, r, err) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (d Deps) rotateAPIKey(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		GraceSeconds int `json:"grace_seconds"`
@@ -135,6 +144,8 @@ func (d Deps) keyErr(w http.ResponseWriter, r *http.Request, err error) bool {
 		return true
 	case errors.Is(err, apikey.ErrNotFound):
 		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "not found", false)
+	case errors.Is(err, apikey.ErrNotRevoked):
+		writeError(w, r, http.StatusConflict, "CONFLICT", "revoke the key before deleting it", false)
 	default:
 		d.Log.Error("api key", "err", err)
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)

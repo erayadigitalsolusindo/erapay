@@ -217,6 +217,8 @@ export const ja: Record<Key, string> = {
 	'nav.refunds.desc': 'お客様への返金状況を確認します。',
 	'nav.integrations': '連携',
 	'nav.integrations.desc': 'アプリをEraPayに接続するためのAPIキーとWebhook。',
+	'nav.tutorial': 'チュートリアル',
+	'nav.tutorial.desc': 'EraPayへのサーバー間連携ガイド。',
 	'nav.webhooks': 'Webhook',
 	'nav.webhooks.desc': '通知エンドポイントを設定し、配信履歴を確認します。',
 	'nav.fSettlement': '精算',

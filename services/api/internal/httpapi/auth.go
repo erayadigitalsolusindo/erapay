@@ -547,6 +547,7 @@ func (d Deps) mountV1(r chi.Router) {
 						r.Get("/api-keys", d.listAPIKeys)
 						r.Post("/api-keys/{id}/revoke", d.revokeAPIKey)
 						r.Post("/api-keys/{id}/rotate", d.rotateAPIKey)
+						r.Delete("/api-keys/{id}", d.deleteAPIKey)
 					})
 				}
 				if d.Refunds != nil {

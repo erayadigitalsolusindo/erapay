@@ -12,7 +12,7 @@
 </script>
 
 <!--
-	Sidebar admin: latar terang, motif batik samar, dan laut beranimasi di bagian bawah.
+	Sidebar admin: latar terang polos dan laut beranimasi di bagian bawah.
 	Laut digambar mulai 64% tinggi (lihat Sea.svelte), jadi area navigasi tetap lega.
 
 	Aksen merah EraPay pada titik penanda dan halaman aktif. Warna teks memakai token
@@ -38,12 +38,6 @@
 					aria-current={current.href === n.href ? 'page' : undefined}
 					class="sidebar-item group flex shrink-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-ink transition hover:bg-merah/10 dark:hover:bg-amber-900/20 aria-[current=page]:bg-emas/15 dark:aria-[current=page]:bg-emas/20 aria-[current=page]:text-emas aria-[current=page]:shadow-[inset_3px_0_0_var(--color-emas)]"
 				>
-					<!-- Titik penanda: border merah saat tidak aktif; hover merah (light) / amber (dark); active emas. -->
-					<span
-						aria-current={current.href === n.href ? 'page' : undefined}
-						class="size-1.5 shrink-0 rounded-[1px] border border-merah/60 transition-colors group-hover:border-merah dark:group-hover:border-amber-400 aria-[current=page]:border-emas aria-[current=page]:bg-emas"
-						aria-hidden="true"
-					></span>
 					<svg class="size-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">{@html n.icon}</svg>
 					{t(n.label)}
 				</a>
