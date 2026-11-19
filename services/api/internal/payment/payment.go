@@ -41,6 +41,7 @@ type Payment struct {
 	GatewayReference  string     `json:"-"`
 	QRPayload         string     `json:"-"`
 	QRCode            *QRCode    `json:"qr_code,omitempty"`
+	QRImageURL        string     `json:"qr_image_url,omitempty"` // sandbox Midtrans only: the image URL its payment simulator asks for
 	Fee               Fee        `json:"fee"`
 	ExpiresAt         *time.Time `json:"expires_at"`
 	FinalAt           *time.Time `json:"final_at"`
@@ -101,18 +102,23 @@ const cols = `id::text, merchant_id::text, COALESCE(outlet_id::text,''), merchan
 		     WHEN EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = payments.id) THEN 'settled'
 		     ELSE 'expected' END,
 		COALESCE((SELECT SUM(r.amount) FROM refunds r WHERE r.payment_id = payments.id AND r.status = 'refunded'), 0),
-		COALESCE((SELECT SUM(r.amount) FROM refunds r WHERE r.payment_id = payments.id AND r.status IN ('pending_approval','approved')), 0)`
+		COALESCE((SELECT SUM(r.amount) FROM refunds r WHERE r.payment_id = payments.id AND r.status IN ('pending_approval','approved')), 0),
+		COALESCE((SELECT m.is_sandbox FROM merchants m WHERE m.id = payments.merchant_id), false)`
 
 func scan(row pgx.Row) (Payment, error) {
 	var p Payment
 	var st string
+	var sbx bool
 	err := row.Scan(&p.ID, &p.MerchantID, &p.OutletID, &p.MerchantReference, &p.Description,
 		&p.Amount, &p.Currency, &p.PaymentMethod, &st, &p.Gateway, &p.GatewayReference,
-		&p.Fee.MDRFee, &p.Fee.PlatformFee, &p.Fee.MerchantNet, &p.ExpiresAt, &p.FinalAt, &p.CreatedAt, &p.QRPayload, &p.SettlementStatus, &p.RefundedAmount, &p.RefundingAmount)
+		&p.Fee.MDRFee, &p.Fee.PlatformFee, &p.Fee.MerchantNet, &p.ExpiresAt, &p.FinalAt, &p.CreatedAt, &p.QRPayload, &p.SettlementStatus, &p.RefundedAmount, &p.RefundingAmount, &sbx)
 	p.Status = Status(st)
 	p.Fee.Bearer = "merchant"
 	if p.Status == Pending && p.QRPayload != "" { // a dynamic QR is only exposed while it can still be paid
 		p.QRCode = &QRCode{Type: "provider_defined", Value: p.QRPayload}
+	}
+	if sbx && p.Gateway == "midtrans" && p.Status == Pending && p.GatewayReference != "" {
+		p.QRImageURL = "https://api.sandbox.midtrans.com/v2/qris/" + p.GatewayReference + "/qr-code"
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound

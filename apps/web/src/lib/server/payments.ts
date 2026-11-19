@@ -17,6 +17,7 @@ export type Payment = {
 	status: PaymentStatus;
 	gateway: string;
 	qr_code?: { type: string; value: string };
+	qr_image_url?: string;
 	fee: { bearer: string; mdr_fee: number; platform_fee: number; merchant_net: number };
 	expires_at: string | null;
 	final_at: string | null;

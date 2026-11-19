@@ -42,7 +42,7 @@ export const actions: Actions = {
 		const id = String((await request.formData()).get('id') ?? '').trim();
 		const p = id ? await getPayment(fetch, token, id) : null;
 		if (!p?.qr_code) return fail(404, { qrFail: true });
-		return { qr: await qrSvg(p.qr_code.value), qrRef: p.merchant_reference, qrAmount: p.amount, qrExpires: p.expires_at };
+		return { qr: await qrSvg(p.qr_code.value), qrRef: p.merchant_reference, qrAmount: p.amount, qrExpires: p.expires_at, qrImageUrl: p.qr_image_url ?? null };
 	},
 	inquiry: async ({ request, cookies, fetch, locals }) => {
 		const token = guard(locals, cookies, 'payment:read', 'merchant');

@@ -32,7 +32,7 @@
 	};
 
 	// QR transaksi pending ditampilkan di dialog; hasil ditangkap lokal agar tidak mengganggu banner inquiry.
-	type QrView = { qr: string; qrRef: string; qrAmount: number; qrExpires: string | null };
+	type QrView = { qr: string; qrRef: string; qrAmount: number; qrExpires: string | null; qrImageUrl: string | null };
 	let qrView = $state<QrView | null>(null);
 	let qrError = $state(false);
 	let qrBusy = $state('');
@@ -172,6 +172,7 @@
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -- SVG dibuat server dari library QR, bukan input pengguna -->
 		<div class="qr mx-auto mt-4 w-56 max-w-full rounded-xl bg-white p-2" aria-label={t('trx.qrLabel')}>{@html qrView.qr}</div>
 		<p class="mt-3 text-xs">{t('trx.scan')}</p>
+		{#if qrView.qrImageUrl}<p class="mt-2 break-all text-[11px]"><b>URL QR Midtrans (simulator):</b> <a class="underline" href={qrView.qrImageUrl} target="_blank" rel="noreferrer">{qrView.qrImageUrl}</a></p>{/if}
 		{#if qrView.qrExpires}<p class="muted mt-1 text-[11px]">{t('trx.validUntil', { date: fmt(qrView.qrExpires) })}</p>{/if}
 		<button type="button" class="btn btn-light mt-4 w-full" onclick={() => qrDialog?.close()}>{t('trx.qrClose')}</button>
 	{/if}
