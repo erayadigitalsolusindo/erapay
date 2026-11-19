@@ -101,6 +101,15 @@ func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (
 	registerFromPanel(reg, cfg, log, creds, finpay.Code, finpayFromCreds)
 	registerFromPanel(reg, cfg, log, creds, xendit.Code, xenditFromCreds)
 	registerFromPanel(reg, cfg, log, creds, midtrans.Code, midtransFromCreds)
+	if _, ok := reg.Get(midtrans.Code); !ok && creds != nil && cfg.Env == "production" {
+		// Owner decision (19 Nov 2026): sandbox-only Midtrans stays selectable on production (SB- key, sandbox host).
+		if vals, ok, err := creds.Load(context.Background(), midtrans.Code, "sandbox"); err == nil && ok {
+			if a, err := midtransFromCreds(vals, "sandbox"); err == nil {
+				reg.Register(a)
+				log.Info("gateway registered from sandbox credentials", "gateway", midtrans.Code, "env", "production")
+			}
+		}
+	}
 	registerBRI(reg, cfg, log)
 	return reg, nil
 }

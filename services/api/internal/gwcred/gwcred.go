@@ -377,6 +377,12 @@ func (s *Service) Apply(ctx context.Context, in ActInput) (TestResult, bool, err
 	applied := res.OK && ad != nil
 	if applied {
 		s.liveFor(in.Environment).Replace(ad)
+		// Owner decision (19 Nov 2026): a sandbox-only Midtrans also becomes selectable on a production server.
+		if in.Environment == "sandbox" && s.env == "production" && in.Gateway == "midtrans" {
+			if _, has, err := s.Load(ctx, in.Gateway, s.env); err == nil && !has {
+				s.live.Replace(ad)
+			}
+		}
 	}
 	if err := audit.Record(ctx, s.db, audit.Entry{ActorID: in.ActorID, Action: "gateway_credentials.applied", EntityType: "gateway",
 		EntityID: in.Gateway, RequestID: in.RequestID, Metadata: map[string]any{"environment": in.Environment, "ok": res.OK, "applied": applied}}); err != nil {
