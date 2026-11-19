@@ -72,6 +72,14 @@ func New(cfg Config) (*Adapter, error) {
 
 func (a *Adapter) Code() string { return Code }
 
+// QRImageURL is the hosted QR image that Midtrans' payment simulator asks for; sandbox only ("" on production).
+func (a *Adapter) QRImageURL(ref string) string {
+	if a.cfg.BaseURL != SandboxURL {
+		return ""
+	}
+	return a.cfg.BaseURL + "/v2/qris/" + ref + "/qr-code"
+}
+
 func (a *Adapter) Capabilities() gateway.Capabilities {
 	// One Midtrans account for the whole platform; no refund/cancel/payout/settlement is advertised.
 	return gateway.Capabilities{PaymentMethods: []string{methodQRIS}, Inquiry: true, PlatformAccount: true}

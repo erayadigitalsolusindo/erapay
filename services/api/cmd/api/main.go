@@ -159,6 +159,21 @@ func run(log *slog.Logger) error {
 	merchants := merchant.NewRepo(pool)
 	merchants.SetFakeGateway(cfg.SandboxFake && sbxReg != nil)
 	paySvc := payment.NewService(pool)
+	payment.QRImageURL = func(sbx bool, code, ref string) string {
+		r := reg
+		if sbx {
+			r = sbxReg
+		}
+		if r == nil {
+			return ""
+		}
+		if q, ok := r.Get(code); ok {
+			if u, ok := q.(interface{ QRImageURL(string) string }); ok {
+				return u.QRImageURL(ref)
+			}
+		}
+		return ""
+	}
 	flow := payment.NewOrchestrator(paySvc, pool, idempotency.NewStore(pool), reg, apikey.EnvFromApp(cfg.Env), log)
 	if sbxReg != nil {
 		flow.SetSandbox(sbxReg)

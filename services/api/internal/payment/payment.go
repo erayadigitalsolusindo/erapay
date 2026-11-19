@@ -48,6 +48,10 @@ type Payment struct {
 	CreatedAt         time.Time  `json:"created_at"`
 }
 
+// QRImageURL is set once at startup (cmd/api): it asks the merchant's adapter for a hosted QR image URL
+// (only sandbox Midtrans has one). sbx says whether the payment belongs to a sandbox merchant.
+var QRImageURL func(sbx bool, gateway, ref string) string
+
 type Fee struct {
 	Bearer      string `json:"bearer"`
 	MDRFee      int64  `json:"mdr_fee"`
@@ -117,8 +121,8 @@ func scan(row pgx.Row) (Payment, error) {
 	if p.Status == Pending && p.QRPayload != "" { // a dynamic QR is only exposed while it can still be paid
 		p.QRCode = &QRCode{Type: "provider_defined", Value: p.QRPayload}
 	}
-	if sbx && p.Gateway == "midtrans" && p.Status == Pending && p.GatewayReference != "" {
-		p.QRImageURL = "https://api.sandbox.midtrans.com/v2/qris/" + p.GatewayReference + "/qr-code"
+	if QRImageURL != nil && p.Status == Pending && p.GatewayReference != "" {
+		p.QRImageURL = QRImageURL(sbx, p.Gateway, p.GatewayReference)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, ErrNotFound

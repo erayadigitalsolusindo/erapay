@@ -45,6 +45,7 @@
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -- SVG dibuat server dari library QR, bukan input pengguna -->
 			<div class="qr mx-auto w-64 max-w-full" aria-label={t('trx.qrLabel')}>{@html data.qr}</div>
 			<p class="mt-3 text-xs">{t('trx.scan')}</p>
+			{#if p.qr_image_url}<p class="mt-2 break-all text-[11px]"><b>URL QR Midtrans (simulator):</b> <a class="underline" href={p.qr_image_url} target="_blank" rel="noreferrer">{p.qr_image_url}</a></p>{/if}
 			<p class="muted mt-1 text-[11px]">{t('trx.validUntil', { date: fmt(p.expires_at) })}</p>
 		</section>
 	{:else if p.status === 'pending'}
