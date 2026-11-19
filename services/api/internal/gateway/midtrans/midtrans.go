@@ -207,6 +207,11 @@ func (a *Adapter) GetPayment(ctx context.Context, r gateway.QueryRequest) (gatew
 		return gateway.QueryResult{}, &gateway.Error{Kind: gateway.Rejected, Message: "invalid query request"}
 	}
 	res, err := a.do(ctx, http.MethodGet, "/v2/"+url.PathEscape(r.Reference)+"/status", "", nil)
+	// The status API answers an expired (407) or denied/cancelled (202) order with that code in the body, not 200;
+	// the body still carries the final transaction_status, so it is a result, not an error. Success never qualifies.
+	if st, ok := statusTable[res.Status]; err != nil && ok && st != gateway.StatusSucceeded && st != gateway.StatusPending && (res.StatusCode == "407" || res.StatusCode == "202") {
+		err = nil
+	}
 	if err != nil {
 		if ge := (*gateway.Error)(nil); errors.As(err, &ge) && ge.Code == "404" {
 			return gateway.QueryResult{}, &gateway.Error{Kind: gateway.Ambiguous, Code: "404", HTTPStatus: ge.HTTPStatus, Message: "order not found at midtrans"}

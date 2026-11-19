@@ -125,6 +125,8 @@ func TestGetPayment(t *testing.T) {
 		paid            bool
 		err             string // "", "ambiguous", "rejected"
 	}{
+		{"expired 407", `{"status_code":"407","transaction_status":"expire","gross_amount":"10000.00","currency":"IDR"}`, "expire", 10000, false, ""},
+		{"denied 202", `{"status_code":"202","transaction_status":"deny","gross_amount":"10000.00","currency":"IDR"}`, "deny", 10000, false, ""},
 		{"pending", `{"status_code":"201","transaction_status":"pending","gross_amount":"10000.00","currency":"IDR","fraud_status":"accept"}`, "pending", 10000, false, ""},
 		{"settled", `{"status_code":"200","transaction_status":"settlement","gross_amount":"10000.00","currency":"IDR","fraud_status":"accept","settlement_time":"2026-11-19 14:05:00"}`, "settlement", 10000, true, ""},
 		{"settled but fraud challenge stays unmapped", `{"status_code":"200","transaction_status":"settlement","gross_amount":"10000.00","fraud_status":"challenge"}`, "fraud-challenge", 10000, false, ""},
