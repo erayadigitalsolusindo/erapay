@@ -65,6 +65,7 @@ type Account struct {
 type Overview struct {
 	ServerEnvironment string    `json:"server_environment"`
 	Gateways          []string  `json:"gateways"`
+	PlatformGateways  []string  `json:"platform_gateways"` // contracted once for the platform: no per-merchant gateway_ref
 	Accounts          []Account `json:"accounts"`
 }
 
@@ -82,7 +83,12 @@ func (s *Service) List(ctx context.Context, merchantID string) (Overview, error)
 		return Overview{}, err
 	}
 	defer rows.Close()
-	ov := Overview{ServerEnvironment: s.env, Gateways: s.gws.Codes(), Accounts: []Account{}}
+	ov := Overview{ServerEnvironment: s.env, Gateways: s.gws.Codes(), PlatformGateways: []string{}, Accounts: []Account{}}
+	for _, c := range ov.Gateways {
+		if ad, ok := s.gws.Get(c); ok && ad.Capabilities().PlatformAccount {
+			ov.PlatformGateways = append(ov.PlatformGateways, c)
+		}
+	}
 	for rows.Next() {
 		var a Account
 		if err := rows.Scan(&a.ID, &a.MerchantID, &a.Gateway, &a.Environment, &a.GatewayRef, &a.ActivationStatus, &a.CreatedAt); err != nil {
@@ -115,8 +121,13 @@ func (s *Service) Upsert(ctx context.Context, in UpsertInput) (Account, error) {
 	if n := utf8.RuneCountInString(in.Note); n < 3 || n > 500 {
 		return Account{}, invalid("note must be 3-500 characters")
 	}
-	if _, ok := s.gws.Get(in.Gateway); !ok {
+	ad, ok := s.gws.Get(in.Gateway)
+	if !ok {
 		return Account{}, invalid("unknown gateway")
+	}
+	platform := ad.Capabilities().PlatformAccount
+	if platform {
+		in.GatewayRef = "" // never used for these gateways, so never stored
 	}
 	if in.Environment != "sandbox" && in.Environment != "production" {
 		return Account{}, invalid("environment must be sandbox or production")
@@ -129,7 +140,7 @@ func (s *Service) Upsert(ctx context.Context, in UpsertInput) (Account, error) {
 	if in.GatewayRef != "" && !refRe.MatchString(in.GatewayRef) {
 		return Account{}, invalid("gateway_ref may only contain letters, digits, '.', '_' and '-' (max 64)")
 	}
-	if in.Status == "active" && in.GatewayRef == "" {
+	if in.Status == "active" && !platform && in.GatewayRef == "" {
 		return Account{}, invalid("gateway_ref is required to activate")
 	}
 

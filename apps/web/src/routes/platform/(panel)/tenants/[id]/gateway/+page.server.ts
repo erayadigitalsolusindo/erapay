@@ -10,7 +10,7 @@ export type GwAccount = {
 	activation_status: 'pending_confirmation' | 'active' | 'suspended';
 	created_at: string;
 };
-export type GwOverview = { server_environment: string; gateways: string[]; accounts: GwAccount[] };
+export type GwOverview = { server_environment: string; gateways: string[]; platform_gateways?: string[]; accounts: GwAccount[] };
 export type GwStep = { name: string; ok: boolean; code?: string; message?: string };
 export type GwTest = { ok: boolean; deep: boolean; steps: GwStep[] };
 

@@ -13,7 +13,7 @@
 	const STATUS: Record<string, { label: string; desc: string; pill: string; dot: string; bar: string }> = {
 		active: {
 			label: 'Aktif',
-			desc: 'Merchant boleh membuat QRIS lewat akun ini. Hanya pilih ini setelah Merchant ID dipastikan benar.',
+			desc: 'Merchant boleh membuat QRIS lewat akun ini. Hanya pilih ini setelah ID toko dipastikan benar.',
 			pill: 'bg-emerald-500/15 text-emerald-700',
 			dot: 'bg-emerald-500',
 			bar: 'from-emerald-500 to-teal-600'
@@ -34,11 +34,18 @@
 		}
 	};
 	const STEP: Record<string, { title: string; desc: string }> = {
-		credentials: { title: 'Kredensial gateway', desc: 'Client ID, secret, private key, dan base URL di server dapat meminta token ke gateway' },
-		merchant: { title: 'Merchant ID', desc: 'Gateway menerima pembuatan QR uji Rp1.000 untuk Merchant ID ini' },
+		credentials: { title: 'Kredensial gateway', desc: 'Kredensial gateway di server (disimpan di panel Gateways atau env) diterima oleh gateway' },
+		merchant: { title: 'ID toko di gateway', desc: 'Gateway menerima pembuatan QR uji Rp1.000 untuk ID toko ini' },
 		cleanup: { title: 'Tutup QR uji', desc: 'QR uji langsung dikedaluwarsakan agar tidak bisa dibayar' }
 	};
-	const GW_TONE: Record<string, string> = { doku: 'from-sky-500 to-indigo-600' };
+	const GW_TONE: Record<string, string> = {
+		doku: 'from-sky-500 to-indigo-600',
+		ids: 'from-emerald-500 to-teal-600',
+		finpay: 'from-orange-500 to-red-600',
+		xendit: 'from-blue-500 to-blue-700',
+		midtrans: 'from-cyan-500 to-sky-700',
+		bri: 'from-blue-600 to-indigo-800'
+	};
 	const statusOptions = Object.entries(STATUS).map(([value, s]) => ({ value, label: s.label }));
 	const envOptions = [
 		{ value: 'sandbox', label: 'Sandbox (uji coba)' },
@@ -47,16 +54,18 @@
 
 	type Acc = { id: string; gateway: string; environment: Env; gateway_ref?: string; activation_status: string; created_at: string };
 	const serverEnv = $derived((data.overview?.server_environment ?? '') as Env | '');
-	const gateways = $derived(data.overview?.gateways ?? ['doku']);
+	const gateways = $derived(data.overview?.gateways ?? []);
+	// Gateway yang dikontrak sekali untuk platform: tidak butuh ID toko per merchant.
+	const isPlatform = (g: string) => (data.overview?.platform_gateways ?? []).includes(g);
 	const accounts = $derived((data.overview?.accounts ?? []) as Acc[]);
 	const find = (g: string, e: Env) => accounts.find((a) => a.gateway === g && a.environment === e);
 	const count = (s: string) => accounts.filter((a) => a.activation_status === s).length;
-	const readyHere = $derived(accounts.some((a) => a.environment === serverEnv && a.activation_status === 'active' && a.gateway_ref));
+	const readyHere = $derived(accounts.some((a) => a.environment === serverEnv && a.activation_status === 'active' && (a.gateway_ref || isPlatform(a.gateway))));
 
 	let testing = $state<string | null>(null);
 	let saving = $state(false);
 	let copied = $state(false);
-	let fGateway = $state('doku');
+	let fGateway = $state('');
 	let fEnv = $state<string>('production');
 	let fStatus = $state('active');
 	let fRef = $state('');
@@ -65,7 +74,7 @@
 	$effect(() => {
 		if (seeded || !data.overview) return;
 		seeded = true;
-		fGateway = data.overview.gateways[0] ?? 'doku';
+		fGateway = data.overview.gateways[0] ?? '';
 		fEnv = data.overview.server_environment === 'sandbox' ? 'sandbox' : 'production';
 	});
 
@@ -106,7 +115,7 @@
 				<p class="mt-3 text-[10px] font-bold uppercase tracking-[.25em] text-white/60">DEWA · {tx('pf.gw.kicker', 'Gateway pembayaran')}</p>
 				<h1 class="mt-1 truncate font-display text-3xl font-extrabold">{data.name || tx('pf.gw.title', 'Akun gateway')}</h1>
 				<p class="mt-2 max-w-xl text-[13px] leading-relaxed text-white/75">
-					{tx('pf.gw.lead', 'Hubungkan merchant ini ke akun gateway (mis. DOKU) agar bisa membuat QRIS. Tanpa akun yang Aktif, pembuatan QRIS ditolak.')}
+					{tx('pf.gw.lead', 'Hubungkan merchant ini ke akun gateway agar bisa membuat QRIS. Tanpa akun yang Aktif, pembuatan QRIS ditolak.')}
 				</p>
 				<p class="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-white/75">
 					<code class="rounded-md bg-white/10 px-2 py-0.5 font-mono text-[11px]">{data.id}</code>
@@ -137,14 +146,14 @@
 		{#if readyHere}
 			<div class="flex items-start gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900" role="status">
 				<svg viewBox="0 0 24 24" class="mt-0.5 size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-				<p class="text-xs font-semibold leading-relaxed">{tx('pf.gw.readyYes', 'Merchant ini siap membuat QRIS di environment')} <b>{serverEnv}</b>. {tx('pf.gw.readyTail', 'Jalankan Tes merchant untuk memastikan Merchant ID diterima gateway.')}</p>
+				<p class="text-xs font-semibold leading-relaxed">{tx('pf.gw.readyYes', 'Merchant ini siap membuat QRIS di environment')} <b>{serverEnv}</b>. {tx('pf.gw.readyTail', 'Jalankan Tes merchant untuk memastikan ID toko diterima gateway.')}</p>
 			</div>
 		{:else}
 			<div class="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900" role="status">
 				<svg viewBox="0 0 24 24" class="mt-0.5 size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
 				<p class="text-xs font-semibold leading-relaxed">
 					{tx('pf.gw.warnNone', 'Belum ada akun gateway aktif untuk environment')} <b>{serverEnv}</b>.
-					{tx('pf.gw.warnTail', 'Merchant ini belum bisa membuat QRIS (error PAYMENT_METHOD_UNAVAILABLE). Isi Merchant ID dan set status Aktif di bawah.')}
+					{tx('pf.gw.warnTail', 'Merchant ini belum bisa membuat QRIS (error PAYMENT_METHOD_UNAVAILABLE). Isi ID toko dan set status Aktif di bawah.')}
 				</p>
 			</div>
 		{/if}
@@ -176,27 +185,27 @@
 					<span class="grid size-8 place-items-center rounded-xl bg-linear-to-br from-sky-500 to-indigo-600 text-white">
 						<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4M12 17h.01" /></svg>
 					</span>
-					{tx('pf.gw.guideTitle', 'Panduan: apa itu Merchant ID, environment, dan status?')}
+					{tx('pf.gw.guideTitle', 'Panduan: apa itu ID toko, environment, dan status?')}
 				</span>
 				<svg viewBox="0 0 24 24" class="size-4 shrink-0 transition group-open:rotate-180" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6" /></svg>
 			</summary>
 			<div class="grid gap-4 border-t border-ink/10 p-5 text-xs leading-relaxed lg:grid-cols-3">
 				<div class="rounded-2xl bg-sky-500/[.07] p-4">
-					<h3 class="text-[13px] font-extrabold text-sky-800">Merchant ID di gateway</h3>
+					<h3 class="text-[13px] font-extrabold text-sky-800">ID toko di gateway</h3>
 					<p class="mt-1.5">
-						Nomor identitas <b>toko ini</b> di gateway, dipakai gateway untuk tahu QR dibuat atas nama merchant mana. Untuk DOKU ini
-						<b>Merchant ID</b> (angka, mis. <code class="font-mono">111214</code>), diterbitkan DOKU saat merchant didaftarkan.
+						Nomor identitas <b>toko ini</b> di gateway, dipakai gateway untuk tahu QR dibuat atas nama merchant mana. Contoh: DOKU memakai
+						<b>Merchant ID</b> (angka, mis. <code class="font-mono">111214</code>). Gateway lain punya istilah sendiri (sub-merchant/outlet/ID toko); lihat dokumen integrasinya di <code class="font-mono">docs/integrations/</code>.
 					</p>
 					<p class="mt-2 rounded-lg bg-surface px-2.5 py-2">
-						<b>Bukan Client ID.</b> Client ID (<code class="font-mono">BRN-…</code>) milik akun EraPay ke DOKU, sudah ada di konfigurasi server (<code class="font-mono">DOKU_CLIENT_ID</code>) dan sama untuk semua merchant. Salah mengisi Client ID di sini membuat DOKU menjawab error 500.
+						<b>Bukan kredensial akun EraPay.</b> Client ID, API key, atau server key milik EraPay ke gateway sudah ada di konfigurasi server dan sama untuk semua merchant; jangan diisi di sini (di DOKU, salah isi membuat gateway menjawab error 500).
 					</p>
-					<p class="mt-2"><b>Dapatnya dari:</b> dashboard DOKU (atau pihak DOKU yang mendaftarkan merchant) untuk environment yang sesuai; sandbox dan production berbeda. Jika ragu, konfirmasi ke DOKU sebelum mengaktifkan.</p>
+					<p class="mt-2"><b>Dapatnya dari:</b> dashboard gateway yang dipilih (atau pihak gateway yang mendaftarkan merchant) untuk environment yang sesuai; sandbox dan production berbeda. Jika ragu, konfirmasi ke gateway sebelum mengaktifkan.</p>
 				</div>
 				<div class="rounded-2xl bg-amber-500/[.09] p-4">
 					<h3 class="text-[13px] font-extrabold text-amber-800">Environment</h3>
 					<ul class="mt-1.5 space-y-1.5">
-						<li><b>Sandbox</b>: uji coba, tidak ada uang sungguhan. Merchant ID-nya khusus sandbox.</li>
-						<li><b>Production</b>: transaksi sungguhan. Merchant ID-nya berbeda dari sandbox.</li>
+						<li><b>Sandbox</b>: uji coba, tidak ada uang sungguhan. ID toko-nya khusus sandbox.</li>
+						<li><b>Production</b>: transaksi sungguhan. ID toko-nya berbeda dari sandbox.</li>
 					</ul>
 					<p class="mt-2 rounded-lg bg-surface px-2.5 py-2">
 						Server hanya memakai akun yang environment-nya sama dengan environment server (<b class="capitalize">{serverEnv || '—'}</b>). Mengisi akun environment lain tidak berpengaruh sampai server dipindah ke environment itu.
@@ -243,8 +252,13 @@
 
 							<dl class="mt-3 grid grid-cols-2 gap-3 px-4 text-xs">
 								<div class="min-w-0">
-									<dt class="muted text-[10px] font-bold uppercase tracking-wider" title="Nomor identitas toko ini di gateway">Merchant ID</dt>
-									<dd class="mt-0.5 truncate font-mono text-[13px] font-bold">{a?.gateway_ref ?? '—'}</dd>
+									{#if isPlatform(g)}
+										<dt class="muted text-[10px] font-bold uppercase tracking-wider">{tx('pf.gw.credLabel', 'Kredensial')}</dt>
+										<dd class="mt-0.5 truncate text-[13px] font-bold">{tx('pf.gw.credPlatform', 'Platform')}</dd>
+									{:else}
+										<dt class="muted text-[10px] font-bold uppercase tracking-wider" title="Nomor identitas toko ini di gateway">ID toko</dt>
+										<dd class="mt-0.5 truncate font-mono text-[13px] font-bold">{a?.gateway_ref ?? '—'}</dd>
+									{/if}
 								</div>
 								<div>
 									<dt class="muted text-[10px] font-bold uppercase tracking-wider">{tx('pf.gw.created', 'Dibuat')}</dt>
@@ -253,9 +267,9 @@
 							</dl>
 							<p class="muted mt-2 px-4 text-[11px] leading-snug">
 								{#if !a}
-									{tx('pf.gw.tileEmpty', 'Belum ada akun di environment ini. Klik Konfigurasi dan isi Merchant ID dari dashboard gateway.')}
-								{:else if !a.gateway_ref}
-									{tx('pf.gw.tileNoRef', 'Merchant ID belum diisi, jadi akun ini belum bisa dipakai.')}
+									{tx('pf.gw.tileEmpty', 'Belum ada akun di environment ini. Klik Konfigurasi' + (isPlatform(g) ? ' lalu set status Aktif.' : ' dan isi ID toko dari dashboard gateway.'))}
+								{:else if !a.gateway_ref && !isPlatform(g)}
+									{tx('pf.gw.tileNoRef', 'ID toko belum diisi, jadi akun ini belum bisa dipakai.')}
 								{:else if a.activation_status === 'active'}
 									{tx('pf.gw.tileActive', 'Akun siap dipakai membuat QRIS.')}
 								{:else}
@@ -294,10 +308,10 @@
 										<button
 											name="deep"
 											value="1"
-											disabled={testing !== null || !a?.gateway_ref}
-											title={a?.gateway_ref
+											disabled={testing !== null || !a || (!a.gateway_ref && !isPlatform(g))}
+											title={a?.gateway_ref || (a && isPlatform(g))
 												? tx('pf.gw.testDeepHint', 'Membuat QR uji Rp1.000 di gateway lalu langsung menutupnya. Tidak ada uang bergerak.')
-												: tx('pf.gw.testDeepNeedRef', 'Isi Merchant ID dulu.')}
+												: tx('pf.gw.testDeepNeedRef', 'Isi ID toko dulu.')}
 											class="inline-flex items-center gap-1.5 rounded-full bg-merah px-4 py-1.5 text-xs font-bold text-white transition hover:bg-merah-tua disabled:opacity-50"
 										>
 											{#if testing === key}
@@ -337,7 +351,7 @@
 										</ol>
 										<p class="mt-3 rounded-xl px-3 py-2 text-xs font-extrabold {form.test.ok ? 'bg-emerald-500/15 text-emerald-800' : 'bg-red-500/15 text-red-800'}">
 											{form.test.ok ? tx('pf.gw.testOk', 'Koneksi berhasil.') : tx('pf.gw.testFail', 'Koneksi gagal.')}
-											{#if form.test.ok && !form.test.deep}<span class="font-semibold">{tx('pf.gw.testShallowNote', 'Merchant ID belum diuji; jalankan Tes merchant.')}</span>{/if}
+											{#if form.test.ok && !form.test.deep}<span class="font-semibold">{tx('pf.gw.testShallowNote', 'ID toko belum diuji; jalankan Tes merchant.')}</span>{/if}
 										</p>
 									{/if}
 								</div>
@@ -354,7 +368,7 @@
 			<div class="p-5 sm:p-6">
 				<h2 class="font-display text-lg font-extrabold">{tx('pf.gw.setTitle', 'Konfigurasi akun')}</h2>
 				<p class="muted mt-1 max-w-2xl text-xs leading-relaxed">
-					{tx('pf.gw.setHint', 'Pilih gateway dan environment, isi Merchant ID dari dashboard gateway, lalu set status. Setiap perubahan dicatat di audit beserta alasannya.')}
+					{tx('pf.gw.setHint', 'Pilih gateway dan environment, isi ID toko dari dashboard gateway, lalu set status. Setiap perubahan dicatat di audit beserta alasannya.')}
 				</p>
 				<form
 					method="POST"
@@ -380,19 +394,25 @@
 						<p class="muted mt-1.5 text-[11px] leading-snug">
 							{fEnv === 'sandbox'
 								? tx('pf.gw.fEnvSandbox', 'Sandbox: uji coba tanpa uang sungguhan.')
-								: tx('pf.gw.fEnvProd', 'Production: transaksi sungguhan. Pastikan Merchant ID dari akun production.')}
+								: tx('pf.gw.fEnvProd', 'Production: transaksi sungguhan. Pastikan ID toko dari akun production.')}
 							{#if serverEnv && fEnv !== serverEnv}
 								<span class="font-bold text-amber-700">{tx('pf.gw.fEnvMismatch', 'Server ini berjalan di')} {serverEnv}, {tx('pf.gw.fEnvMismatchTail', 'jadi akun ini tidak akan dipakai sekarang.')}</span>
 							{/if}
 						</p>
 					</div>
+					{#if isPlatform(fGateway)}
+						<div class="rounded-xl bg-sky-500/[.07] p-3 text-[11px] leading-snug sm:col-span-1">
+							{tx('pf.gw.fRefPlatform', 'Gateway ini memakai kredensial platform (diatur di menu Gateways). Tidak ada data per merchant yang perlu diisi; cukup set status.')}
+						</div>
+					{:else}
 					<div>
-						<label class="lbl mb-1.5" for="gw-ref">{tx('pf.gw.fRef', 'Merchant ID di gateway')}</label>
+						<label class="lbl mb-1.5" for="gw-ref">{tx('pf.gw.fRef', 'ID toko di gateway')}</label>
 						<input id="gw-ref" name="gateway_ref" bind:value={fRef} maxlength="64" pattern={'[A-Za-z0-9._\\-]*'} class="inp font-mono" placeholder="mis. 111214" autocomplete="off" />
 						<p class="muted mt-1.5 text-[11px] leading-snug">
-							{tx('pf.gw.fRefHint', 'Nomor identitas toko ini di gateway (DOKU: Merchant ID, berupa angka). Salin dari dashboard DOKU untuk environment yang dipilih. Bukan Client ID (BRN-…). Huruf, angka, titik, garis bawah, dan strip saja.')}
+							{tx('pf.gw.fRefHint', 'Nomor identitas toko ini di gateway (DOKU: Merchant ID, berupa angka). Salin dari dashboard gateway yang dipilih untuk environment yang dipilih. Bukan kredensial akun EraPay. Huruf, angka, titik, garis bawah, dan strip saja.')}
 						</p>
 					</div>
+					{/if}
 					<div>
 						<label class="lbl mb-1.5" for="gw-status">{tx('pf.gw.fStatus', 'Status')}</label>
 						<Combobox id="gw-status" name="status" required bind:value={fStatus} options={statusOptions} />
@@ -400,7 +420,7 @@
 					</div>
 					<div class="sm:col-span-2">
 						<label class="lbl mb-1.5" for="gw-note">{tx('pf.gw.fNote', 'Alasan (wajib, masuk audit)')}</label>
-						<input id="gw-note" name="note" required minlength="3" maxlength="500" class="inp" placeholder={tx('pf.gw.notePh', 'mis. Merchant ID dikonfirmasi di dashboard DOKU')} />
+						<input id="gw-note" name="note" required minlength="3" maxlength="500" class="inp" placeholder={tx('pf.gw.notePh', 'mis. ID toko dikonfirmasi di dashboard gateway')} />
 						<p class="muted mt-1.5 text-[11px] leading-snug">{tx('pf.gw.fNoteHint', 'Tersimpan di log audit bersama nama Anda dan waktu perubahan (minimal 3 karakter).')}</p>
 					</div>
 					<div class="flex flex-wrap items-center gap-3 sm:col-span-2">
