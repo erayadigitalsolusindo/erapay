@@ -8,8 +8,12 @@
 	const i18n = getI18n();
 	const { t } = i18n;
 	let { data, form } = $props();
-	let tab = $state<'keys' | 'webhooks'>(data.tab as 'keys' | 'webhooks');
+	let tab = $state<'keys' | 'webhooks' | 'qrisgate'>(data.tab as 'keys' | 'webhooks' | 'qrisgate');
 	let copied = $state('');
+	const qa = $derived(data.qgAccount);
+	const qgState = $derived(!qa?.configured ? 'none' : qa.activation_status === 'active' ? 'active' : qa.activation_status === 'suspended' ? 'suspended' : 'pending');
+	const qgHook = $derived((data.apiBase || 'https://<host-api-erapay>') + (qa?.webhook_path ?? ''));
+	const qgForm = $derived(form as { savedAccount?: boolean; accountError?: boolean; unavailable?: boolean } | null);
 
 	const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 	const keyState = (k: { revoked_at: string | null; expires_at: string | null }) =>
@@ -62,6 +66,9 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 	{/if}
 	{#if data.canHooks}
 		<button type="button" role="tab" aria-selected={tab === 'webhooks'} class="tab" class:on={tab === 'webhooks'} onclick={() => (tab = 'webhooks')}>↯ Webhook</button>
+	{/if}
+	{#if data.qgAccount}
+		<button type="button" role="tab" aria-selected={tab === 'qrisgate'} class="tab" class:on={tab === 'qrisgate'} onclick={() => (tab = 'qrisgate')}>▦ QRISGate</button>
 	{/if}
 </div>
 
@@ -265,6 +272,39 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 			</div>
 		{/if}
 	</div>
+{/if}
+
+{#if tab === 'qrisgate' && data.qgAccount}
+	<section class="card mb-5 p-5" role="status">
+		<p class="text-sm font-bold">{t(`qg.acc.${qgState}` as const)}</p>
+		<p class="muted mt-1 text-xs">{t(`qg.acc.${qgState}.note` as const)}</p>
+	</section>
+	<section class="card mb-5 p-5">
+		<h2 class="text-sm font-bold">{t('qg.acc.title')}</h2>
+		<p class="muted mt-1 mb-3 max-w-2xl text-xs">{t('qg.acc.help')}</p>
+		{#if qa?.configured}<p class="mb-2 text-xs font-semibold">{t('qg.acc.key')}: <span class="font-mono">{qa.key_hint}</span></p>{/if}
+		<p class="mb-1 text-xs font-semibold">{t('qg.acc.hook')}</p>
+		<div class="mb-3 flex flex-wrap items-center gap-2">
+			<code class="block min-w-0 flex-1 rounded bg-ink/5 p-2 text-[11px] break-all">{qgHook}</code>
+			<button type="button" class="rounded-md border border-ink/15 px-3 py-1.5 text-[11px] font-bold hover:bg-ink/5" onclick={() => copy('qghook', qgHook)}>{copied === 'qghook' ? t('keys.copied') : t('keys.copy')}</button>
+		</div>
+		{#if data.canEditQG}
+			<form method="POST" action="?/qgAccount" use:enhance autocomplete="off" class="grid max-w-xl gap-3">
+				<div>
+					<label class="lbl mb-1" for="ig-qg-key">{t('qg.acc.apiKey')}</label>
+					<input id="ig-qg-key" name="api_key" required={!qa?.configured} minlength="16" maxlength="200" placeholder={qa?.configured ? t('qg.acc.keep') : 'qg_live_…'} class="inp" />
+				</div>
+				<div>
+					<label class="lbl mb-1" for="ig-qg-sec">{t('qg.acc.secret')}</label>
+					<input id="ig-qg-sec" name="webhook_secret" type="password" required={!qa?.configured} minlength="16" maxlength="200" placeholder={qa?.configured ? t('qg.acc.keep') : ''} class="inp" />
+				</div>
+				<div><button class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.acc.save')}</button></div>
+			</form>
+			{#if qgForm?.accountError}<p class="mt-2 text-xs font-semibold text-red-700" role="alert">{qgForm.unavailable ? t('qg.acc.unavailable') : t('qg.acc.invalid')}</p>{/if}
+			{#if qgForm?.savedAccount}<p class="mt-2 text-xs font-semibold text-emerald-700" role="status">{t('qg.acc.saved')}</p>{/if}
+		{/if}
+	</section>
+	<p class="muted text-xs"><a class="font-bold text-merah underline" href="/dashboard/qrisgate">{t('qg.acc.more')}</a></p>
 {/if}
 
 <style>

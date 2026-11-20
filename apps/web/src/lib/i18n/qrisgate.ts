@@ -74,7 +74,9 @@ export const qgId = {
 	'qg.apk.s2': 'Buka aplikasi, isi URL webhook (https), secret bersama, dan nama paket aplikasi bank atau e-wallet, satu per baris.',
 	'qg.apk.s3': 'Beri izin akses notifikasi, lalu matikan penghemat baterai untuk aplikasi ini.',
 	'qg.apk.s4': 'Tekan "Kirim tes ke webhook" untuk memastikan penerima bisa memverifikasi.',
-	'qg.acc.keep': 'Kosongkan untuk tetap memakai yang tersimpan'
+	'qg.acc.keep': 'Kosongkan untuk tetap memakai yang tersimpan',
+	'qg.acc.more': 'Saldo, top-up, dan aplikasi listener ada di menu QRISGate.',
+	'qg.acc.manage': 'Atur kunci di Integrasi'
 };
 
 export const qgEn: Record<keyof typeof qgId, string> = {
@@ -152,7 +154,9 @@ export const qgEn: Record<keyof typeof qgId, string> = {
 	'qg.apk.s2': 'Open the app and enter the webhook URL (https), the shared secret, and the package names of your bank or e-wallet apps, one per line.',
 	'qg.apk.s3': 'Grant notification access, then turn off battery saving for this app.',
 	'qg.apk.s4': 'Tap "Send test to webhook" to confirm the receiver can verify it.',
-	'qg.acc.keep': 'Leave blank to keep the stored value'
+	'qg.acc.keep': 'Leave blank to keep the stored value',
+	'qg.acc.more': 'Balance, top-ups and the listener app are in the QRISGate menu.',
+	'qg.acc.manage': 'Manage keys in Integrations'
 };
 
 export const qgJa: Record<keyof typeof qgId, string> = {
@@ -230,5 +234,7 @@ export const qgJa: Record<keyof typeof qgId, string> = {
 	'qg.apk.s2': 'アプリを開き、Webhook URL (https)、共有シークレット、銀行や電子ウォレットアプリのパッケージ名を 1 行ずつ入力します。',
 	'qg.apk.s3': '通知へのアクセスを許可し、このアプリの省電力を無効にしてください。',
 	'qg.apk.s4': '「Webhook にテスト送信」を押して、受信側が検証できることを確認してください。',
-	'qg.acc.keep': '空欄のままなら保存済みの値を維持します'
+	'qg.acc.keep': '空欄のままなら保存済みの値を維持します',
+	'qg.acc.more': '残高、チャージ、リスナーアプリは QRISGate メニューにあります。',
+	'qg.acc.manage': '連携でキーを管理'
 };

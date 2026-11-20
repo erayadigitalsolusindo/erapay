@@ -35,27 +35,8 @@
 {#if data.overview}
 	<section class="card mb-4 p-5">
 		<h2 class="text-sm font-bold">{t('qg.acc.title')}</h2>
-		<p class="muted mt-1 mb-3 max-w-2xl text-xs">{t('qg.acc.help')}</p>
-		{#if acc?.configured}<p class="mb-2 text-xs font-semibold">{t('qg.acc.key')}: <span class="font-mono">{acc.key_hint}</span></p>{/if}
-		<p class="mb-1 text-xs font-semibold">{t('qg.acc.hook')}</p>
-		<code class="mb-3 block break-all rounded bg-ink/5 p-2 text-[11px]">{hookUrl}</code>
-		{#if data.canRequest}
-			<form method="POST" action="?/account" use:enhance autocomplete="off" class="grid max-w-xl gap-3">
-				<div>
-					<label class="lbl mb-1" for="qg-key">{t('qg.acc.apiKey')}</label>
-					<input id="qg-key" name="api_key" required={!acc?.configured} minlength="16" maxlength="200" placeholder={acc?.configured ? t('qg.acc.keep') : 'qg_live_…'} class="inp" />
-				</div>
-				<div>
-					<label class="lbl mb-1" for="qg-sec">{t('qg.acc.secret')}</label>
-					<input id="qg-sec" name="webhook_secret" type="password" required={!acc?.configured} minlength="16" maxlength="200" placeholder={acc?.configured ? t('qg.acc.keep') : ''} class="inp" />
-				</div>
-				<div><button class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.acc.save')}</button></div>
-			</form>
-			{#if (form as { accountError?: boolean; unavailable?: boolean } | null)?.accountError}
-				<p class="mt-2 text-xs font-semibold text-red-700" role="alert">{(form as { unavailable?: boolean }).unavailable ? t('qg.acc.unavailable') : t('qg.acc.invalid')}</p>
-			{/if}
-			{#if (form as { savedAccount?: boolean } | null)?.savedAccount}<p class="mt-2 text-xs font-semibold text-emerald-700" role="status">{t('qg.acc.saved')}</p>{/if}
-		{/if}
+		{#if acc?.configured}<p class="mt-1 text-xs font-semibold">{t('qg.acc.key')}: <span class="font-mono">{acc.key_hint}</span></p>{/if}
+		<a href="/dashboard/integrasi?tab=qrisgate" class="mt-3 inline-block rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.acc.manage')}</a>
 	</section>
 
 	<section class="card mb-4 p-5">

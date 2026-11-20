@@ -4,6 +4,7 @@ import { SCOPES, createKey, deleteKey, listKeys, revokeKey, rotateKey } from '..
 import { call, done, read, str } from '../../../lib/server/gw';
 import type { Actions, PageServerLoad } from './$types';
 
+export type QGAccount = { configured: boolean; key_hint?: string; activation_status?: string; webhook_path: string };
 export type Endpoint = { id: string; url: string; status: string; secret_hint: string; created_at: string; secret?: string };
 export type Delivery = {
 	id: string;
@@ -39,7 +40,11 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 	const status = url.searchParams.get('status') ?? '';
 	const q = STATUSES.includes(status) ? `&status=${status}` : '';
 	const wanted = url.searchParams.get('tab');
-	const tab = wanted === 'webhooks' && canHooks ? 'webhooks' : wanted === 'keys' && canKeys ? 'keys' : canKeys ? 'keys' : 'webhooks';
+	// Tab QRISGate: akun QRISGate tenant (kunci dan secret milik tenant); hanya ada bila API-nya mendukung dan izin merchant:read ada.
+	const canQG = perms.includes('merchant:read');
+	const qg = canQG ? await read<{ account: QGAccount }>(fetch, token, '/v1/qrisgate') : null;
+	const tab =
+		wanted === 'qrisgate' && qg ? 'qrisgate' : wanted === 'webhooks' && canHooks ? 'webhooks' : wanted === 'keys' && canKeys ? 'keys' : canKeys ? 'keys' : 'webhooks';
 	const [keys, endpoints, deliveries] = await Promise.all([
 		canKeys ? listKeys(fetch, token) : Promise.resolve(null),
 		canHooks ? read<{ data: Endpoint[] }>(fetch, token, '/v1/webhook-endpoints') : Promise.resolve(null),
@@ -47,6 +52,10 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 	]);
 	return {
 		tab,
+		qgAccount: qg?.account ?? null,
+		canEditQG: perms.includes('merchant:write'),
+		// URL publik API untuk disalin ke dashboard QRISGate; kosong = halaman menampilkan placeholder.
+		apiBase: (process.env.ERAPAY_PUBLIC_API_URL ?? '').replace(/\/$/, ''),
 		canKeys,
 		canHooks,
 		keys,
@@ -58,6 +67,13 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 };
 
 export const actions: Actions = {
+	// Simpan atau ganti kunci QRISGate. Kolom kosong = pertahankan nilai tersimpan (aturan ada di Go).
+	qgAccount: async ({ request, cookies, fetch, locals }) => {
+		const token = session(locals, cookies, 'merchant:write');
+		const f = await request.formData();
+		const r = await call(fetch, token, 'PUT', '/v1/qrisgate/account', { api_key: str(f, 'api_key'), webhook_secret: str(f, 'webhook_secret') });
+		return r.ok ? { savedAccount: true } : fail(r.status === 422 ? 422 : 400, { accountError: true, unavailable: r.status === 422 });
+	},
 	keyCreate: async ({ request, cookies, fetch, locals }) => {
 		const token = session(locals, cookies, KEY);
 		const form = await request.formData();
