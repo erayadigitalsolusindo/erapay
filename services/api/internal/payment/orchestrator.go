@@ -248,6 +248,7 @@ func (o *Orchestrator) Create(ctx context.Context, r CreateRequest) (Outcome, er
 			ge = *e
 		}
 		o.attempt(work, p.ID, ad.Code(), "create", "ambiguous", ge.HTTPStatus, ge.Code, "", lat)
+		o.log.Warn("gateway create outcome ambiguous", "payment_id", p.ID, "http", ge.HTTPStatus, "code", ge.Code, "message", ge.Message)
 		o.mustTransition(work, TransitionInput{PaymentID: p.ID, To: Unknown, Source: SourceInternal, Reason: "gateway outcome ambiguous on create"})
 	}
 
