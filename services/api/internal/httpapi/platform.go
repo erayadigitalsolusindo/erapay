@@ -297,6 +297,11 @@ func (d Deps) mountPlatform(r chi.Router) {
 				r.Get("/qrisgate-fee", d.qrisgateFee)
 				r.Put("/qrisgate-fee", d.platformSetQRISGateFee)
 			}
+			// Daftar transaksi lintas tenant + hapus (hanya yang tidak pernah menggerakkan uang; tercatat di audit log).
+			if d.Payments != nil {
+				r.With(requirePerm("rbac:manage")).Get("/payments", d.platformPayments)
+				r.With(requirePerm("rbac:manage")).Delete("/payments/{id}", d.platformDeletePayment)
+			}
 			r.Get("/audit-logs", d.platformAudit)
 			r.Get("/stats", d.platformStats)
 			// MFA for the panel (DEWA), using the platform session.

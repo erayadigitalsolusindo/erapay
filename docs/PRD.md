@@ -50,7 +50,7 @@ Peta task → file yang dibaca (selain file ini):
 3. Timeout/ambigu → `unknown` (inquiry/rekonsiliasi), bukan `failed`. Jangan retry create-payment secara buta.
 4. Idempotency: unique constraint PostgreSQL. Redis/lock bukan satu-satunya pengaman.
 5. Webhook (in/out) bisa diproses >1x tanpa efek finansial ganda.
-6. Ledger append-only; koreksi via reversal/adjustment. Tanpa hard delete untuk payments, ledger, webhook, audit.
+6. Ledger append-only; koreksi via reversal/adjustment. Tanpa hard delete untuk payments, ledger, webhook, audit. Satu pengecualian (keputusan pemilik, 20 Nov 2026): Platform Admin boleh menghapus permanen payment yang tidak pernah menggerakkan uang (failed/expired/cancelled, atau created/unknown tanpa referensi gateway; tanpa ledger/refund/settlement) lewat `DELETE /v1/platform/payments/{id}` dengan alasan wajib; tercatat di audit log (`payment.purge`).
 7. `merchant_id` selalu dari identitas terautentikasi, bukan input klien. Tenant isolation di setiap query.
 8. Fee/status/gateway ref dihitung/ditentukan server; tidak pernah diterima dari POS. Snapshot pricing tidak berubah retroaktif.
 9. Payment status ≠ settlement status ≠ refund status (tiga state machine terpisah, tampil terpisah di UI).

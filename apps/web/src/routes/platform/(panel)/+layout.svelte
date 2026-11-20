@@ -18,6 +18,7 @@
 	const items = [
 		{ href: '/platform', label: 'pf.nav.overview', icon: 'M3 12 12 3l9 9M5 10v10h5v-6h4v6h5V10' },
 		{ href: '/platform/tenants', label: 'pf.nav.tenants', icon: 'M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1' },
+		{ href: '/platform/transactions', label: 'pf.nav.trx', icon: 'M4 7h16M4 12h16M4 17h10' },
 		{ href: '/platform/gateways', label: 'pf.nav.gateways', icon: 'M15 7a4 4 0 1 1-3.5 6L4 20.5V22h3v-2h2v-2h2l1.5-1.5' },
 		{ href: '/platform/audit', label: 'pf.nav.audit', icon: 'M9 5h10M9 12h10M9 19h10M4 5h.01M4 12h.01M4 19h.01' },
 		{ href: '/platform/access', label: 'pf.nav.access', icon: 'M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z' }
