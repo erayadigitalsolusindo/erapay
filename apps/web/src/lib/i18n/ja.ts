@@ -155,6 +155,8 @@ export const ja: Record<Key, string> = {
 	'trx.payment': '支払い {ref}',
 	'trx.qrLabel': 'QRISコード',
 	'trx.scan': 'QRIS対応の決済アプリでスキャンしてください。',
+	'trx.copyQr': 'QRの内容をコピー',
+	'trx.copied': 'コピーしました',
 	'trx.validUntil': '{date} まで有効',
 	'trx.qrMissing': 'QRコードを表示できません。',
 	'trx.f.amount': '金額',

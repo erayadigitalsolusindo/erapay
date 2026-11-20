@@ -16,6 +16,18 @@
 	const i18n = getI18n();
 	const { t } = i18n;
 
+	// Salin isi QR (qr_payload) untuk ditempel ke simulator gateway saat uji sandbox.
+	let copied = $state(false);
+	async function copyQr() {
+		try {
+			await navigator.clipboard.writeText(p.qr_code?.value ?? '');
+			copied = true;
+			setTimeout(() => (copied = false), 1600);
+		} catch {
+			/* clipboard bisa diblokir; abaikan */
+		}
+	}
+
 	// Status hanya dibaca dari server; halaman tidak pernah menandai lunas sendiri.
 	onMount(() => {
 		const t = setInterval(() => {
@@ -45,6 +57,12 @@
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -- SVG dibuat server dari library QR, bukan input pengguna -->
 			<div class="qr mx-auto w-64 max-w-full" aria-label={t('trx.qrLabel')}>{@html data.qr}</div>
 			<p class="mt-3 text-xs">{t('trx.scan')}</p>
+			{#if p.qr_code?.value}
+				<button type="button" class="btn btn-light mt-2 inline-flex items-center gap-2" onclick={copyQr}>
+					<svg viewBox="0 0 24 24" class="size-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>
+					{copied ? t('trx.copied') : t('trx.copyQr')}
+				</button>
+			{/if}
 			{#if p.qr_image_url}<p class="mt-2 break-all text-[11px]"><b>URL QR Midtrans (simulator):</b> <a class="underline" href={p.qr_image_url} target="_blank" rel="noreferrer">{p.qr_image_url}</a></p>{/if}
 			<p class="muted mt-1 text-[11px]">{t('trx.validUntil', { date: fmt(p.expires_at) })}</p>
 		</section>
