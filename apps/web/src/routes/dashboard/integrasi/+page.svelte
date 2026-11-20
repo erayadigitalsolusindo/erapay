@@ -14,7 +14,7 @@
 	const qa = $derived(data.qgAccount);
 	const qgState = $derived(!qa?.configured ? 'none' : qa.activation_status === 'active' ? 'active' : qa.activation_status === 'suspended' ? 'suspended' : 'pending');
 	const qgHook = $derived((data.apiBase || API_HOST) + (qa?.webhook_path ?? ''));
-	const qgForm = $derived(form as { savedAccount?: boolean; accountError?: boolean; unavailable?: boolean } | null);
+	const qgForm = $derived(form as { savedAccount?: boolean; accountError?: boolean; unavailable?: boolean; qgTest?: { ok: boolean; steps: { name: string; ok: boolean }[] } } | null);
 
 	const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 	const keyState = (k: { revoked_at: string | null; expires_at: string | null }) =>
@@ -303,6 +303,20 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 			</form>
 			{#if qgForm?.accountError}<p class="mt-2 text-xs font-semibold text-red-700" role="alert">{qgForm.unavailable ? t('qg.acc.unavailable') : t('qg.acc.invalid')}</p>{/if}
 			{#if qgForm?.savedAccount}<p class="mt-2 text-xs font-semibold text-emerald-700" role="status">{t('qg.acc.saved')}</p>{/if}
+			{#if qa?.configured}
+				<form method="POST" action="?/qgTest" use:enhance class="mt-4 border-t border-ink/10 pt-4">
+					<button class="rounded-full border border-ink/20 px-5 py-2 text-xs font-bold hover:bg-ink/5">{t('qg.test.btn')}</button>
+					<p class="muted mt-1 text-[11px]">{t('qg.test.note')}</p>
+				</form>
+				{#if qgForm?.qgTest}
+					<div class="mt-2 text-xs" role="status">
+						<p class="font-bold {qgForm.qgTest.ok ? 'text-emerald-700' : 'text-red-700'}">{qgForm.qgTest.ok ? t('qg.test.ok') : t('qg.test.fail')}</p>
+						<ul class="mt-1 space-y-0.5">
+							{#each qgForm.qgTest.steps as st (st.name)}<li class={st.ok ? 'text-emerald-700' : 'text-red-700'}>{st.ok ? '✓' : '✗'} {st.name === 'signature' ? t('qg.test.signature') : t('qg.test.credentials')}</li>{/each}
+						</ul>
+					</div>
+				{/if}
+			{/if}
 		{/if}
 	</section>
 	<p class="muted text-xs"><a class="font-bold text-merah underline" href="/dashboard/qrisgate">{t('qg.acc.more')}</a></p>

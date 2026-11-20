@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/platformsetting"
@@ -211,4 +213,28 @@ func (d Deps) adminDecideQRISGateTopup(confirm bool) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, t)
 		}
 	}
+}
+
+// qrisgateTestWebhook: POST /v1/qrisgate/account/test (tenant session, merchant:write). Signs a test notification
+// with the tenant's STORED secret and verifies it in-process; the secret never leaves the server.
+func (d Deps) qrisgateTestWebhook(w http.ResponseWriter, r *http.Request) {
+	type tester interface {
+		TestWebhook(ctx context.Context, merchantID string) []gateway.ConnectionStep
+	}
+	var t tester
+	if d.Gateways != nil {
+		if ad, ok := d.Gateways.Get("qrisgate"); ok {
+			t, _ = ad.(tester)
+		}
+	}
+	if t == nil {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "QRISGate is not enabled on this server", false)
+		return
+	}
+	steps := t.TestWebhook(r.Context(), PrincipalFrom(r.Context()).MerchantID)
+	all := true
+	for _, s := range steps {
+		all = all && s.OK
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": all, "steps": steps})
 }

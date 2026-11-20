@@ -68,6 +68,12 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 };
 
 export const actions: Actions = {
+	// Tes webhook: server menandatangani notifikasi uji dengan secret tersimpan lalu memverifikasinya sendiri.
+	qgTest: async ({ cookies, fetch, locals }) => {
+		const token = session(locals, cookies, 'merchant:write');
+		const r = await call<{ ok: boolean; steps: { name: string; ok: boolean }[] }>(fetch, token, 'POST', '/v1/qrisgate/account/test', {});
+		return r.ok ? { qgTest: r.value } : fail(400, { accountError: true });
+	},
 	// Simpan atau ganti kunci QRISGate. Kolom kosong = pertahankan nilai tersimpan (aturan ada di Go).
 	qgAccount: async ({ request, cookies, fetch, locals }) => {
 		const token = session(locals, cookies, 'merchant:write');

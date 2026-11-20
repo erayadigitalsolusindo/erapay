@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,5 +170,25 @@ func TestWebhookVerification(t *testing.T) {
 	got, err := a.VerifyWebhook(hook("secretA-0123456789", now, body, "payment.refunded", "d-x"), pathA, []byte(body))
 	if err != nil || got.StatusOK {
 		t.Errorf("unknown event: %+v %v; want unmapped", got, err)
+	}
+}
+
+func TestTestWebhookUsesTheStoredSecretAndNeverLeaksIt(t *testing.T) {
+	a, _ := newAdapter(t, func(w http.ResponseWriter, r *http.Request) {})
+	steps := a.TestWebhook(context.Background(), merchantA)
+	if len(steps) != 2 || !steps[0].OK || !steps[1].OK {
+		t.Fatalf("configured merchant: %+v", steps)
+	}
+	for _, st := range steps {
+		if strings.Contains(st.Message+st.Code, "secretA") {
+			t.Fatalf("the secret leaked into a step: %+v", st)
+		}
+	}
+	steps = a.TestWebhook(context.Background(), "44444444-4444-4444-4444-444444444444")
+	if len(steps) != 1 || steps[0].OK || steps[0].Code != "no_credentials" {
+		t.Fatalf("merchant without credentials: %+v", steps)
+	}
+	if steps = a.TestWebhook(context.Background(), "not-a-uuid"); steps[0].OK {
+		t.Fatalf("bad merchant id accepted: %+v", steps)
 	}
 }

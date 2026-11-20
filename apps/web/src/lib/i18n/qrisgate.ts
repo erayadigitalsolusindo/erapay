@@ -76,7 +76,13 @@ export const qgId = {
 	'qg.apk.s4': 'Tekan "Kirim tes ke webhook" untuk memastikan penerima bisa memverifikasi.',
 	'qg.acc.keep': 'Kosongkan untuk tetap memakai yang tersimpan',
 	'qg.acc.more': 'Saldo, top-up, dan aplikasi listener ada di menu QRISGate.',
-	'qg.acc.manage': 'Atur kunci di Integrasi'
+	'qg.acc.manage': 'Atur kunci di Integrasi',
+	'qg.test.btn': 'Tes webhook',
+	'qg.test.note': 'Server menandatangani notifikasi uji dengan secret yang tersimpan lalu memverifikasinya. Secret tidak ditampilkan. Tidak menghubungi QRISGate dan tidak menggerakkan uang.',
+	'qg.test.ok': 'Lolos: kunci tersimpan dan tanda tangan webhook berfungsi.',
+	'qg.test.fail': 'Belum lolos. Simpan ulang API key dan secret webhook.',
+	'qg.test.credentials': 'Kunci dan secret tersimpan',
+	'qg.test.signature': 'Notifikasi uji bertanda tangan terverifikasi'
 };
 
 export const qgEn: Record<keyof typeof qgId, string> = {
@@ -156,7 +162,13 @@ export const qgEn: Record<keyof typeof qgId, string> = {
 	'qg.apk.s4': 'Tap "Send test to webhook" to confirm the receiver can verify it.',
 	'qg.acc.keep': 'Leave blank to keep the stored value',
 	'qg.acc.more': 'Balance, top-ups and the listener app are in the QRISGate menu.',
-	'qg.acc.manage': 'Manage keys in Integrations'
+	'qg.acc.manage': 'Manage keys in Integrations',
+	'qg.test.btn': 'Test webhook',
+	'qg.test.note': 'The server signs a test notification with the stored secret and verifies it. The secret is not shown. It does not contact QRISGate and moves no money.',
+	'qg.test.ok': 'Passed: the keys are saved and the webhook signature works.',
+	'qg.test.fail': 'Not passing. Save the API key and webhook secret again.',
+	'qg.test.credentials': 'Key and secret are saved',
+	'qg.test.signature': 'A signed test notification verifies'
 };
 
 export const qgJa: Record<keyof typeof qgId, string> = {
@@ -236,5 +248,11 @@ export const qgJa: Record<keyof typeof qgId, string> = {
 	'qg.apk.s4': '「Webhook にテスト送信」を押して、受信側が検証できることを確認してください。',
 	'qg.acc.keep': '空欄のままなら保存済みの値を維持します',
 	'qg.acc.more': '残高、チャージ、リスナーアプリは QRISGate メニューにあります。',
-	'qg.acc.manage': '連携でキーを管理'
+	'qg.acc.manage': '連携でキーを管理',
+	'qg.test.btn': 'Webhook をテスト',
+	'qg.test.note': 'サーバーが保存済みシークレットでテスト通知に署名して検証します。シークレットは表示されません。QRISGate には接続せず、資金も動きません。',
+	'qg.test.ok': '成功: キーは保存済みで、Webhook 署名は機能しています。',
+	'qg.test.fail': '失敗しました。API キーと Webhook シークレットを再保存してください。',
+	'qg.test.credentials': 'キーとシークレットが保存済み',
+	'qg.test.signature': '署名付きテスト通知が検証できる'
 };

@@ -573,6 +573,7 @@ func (d Deps) mountV1(r chi.Router) {
 						r.With(requirePerm("merchant:read")).Get("/qrisgate/history", d.qrisgateHistory)
 						r.With(requirePerm("merchant:write")).Post("/qrisgate/topups", d.qrisgateRequestTopup)
 						r.With(requirePerm("merchant:write")).Put("/qrisgate/account", d.qrisgateSaveAccount)
+						r.With(requirePerm("merchant:write")).Post("/qrisgate/account/test", d.qrisgateTestWebhook)
 						r.With(requirePerm("merchant:write")).Post("/qrisgate/topups/qris", d.qrisgateRequestQRISTopup)
 						r.With(requirePerm("merchant:write")).Post("/qrisgate/topups/{id}/cancel", d.qrisgateCancelTopup)
 					}

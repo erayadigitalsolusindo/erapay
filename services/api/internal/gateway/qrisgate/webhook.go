@@ -89,3 +89,30 @@ func (a *Adapter) VerifyWebhook(h http.Header, path string, body []byte) (gatewa
 }
 
 var _ gateway.WebhookVerifier = (*Adapter)(nil)
+
+// TestWebhook checks, without any network call, that this merchant's stored webhook secret works: it builds a
+// notification for a payment that does not exist, signs it with the stored secret exactly like QRISGate would, and
+// verifies it through VerifyWebhook. It proves the credentials are saved and readable and that the signing scheme
+// round-trips; it does not prove that QRISGate can reach the public URL or that its own secret matches. The
+// secret itself is never returned.
+func (a *Adapter) TestWebhook(ctx context.Context, merchantID string) []gateway.ConnectionStep {
+	if !uuidRe.MatchString(merchantID) {
+		return []gateway.ConnectionStep{{Name: "credentials", Code: "bad_merchant", Message: "invalid merchant id"}}
+	}
+	_, secret, err := a.cfg.Creds.Credentials(ctx, merchantID)
+	if err != nil || secret == "" {
+		return []gateway.ConnectionStep{{Name: "credentials", Code: "no_credentials", Message: "API key and webhook secret are not saved yet"}}
+	}
+	steps := []gateway.ConnectionStep{{Name: "credentials", OK: true}}
+	now := a.cfg.Now()
+	body := []byte(`{"event":"payment.paid","transaction_id":"listener-test","external_order_id":"00000000-0000-0000-0000-000000000000","base_amount":10000}`)
+	h := http.Header{}
+	h.Set("X-QRISGate-Timestamp", strconv.FormatInt(now.Unix(), 10))
+	h.Set("X-QRISGate-Signature", Signature(secret, now.Unix(), body))
+	h.Set("X-QRISGate-Event", "payment.paid")
+	h.Set("X-QRISGate-Delivery-Id", "erapay-self-test")
+	if _, err := a.VerifyWebhook(h, "/webhooks/qrisgate/"+merchantID, body); err != nil {
+		return append(steps, gateway.ConnectionStep{Name: "signature", Code: "verify_failed", Message: "a test notification signed with the stored secret did not verify"})
+	}
+	return append(steps, gateway.ConnectionStep{Name: "signature", OK: true})
+}
