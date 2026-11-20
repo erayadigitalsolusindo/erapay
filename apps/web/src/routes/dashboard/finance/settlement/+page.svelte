@@ -29,7 +29,7 @@
 	<section class="card overflow-hidden">
 		<div class="flex flex-wrap items-center justify-between gap-3 p-5">
 			<h2 class="text-sm font-bold">{t('fin.unsettled')}</h2>
-			{#if gateways.length > 1 || data.gateway}
+			{#if !data.tenant && (gateways.length > 1 || data.gateway)}
 				<form method="GET" class="flex items-center gap-2">
 					<label class="lbl" for="gw">{t('fin.gateway')}</label>
 					<input id="gw" name="gateway" class="inp w-32 py-1.5" value={data.gateway} />
@@ -44,13 +44,13 @@
 		{:else}
 			<div class="overflow-x-auto">
 				<table>
-					<thead><tr>{#if !data.tenant}<th>{t('fin.pick')}</th>{/if}<th>{t('fin.col.payment')}</th><th>{t('fin.gateway')}</th><th>{t('fin.col.gross')}</th><th>{t('fin.col.mdr')}</th><th>{t('fin.col.net')}</th><th>{t('fin.col.final')}</th></tr></thead>
+					<thead><tr>{#if !data.tenant}<th>{t('fin.pick')}</th>{/if}<th>{t('fin.col.payment')}</th>{#if !data.tenant}<th>{t('fin.gateway')}</th>{/if}<th>{t('fin.col.gross')}</th><th>{t('fin.col.mdr')}</th><th>{t('fin.col.net')}</th><th>{t('fin.col.final')}</th></tr></thead>
 					<tbody>
 						{#each data.unsettled as u (u.payment_id)}
 							<tr>
 								{#if !data.tenant}<td><input type="checkbox" class="accent-merah" form="batch" name="payment_ids" value={u.payment_id} bind:group={selected} aria-label={u.payment_id} /></td>{/if}
 								<td><code>{u.gateway_reference || u.payment_id.slice(0, 8)}</code></td>
-								<td>{u.gateway}</td>
+								{#if !data.tenant}<td>{u.gateway}</td>{/if}
 								<td>{formatIDR(u.gross)}</td>
 								<td>{formatIDR(u.mdr_fee)}</td>
 								<td class="font-bold">{formatIDR(u.expected_net)}</td>
