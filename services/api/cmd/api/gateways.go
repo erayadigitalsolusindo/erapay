@@ -114,12 +114,18 @@ func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (
 	registerFromPanel(reg, cfg, log, creds, dana.Code, danaFromCreds)
 	registerFromPanel(reg, cfg, log, creds, xendit.Code, xenditFromCreds)
 	registerFromPanel(reg, cfg, log, creds, midtrans.Code, midtransFromCreds)
-	if _, ok := reg.Get(midtrans.Code); !ok && creds != nil && cfg.Env == "production" {
-		// Owner decision (19 Nov 2026): sandbox-only Midtrans stays selectable on production (SB- key, sandbox host).
-		if vals, ok, err := creds.Load(context.Background(), midtrans.Code, "sandbox"); err == nil && ok {
-			if a, err := midtransFromCreds(vals, "sandbox"); err == nil {
-				reg.Register(a)
-				log.Info("gateway registered from sandbox credentials", "gateway", midtrans.Code, "env", "production")
+	if creds != nil && cfg.Env == "production" {
+		// Owner decision (19 Nov 2026, extended 20 Nov 2026 to every gateway): sandbox-only credentials keep a
+		// gateway selectable on production (sandbox host, no real money), e.g. in the payment-route panel.
+		for code, build := range gatewayFactories() {
+			if _, ok := reg.Get(code); ok {
+				continue
+			}
+			if vals, ok, err := creds.Load(context.Background(), code, "sandbox"); err == nil && ok {
+				if a, err := build(vals, "sandbox"); err == nil {
+					reg.Register(a)
+					log.Info("gateway registered from sandbox credentials", "gateway", code, "env", "production")
+				}
 			}
 		}
 	}
