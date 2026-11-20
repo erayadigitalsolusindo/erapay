@@ -254,6 +254,10 @@ func (d Deps) platformSetup(w http.ResponseWriter, r *http.Request) {
 // requirePlatformAdmin (DEWA only). MFA and RBAC endpoints are re-mounted here so
 // the panel uses its own cookie and never depends on dashboard sessions.
 func (d Deps) mountPlatform(r chi.Router) {
+	if d.AppReleases != nil { // before the /platform subrouter: its requireJSON would reject the raw APK body
+		r.Method(http.MethodPost, "/platform/listener-apk/upload", http.HandlerFunc(d.platformUploadListenerDirect))
+		r.Method(http.MethodOptions, "/platform/listener-apk/upload", http.HandlerFunc(d.platformUploadListenerDirect))
+	}
 	r.Route("/platform", func(r chi.Router) {
 		r.Use(requireJSON) // semua endpoint platform JSON (setup, login, MFA, RBAC)
 		r.Get("/setup-status", d.platformSetupStatus)
@@ -291,7 +295,7 @@ func (d Deps) mountPlatform(r chi.Router) {
 			}
 			if d.AppReleases != nil {
 				r.Get("/listener-apk", d.platformListListener)
-				r.Post("/listener-apk", d.platformUploadListener)
+				r.Post("/listener-apk/ticket", d.platformAPKTicket)
 			}
 			if d.Settings != nil {
 				r.Get("/qrisgate-fee", d.qrisgateFee)

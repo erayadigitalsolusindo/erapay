@@ -9,7 +9,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apprelease"
 )
 
-// platformUploadListener: POST /v1/platform/listener-apk?version=1.0.1&note=... with the raw APK as the body.
+// platformUploadListener (called by platformUploadListenerDirect): version=1.0.1&note=... with the raw APK as the body.
 func (d Deps) platformUploadListener(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	body := http.MaxBytesReader(w, r.Body, apprelease.MaxBytes+1)

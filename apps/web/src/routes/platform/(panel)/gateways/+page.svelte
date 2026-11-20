@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
 	import GatewayLogo from '../../../../lib/components/GatewayLogo.svelte';
 	import type { CredEnv, CredGateway, CredStep } from './+page.server';
@@ -26,6 +27,36 @@
 	$effect(() => {
 		pick = routing?.gateway ?? '';
 	});
+	// APK dikirim langsung dari browser ke API Go (bukan lewat server web) dengan tiket sekali pakai.
+	let apkMsg = $state<{ error?: string; saved?: string } | null>(null);
+	async function uploadApk(e: SubmitEvent) {
+		e.preventDefault();
+		const form = e.currentTarget as HTMLFormElement;
+		const fd = new FormData(form);
+		const file = fd.get('apk') as File;
+		const version = String(fd.get('version') ?? '').trim();
+		const note = String(fd.get('note') ?? '').trim();
+		if (!file?.size) return void (apkMsg = { error: 'Pilih berkas APK.' });
+		if (!/^[0-9A-Za-z][0-9A-Za-z._+-]{0,31}$/.test(version)) return void (apkMsg = { error: 'Versi 1-32 karakter (huruf, angka, . _ + -).' });
+		if (file.size > 60 * 1024 * 1024) return void (apkMsg = { error: 'APK lebih dari 60 MB.' });
+		busy = 'apk';
+		apkMsg = null;
+		try {
+			const t = await fetch('apk-ticket', { method: 'POST' });
+			if (!t.ok) throw new Error((await t.json().catch(() => null))?.message ?? 'Sesi berakhir, muat ulang halaman.');
+			const { url } = await t.json();
+			const r = await fetch(`${url}&${new URLSearchParams({ version, note })}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });
+			const j = await r.json().catch(() => null);
+			if (!r.ok) throw new Error(j?.error?.message ?? `Unggah gagal (${r.status}).`);
+			apkMsg = { saved: version };
+			form.reset();
+			await invalidateAll();
+		} catch (err) {
+			apkMsg = { error: err instanceof Error ? err.message : 'Unggah gagal.' };
+		} finally {
+			busy = null;
+		}
+	}
 	const mineRoute = $derived(rf?.key === 'route');
 </script>
 
@@ -125,18 +156,7 @@
 					<p class="text-[11px] font-semibold text-ink/60">Belum ada APK yang diunggah.</p>
 				{/if}
 			</div>
-			<form
-				method="POST"
-				action="?/uploadApk"
-				enctype="multipart/form-data"
-				use:enhance={() => {
-					busy = 'apk';
-					return async ({ update }) => {
-						await update({ reset: true });
-						busy = null;
-					};
-				}}
-				class="space-y-3 border-t border-ink/10 p-4 sm:p-5"
+			<form onsubmit={uploadApk} class="space-y-3 border-t border-ink/10 p-4 sm:p-5"
 			>
 				<div class="grid gap-3 sm:grid-cols-2">
 					<div>
@@ -156,8 +176,8 @@
 					<button disabled={busy !== null} class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-merah-tua disabled:opacity-50">
 						{busy === 'apk' ? 'Mengunggah…' : 'Unggah APK'}
 					</button>
-					{#if rf?.key === 'apk' && rf?.error}<p class="text-xs font-semibold text-red-700" role="alert">{rf.error}</p>{/if}
-					{#if rf?.key === 'apk' && rf?.apkSaved}<p class="text-xs font-semibold text-emerald-700" role="status">v{rf.apkSaved} tersimpan dan tersedia untuk diunduh.</p>{/if}
+					{#if apkMsg?.error}<p class="text-xs font-semibold text-red-700" role="alert">{apkMsg.error}</p>{/if}
+					{#if apkMsg?.saved}<p class="text-xs font-semibold text-emerald-700" role="status">v{apkMsg.saved} tersimpan dan tersedia untuk diunduh.</p>{/if}
 				</div>
 			</form>
 			{#if data.apkReleases.length > 1}

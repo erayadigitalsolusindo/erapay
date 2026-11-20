@@ -1,5 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { guardPlatform, platformApi, platformUpload } from '../../../../lib/server/platform';
+import { guardPlatform, platformApi } from '../../../../lib/server/platform';
 import type { Actions, PageServerLoad } from './$types';
 
 export type CredField = {
@@ -64,21 +64,6 @@ function target(f: FormData) {
 
 export const actions: Actions = {
 	// Potongan per transaksi QRISGate dari saldo tenant (rupiah utuh; 0 = tidak memotong). Berlaku untuk transaksi berikutnya.
-	// Unggah APK listener (maks 60 MB). Validasi isi (ZIP berisi AndroidManifest.xml + classes.dex), versi unik, dan audit ada di Go.
-	uploadApk: async ({ request, cookies, locals, fetch }) => {
-		const token = guardPlatform(locals, cookies);
-		const f = await request.formData();
-		const file = f.get('apk');
-		const version = String(f.get('version') ?? '').trim();
-		const note = String(f.get('note') ?? '').trim();
-		if (!(file instanceof File) || file.size === 0) return fail(400, { key: 'apk', error: 'Pilih berkas APK.' });
-		if (!/^[0-9A-Za-z][0-9A-Za-z._+-]{0,31}$/.test(version)) return fail(400, { key: 'apk', error: 'Versi 1-32 karakter (huruf, angka, . _ + -).' });
-		if (file.size > 60 * 1024 * 1024) return fail(400, { key: 'apk', error: 'APK lebih dari 60 MB.' });
-		const r = await platformUpload(fetch, token, `/listener-apk?version=${encodeURIComponent(version)}&note=${encodeURIComponent(note)}`, await file.arrayBuffer());
-		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { key: 'apk', error: r.message });
-		return { key: 'apk', apkSaved: version };
-	},
-
 	qrisgateFee: async ({ request, cookies, locals, fetch }) => {
 		const token = guardPlatform(locals, cookies);
 		const f = await request.formData();
