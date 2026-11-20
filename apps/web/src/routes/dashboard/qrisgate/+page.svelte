@@ -15,7 +15,6 @@
 	});
 	const acc = $derived(data.overview?.account);
 	const accState = $derived(!acc?.configured ? 'none' : acc.activation_status === 'active' ? 'active' : acc.activation_status === 'suspended' ? 'suspended' : 'pending');
-	const hookUrl = $derived((data.apiBase || 'https://<host-api-erapay>') + (acc?.webhook_path ?? ''));
 	const when = (iso: string) => new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 </script>
 
@@ -33,12 +32,6 @@
 </section>
 
 {#if data.overview}
-	<section class="card mb-4 p-5">
-		<h2 class="text-sm font-bold">{t('qg.acc.title')}</h2>
-		{#if acc?.configured}<p class="mt-1 text-xs font-semibold">{t('qg.acc.key')}: <span class="font-mono">{acc.key_hint}</span></p>{/if}
-		<a href="/dashboard/integrasi?tab=qrisgate" class="mt-3 inline-block rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.acc.manage')}</a>
-	</section>
-
 	<section class="card mb-4 p-5">
 		<p class="muted text-xs font-semibold">{t('qg.bal.title')}</p>
 		<p class="mt-1 text-2xl font-extrabold {data.overview.balance < 0 ? 'text-red-700' : ''}">{formatIDR(data.overview.balance)}</p>

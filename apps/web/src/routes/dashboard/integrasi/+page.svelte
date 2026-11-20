@@ -3,6 +3,7 @@
 	import Combobox from '../../../lib/components/Combobox.svelte';
 	import StateBadge from '../../../lib/components/StateBadge.svelte';
 	import { enhance } from '$app/forms';
+	import { API_HOST } from '../../../lib/utils/apiHost';
 	import { getI18n } from '../../../lib/i18n/i18n.svelte';
 
 	const i18n = getI18n();
@@ -12,7 +13,7 @@
 	let copied = $state('');
 	const qa = $derived(data.qgAccount);
 	const qgState = $derived(!qa?.configured ? 'none' : qa.activation_status === 'active' ? 'active' : qa.activation_status === 'suspended' ? 'suspended' : 'pending');
-	const qgHook = $derived((data.apiBase || 'https://<host-api-erapay>') + (qa?.webhook_path ?? ''));
+	const qgHook = $derived((data.apiBase || API_HOST) + (qa?.webhook_path ?? ''));
 	const qgForm = $derived(form as { savedAccount?: boolean; accountError?: boolean; unavailable?: boolean } | null);
 
 	const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
@@ -34,7 +35,7 @@
 		}
 	}
 
-	const curl = `curl -X POST https://<host-api-erapay>/v1/payments \\
+	const curl = `curl -X POST ${API_HOST}/v1/payments \\
   -H "Authorization: Bearer epk_sbx_…" \\
   -H "Idempotency-Key: order-1001-v1" \\
   -H "Content-Type: application/json" \\
@@ -281,7 +282,7 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 	</section>
 	<section class="card mb-5 p-5">
 		<h2 class="text-sm font-bold">{t('qg.acc.title')}</h2>
-		<p class="muted mt-1 mb-3 max-w-2xl text-xs">{t('qg.acc.help')}</p>
+		<p class="muted mt-1 mb-3 text-xs">{t('qg.acc.help')}</p>
 		{#if qa?.configured}<p class="mb-2 text-xs font-semibold">{t('qg.acc.key')}: <span class="font-mono">{qa.key_hint}</span></p>{/if}
 		<p class="mb-1 text-xs font-semibold">{t('qg.acc.hook')}</p>
 		<div class="mb-3 flex flex-wrap items-center gap-2">
@@ -289,7 +290,7 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 			<button type="button" class="rounded-md border border-ink/15 px-3 py-1.5 text-[11px] font-bold hover:bg-ink/5" onclick={() => copy('qghook', qgHook)}>{copied === 'qghook' ? t('keys.copied') : t('keys.copy')}</button>
 		</div>
 		{#if data.canEditQG}
-			<form method="POST" action="?/qgAccount" use:enhance autocomplete="off" class="grid max-w-xl gap-3">
+			<form method="POST" action="?/qgAccount" use:enhance autocomplete="off" class="grid w-full gap-3 md:grid-cols-2">
 				<div>
 					<label class="lbl mb-1" for="ig-qg-key">{t('qg.acc.apiKey')}</label>
 					<input id="ig-qg-key" name="api_key" required={!qa?.configured} minlength="16" maxlength="200" placeholder={qa?.configured ? t('qg.acc.keep') : 'qg_live_…'} class="inp" />
@@ -298,7 +299,7 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 					<label class="lbl mb-1" for="ig-qg-sec">{t('qg.acc.secret')}</label>
 					<input id="ig-qg-sec" name="webhook_secret" type="password" required={!qa?.configured} minlength="16" maxlength="200" placeholder={qa?.configured ? t('qg.acc.keep') : ''} class="inp" />
 				</div>
-				<div><button class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.acc.save')}</button></div>
+				<div class="md:col-span-2"><button class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.acc.save')}</button></div>
 			</form>
 			{#if qgForm?.accountError}<p class="mt-2 text-xs font-semibold text-red-700" role="alert">{qgForm.unavailable ? t('qg.acc.unavailable') : t('qg.acc.invalid')}</p>{/if}
 			{#if qgForm?.savedAccount}<p class="mt-2 text-xs font-semibold text-emerald-700" role="status">{t('qg.acc.saved')}</p>{/if}

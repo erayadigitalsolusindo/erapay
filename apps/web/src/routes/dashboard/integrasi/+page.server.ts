@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { SESSION_COOKIE } from '../../../lib/server/auth';
 import { SCOPES, createKey, deleteKey, listKeys, revokeKey, rotateKey } from '../../../lib/server/apikeys';
+import { API_HOST } from '../../../lib/utils/apiHost';
 import { call, done, read, str } from '../../../lib/server/gw';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -55,7 +56,7 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 		qgAccount: qg?.account ?? null,
 		canEditQG: perms.includes('merchant:write'),
 		// URL publik API untuk disalin ke dashboard QRISGate; kosong = halaman menampilkan placeholder.
-		apiBase: (process.env.ERAPAY_PUBLIC_API_URL ?? '').replace(/\/$/, ''),
+		apiBase: (process.env.ERAPAY_PUBLIC_API_URL || API_HOST).replace(/\/$/, ''),
 		canKeys,
 		canHooks,
 		keys,

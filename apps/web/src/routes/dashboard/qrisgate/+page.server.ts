@@ -44,20 +44,12 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 		topups: list,
 		qr,
 		history: history?.data ?? [],
-		// URL publik API untuk disalin ke dashboard QRISGate; kosong = halaman menampilkan placeholder.
-		apiBase: (process.env.ERAPAY_PUBLIC_API_URL ?? '').replace(/\/$/, ''),
 		canRequest: locals.user!.permissions.includes('merchant:write'),
 		idem: newIdemKey('qgtopup')
 	};
 };
 
 export const actions: Actions = {
-	account: async ({ request, locals, cookies, fetch }) => {
-		const token = session(locals, cookies);
-		const f = await request.formData();
-		const r = await call(fetch, token, 'PUT', '/v1/qrisgate/account', { api_key: str(f, 'api_key'), webhook_secret: str(f, 'webhook_secret') });
-		return r.ok ? { savedAccount: true } : fail(r.status === 422 ? 422 : 400, { accountError: true, unavailable: r.status === 422 });
-	},
 	topup: async ({ request, locals, cookies, fetch }) => {
 		const token = session(locals, cookies);
 		const f = await request.formData();

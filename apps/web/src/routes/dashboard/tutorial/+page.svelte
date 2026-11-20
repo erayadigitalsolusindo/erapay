@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { API_HOST } from '../../../lib/utils/apiHost';
 	let copied = $state('');
 	async function copy(id: string, text: string) {
 		try {
@@ -16,7 +17,7 @@
 		document.getElementById(id)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 	}
 
-	const BASE = 'https://<host-api-erapay>/v1';
+	const BASE = `${API_HOST}/v1`;
 	const create = `curl -X POST ${BASE}/payments \\
   -H "Authorization: Bearer epk_sbx_<secret>" \\
   -H "Idempotency-Key: ord-1001-try1" \\
