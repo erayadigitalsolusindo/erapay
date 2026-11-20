@@ -132,11 +132,11 @@ func TestSetValidation(t *testing.T) {
 	ctx := context.Background()
 	cases := map[string]map[string]string{
 		"unknown key (cannot become an env editor)": {"DATABASE_URL": "postgres://x"},
-		"bad client id":                             {"client_id": "a b;c"},
-		"base url off the allowlist":                {"base_url": "https://evil.example.com"},
-		"private key not pem":                       {"private_key": "hello"},
-		"short terminal":                            {"terminal_id": "x"},
-		"bad postal":                                {"postal_code": "ABCDE"},
+		"bad client id":              {"client_id": "a b;c"},
+		"base url off the allowlist": {"base_url": "https://evil.example.com"},
+		"private key not pem":        {"private_key": "hello"},
+		"short terminal":             {"terminal_id": "x"},
+		"bad postal":                 {"postal_code": "ABCDE"},
 	}
 	for name, vals := range cases {
 		var ve *ValidationError
