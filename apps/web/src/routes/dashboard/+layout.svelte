@@ -4,7 +4,6 @@
 	import Header from './_components/Header.svelte';
 	import Sidebar from './_components/Sidebar.svelte';
 	import TabBar from './_components/TabBar.svelte';
-	import SuaraKasir from './_components/SuaraKasir.svelte';
 
 	let { data, children } = $props();
 
@@ -80,7 +79,6 @@
 			{/if}
 			{@render children()}
 		</main>
-		{#if data.user.merchantId && data.user.permissions.includes('payment:read')}<SuaraKasir />{/if}
 		<footer class="muted border-t border-ink/10 bg-page px-3 py-1.5 text-[10px] lg:px-4">{i18n.t('footer.tagline')}</footer>
 	</div>
 </div>
