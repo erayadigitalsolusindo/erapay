@@ -2,6 +2,7 @@ import type { Key } from './messages';
 import { pfJa } from './platform';
 import { prJa } from './profile';
 import { sbJa } from './sandbox';
+import { qgJa } from './qrisgate';
 
 // 日本語辞書。キーはインドネシア語・英語と同一。
 export const ja: Record<Key, string> = {
@@ -973,5 +974,6 @@ export const ja: Record<Key, string> = {
 	'reg.afterBody': 'それまでアカウントは下書き状態で、決済を受け取れません。EraPayチームが確認できるよう、ダッシュボードで4つの本人情報セクション（会社、代表者、ブランド、書類）を入力してください。',
 	...pfJa,
 	...prJa,
-	...sbJa
+	...sbJa,
+	...qgJa
 };

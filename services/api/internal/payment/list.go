@@ -52,7 +52,7 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]Payment, string, er
 		curAt, curID = &at, &id
 	}
 	rows, err := s.db.Query(ctx, `SELECT `+cols+` FROM payments
-		WHERE merchant_id = $1
+		WHERE merchant_id = $1 AND purpose = 'payment'
 		  AND ($2 = '' OR status = $2)
 		  AND ($3 = '' OR merchant_reference = $3)
 		  AND ($4::timestamptz IS NULL OR created_at >= $4)
@@ -168,7 +168,7 @@ func (s *Service) Summarize(ctx context.Context, merchantID, currency string, fr
 		       COALESCE(SUM(mdr_fee) FILTER (WHERE status = 'succeeded'), 0),
 		       COALESCE(SUM(platform_fee) FILTER (WHERE status = 'succeeded'), 0),
 		       COALESCE(SUM(merchant_net) FILTER (WHERE status = 'succeeded'), 0)
-		FROM payments WHERE merchant_id = $1 AND currency = $2 AND created_at >= $3 AND created_at < $4`,
+		FROM payments WHERE merchant_id = $1 AND purpose = 'payment' AND currency = $2 AND created_at >= $3 AND created_at < $4`,
 		merchantID, currency, start, end).
 		Scan(&t.Payments, &t.Succeeded, &t.Pending, &t.Failed, &t.Expired, &t.Cancelled, &t.Unknown,
 			&t.Gross, &t.MDRFee, &t.PlatformFee, &t.MerchantNet)
@@ -187,7 +187,7 @@ func (s *Service) Summarize(ctx context.Context, merchantID, currency string, fr
 		LEFT JOIN (
 		    SELECT (final_at AT TIME ZONE $5)::date AS day, count(*) AS n, SUM(amount) AS g
 		    FROM payments
-		    WHERE merchant_id = $1 AND currency = $2 AND status = 'succeeded' AND final_at >= $6 AND final_at < $7
+		    WHERE merchant_id = $1 AND purpose = 'payment' AND currency = $2 AND status = 'succeeded' AND final_at >= $6 AND final_at < $7
 		    GROUP BY 1) x ON x.day = d::date
 		ORDER BY d`,
 		merchantID, currency, out.From, out.To, ReportTimezone, start, end)

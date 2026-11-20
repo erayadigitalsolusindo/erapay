@@ -25,6 +25,8 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payout"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/platformsetting"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/qrisgate"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/refund"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/routing"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/settlement"
@@ -42,23 +44,25 @@ type Deps struct {
 	APIKeys            *apikey.Service
 	Payments           *payment.Service
 	PaymentFlow        *payment.Orchestrator
-	Outbound           *outbound.Service   // nil disables /v1/webhook-endpoints and /v1/webhook-deliveries
-	Settlement         *settlement.Service // nil disables /v1/balance and /v1/admin/settlement routes
-	Payouts            *payout.Service     // nil disables bank accounts and payouts
-	Refunds            *refund.Service     // nil disables refunds
-	Onboarding         *onboarding.Service // nil disables /v1/admin/merchants; sign-up also needs its notifier
-	KYC                *kyc.Service        // nil disables /v1/kyc/* and /v1/admin/merchants/{id}/kyc
-	Account            *account.Service    // nil disables email verification and password reset
-	GWAccounts         *gwaccount.Service  // nil disables /v1/platform/merchants/{id}/gateway-accounts
-	GWCreds            *gwcred.Service     // nil (no ERAPAY_ENCRYPTION_KEY) disables /v1/platform/gateway-credentials
-	Routing            *routing.Service    // nil disables /v1/platform/payment-routing
-	ARUSKeyToken       string              // token terpisah (min 32) untuk menerbitkan API key tenant ARUS; kosong = rute mati
-	ARUSProvisionToken string              // server-to-server token for ARUS tenant provisioning
-	WebURL             string              // public dashboard origin; target of ARUS single sign-on links
-	PlatformSetupToken string              // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars) enables /v1/platform/setup until the first DEWA exists
-	Webhooks           *webhook.Store      // optional raw capture (ERAPAY_WEBHOOK_CAPTURE); see webhooks.go
-	Gateways           payment.Gateways    // adapters implementing gateway.WebhookVerifier enable verified webhooks
-	SandboxGateways    payment.Gateways    // sandbox adapters (production server only): serves /webhooks/sandbox/{gateway}
+	Outbound           *outbound.Service        // nil disables /v1/webhook-endpoints and /v1/webhook-deliveries
+	Settlement         *settlement.Service      // nil disables /v1/balance and /v1/admin/settlement routes
+	Payouts            *payout.Service          // nil disables bank accounts and payouts
+	Refunds            *refund.Service          // nil disables refunds
+	Onboarding         *onboarding.Service      // nil disables /v1/admin/merchants; sign-up also needs its notifier
+	KYC                *kyc.Service             // nil disables /v1/kyc/* and /v1/admin/merchants/{id}/kyc
+	Account            *account.Service         // nil disables email verification and password reset
+	GWAccounts         *gwaccount.Service       // nil disables /v1/platform/merchants/{id}/gateway-accounts
+	GWCreds            *gwcred.Service          // nil (no ERAPAY_ENCRYPTION_KEY) disables /v1/platform/gateway-credentials
+	Routing            *routing.Service         // nil disables /v1/platform/payment-routing
+	QRISGate           *qrisgate.Service        // nil disables QRISGate credit and top-ups
+	Settings           *platformsetting.Service // nil disables the QRISGate fee setting
+	ARUSKeyToken       string                   // token terpisah (min 32) untuk menerbitkan API key tenant ARUS; kosong = rute mati
+	ARUSProvisionToken string                   // server-to-server token for ARUS tenant provisioning
+	WebURL             string                   // public dashboard origin; target of ARUS single sign-on links
+	PlatformSetupToken string                   // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars) enables /v1/platform/setup until the first DEWA exists
+	Webhooks           *webhook.Store           // optional raw capture (ERAPAY_WEBHOOK_CAPTURE); see webhooks.go
+	Gateways           payment.Gateways         // adapters implementing gateway.WebhookVerifier enable verified webhooks
+	SandboxGateways    payment.Gateways         // sandbox adapters (production server only): serves /webhooks/sandbox/{gateway}
 	SecureCookies      bool
 	TrustedProxies     []netip.Prefix // peers allowed to set X-Forwarded-For
 	Log                *slog.Logger

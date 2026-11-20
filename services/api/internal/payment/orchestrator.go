@@ -67,6 +67,7 @@ type CreateRequest struct {
 	ExpiresAt         *time.Time
 	IdempotencyKey    string
 	RequestHash       []byte // idempotency.HashJSON of the canonical request
+	Purpose           string // "" = PurposePayment; set by internal callers only, never from client input
 }
 
 type Outcome struct {
@@ -208,7 +209,7 @@ func (o *Orchestrator) Create(ctx context.Context, r CreateRequest) (Outcome, er
 
 	p, err := o.createRow(work, CreateInput{MerchantID: r.MerchantID, OutletID: r.OutletID, MerchantReference: r.MerchantReference,
 		Description: r.Description, Amount: r.Amount, Currency: r.Currency, PaymentMethod: r.PaymentMethod,
-		Gateway: ad.Code(), ExpiresAt: &expires})
+		Gateway: ad.Code(), ExpiresAt: &expires, Purpose: r.Purpose})
 	if err != nil {
 		o.fail(work, sc, err)
 		return Outcome{}, err

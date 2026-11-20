@@ -44,7 +44,7 @@ func BalanceOf(ctx context.Context, q Querier, merchantID, currency string) (Bal
 		  (SELECT -COALESCE(SUM(debit_minus_credit), 0) FROM ledger_account_balances
 		    WHERE merchant_id = $1 AND currency = $2 AND code = 'merchant_payable'),
 		  (SELECT COALESCE(SUM(p.merchant_net), 0) FROM payments p
-		    WHERE p.merchant_id = $1 AND p.currency = $2 AND p.status = 'succeeded'
+		    WHERE p.merchant_id = $1 AND p.currency = $2 AND p.status = 'succeeded' AND p.purpose = 'payment'
 		      AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)
 		      AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = p.merchant_id AND sm.is_sandbox)), -- sandbox funds are available at once: they are never settled
 		  (SELECT -COALESCE(SUM(debit_minus_credit), 0) FROM ledger_account_balances
@@ -181,4 +181,43 @@ func (s *Service) ResolveException(ctx context.Context, id, note string, a Actor
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// GatewayMargin is the per-gateway profit view for a period. Charged = what merchants were billed
+// (snapshot); Variance = cash received minus expected over batches settled in the period (positive = the
+// gateway's real MDR was lower than charged). EstMargin = PlatformFee + Variance.
+// shortcut: payments are bucketed by final_at and variance by settlement_date, so a period edge can
+// split one payment from its batch; upgrade to per-batch attribution if edges matter.
+type GatewayMargin struct {
+	Gateway     string `json:"gateway"`
+	Currency    string `json:"currency"`
+	Payments    int64  `json:"payments"`
+	Gross       int64  `json:"gross"`
+	MDRCharged  int64  `json:"mdr_charged"`
+	PlatformFee int64  `json:"platform_fee"`
+	Variance    int64  `json:"variance"`
+	EstMargin   int64  `json:"est_margin"`
+}
+
+// MarginByGateway: succeeded payments with final_at in [from, to) and batches with settlement_date in [from, to).
+func (s *Service) MarginByGateway(ctx context.Context, from, to time.Time) ([]GatewayMargin, error) {
+	rows, err := s.db.Query(ctx, `
+		WITH p AS (
+			SELECT gateway, currency, count(*) n, sum(amount) gross, sum(mdr_fee) mdr, sum(platform_fee) pf
+			FROM payments WHERE status = 'succeeded' AND purpose = 'payment' AND final_at >= $1 AND final_at < $2 GROUP BY 1, 2
+		), v AS (
+			SELECT gateway, currency, sum(reported_net - expected_net) var
+			FROM settlement_batches WHERE settlement_date >= ($1 AT TIME ZONE 'Asia/Jakarta')::date AND settlement_date < ($2 AT TIME ZONE 'Asia/Jakarta')::date GROUP BY 1, 2
+		)
+		SELECT COALESCE(p.gateway, v.gateway), COALESCE(p.currency, v.currency), COALESCE(p.n,0), COALESCE(p.gross,0),
+		       COALESCE(p.mdr,0), COALESCE(p.pf,0), COALESCE(v.var,0), COALESCE(p.pf,0) + COALESCE(v.var,0)
+		FROM p FULL JOIN v ON p.gateway = v.gateway AND p.currency = v.currency
+		ORDER BY 1, 2`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (GatewayMargin, error) {
+		var m GatewayMargin
+		return m, r.Scan(&m.Gateway, &m.Currency, &m.Payments, &m.Gross, &m.MDRCharged, &m.PlatformFee, &m.Variance, &m.EstMargin)
+	})
 }

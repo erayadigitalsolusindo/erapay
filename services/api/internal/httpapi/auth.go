@@ -507,8 +507,14 @@ func (d Deps) mountV1(r chi.Router) {
 					r.With(requirePerm("settlement:read")).Get("/unsettled-payments", d.listUnsettled)
 					r.With(requirePerm("settlement:read")).Get("/settlement-batches", d.listSettlementBatches)
 					r.With(requirePerm("settlement:read")).Get("/reconciliation-exceptions", d.listExceptions)
+					r.With(requirePerm("settlement:read")).Get("/gateway-margin", d.gatewayMargin)
 					r.With(requirePerm("settlement:manage")).Post("/settlement-batches", d.recordSettlementBatch)
 					r.With(requirePerm("settlement:manage")).Post("/reconciliation-exceptions/{id}/resolve", d.resolveException)
+					if d.QRISGate != nil {
+						r.With(requirePerm("settlement:read")).Get("/qrisgate-topups", d.adminListQRISGateTopups)
+						r.With(requirePerm("settlement:manage")).Post("/qrisgate-topups/{id}/confirm", d.adminDecideQRISGateTopup(true))
+						r.With(requirePerm("settlement:manage")).Post("/qrisgate-topups/{id}/reject", d.adminDecideQRISGateTopup(false))
+					}
 				}
 				if d.Refunds != nil {
 					r.With(requirePerm("refund:review")).Get("/refunds", d.adminListRefunds)
@@ -557,6 +563,14 @@ func (d Deps) mountV1(r chi.Router) {
 				if d.APIKeys != nil && d.Merchants != nil {
 					// Sandbox twin of this merchant; keys are issued for the twin, not for this merchant.
 					r.With(requirePerm("merchant:read")).Get("/sandbox", d.sandboxStatus)
+					if d.Settings != nil && d.QRISGate != nil {
+						r.With(requirePerm("merchant:read")).Get("/qrisgate", d.qrisgateOverview)
+						r.With(requirePerm("merchant:read")).Get("/qrisgate/topups", d.qrisgateListTopups)
+						r.With(requirePerm("merchant:read")).Get("/qrisgate/history", d.qrisgateHistory)
+						r.With(requirePerm("merchant:write")).Post("/qrisgate/topups", d.qrisgateRequestTopup)
+						r.With(requirePerm("merchant:write")).Post("/qrisgate/topups/qris", d.qrisgateRequestQRISTopup)
+						r.With(requirePerm("merchant:write")).Post("/qrisgate/topups/{id}/cancel", d.qrisgateCancelTopup)
+					}
 					r.With(requirePerm("merchant:write")).Post("/sandbox", d.enableSandbox)
 					r.With(requirePerm("merchant:read")).Post("/sandbox/switch", d.switchSandbox)
 					r.Group(func(r chi.Router) {

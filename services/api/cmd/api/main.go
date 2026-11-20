@@ -32,6 +32,8 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payout"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/platformsetting"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/qrisgate"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/refund"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/routing"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/secretbox"
@@ -178,6 +180,7 @@ func run(log *slog.Logger) error {
 	if sbxReg != nil {
 		flow.SetSandbox(sbxReg)
 	}
+	settingsSvc := platformsetting.NewService(pool)
 	routingSvc := routing.NewService(pool, reg, apikey.EnvFromApp(cfg.Env))
 	flow.SetRouting(routingSvc)
 	go flow.RunPoller(ctx, 15*time.Second)
@@ -272,6 +275,8 @@ func run(log *slog.Logger) error {
 			GWAccounts:    gwAccounts,
 			GWCreds:       credSvc,
 			Routing:       routingSvc,
+			Settings:      settingsSvc,
+			QRISGate:      qrisgate.NewService(pool, settingsSvc, flow),
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 			ARUSProvisionToken: cfg.ARUSProvisionToken, ARUSKeyToken: cfg.ARUSKeyToken,
 			WebURL:             cfg.WebURL,

@@ -44,9 +44,12 @@ const (
 	// payout nominal when the funds move (payout.md, doku.md §6) and settles with the
 	// gateway, so it is a platform liability, never revenue.
 	PayoutFeePayable = "payout_fee_payable"
+	// QRISGateCredit is the tenant's prepaid QRISGate credit (liability to the tenant): top-ups credit it,
+	// the per-transaction QRISGate fee debits it. It may go negative; nothing blocks a debit.
+	QRISGateCredit = "qrisgate_credit"
 )
 
-var merchantScoped = map[string]bool{MerchantPayable: true, PayoutInTransit: true, RefundPayable: true}
+var merchantScoped = map[string]bool{MerchantPayable: true, PayoutInTransit: true, RefundPayable: true, QRISGateCredit: true}
 
 var (
 	ErrUnbalanced    = errors.New("ledger: debits != credits")
@@ -248,6 +251,15 @@ func PaymentSucceededVia(clearing, merchantID, paymentID string, b pricing.Break
 	add(MerchantPayable, merchantID, Credit, b.MerchantNet)
 	add(PlatformFeeRevenue, "", Credit, b.PlatformFee)
 	return t, t.validate()
+}
+
+// QRISGateTopupPaid is the journal of a succeeded QRIS top-up payment: the gateway settles gross - MDR, and the
+// whole of it becomes the tenant's QRISGate credit (the tenant bears the MDR; no platform fee is charged).
+func QRISGateTopupPaid(clearing, merchantID, paymentID, currency string, gross, mdr int64) Txn {
+	return Txn{DedupKey: "qrisgate_topup_paid:" + paymentID, SourceType: "qrisgate_topup_paid", SourceID: paymentID, Currency: currency,
+		Entries: []Entry{
+			{clearing, "", Debit, gross - mdr},
+			{QRISGateCredit, merchantID, Credit, gross - mdr}}}
 }
 
 // Reverse returns the mirror journal of an already posted transaction (corrections

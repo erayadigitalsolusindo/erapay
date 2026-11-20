@@ -5,6 +5,7 @@ import { ja } from './ja';
 import { pfId, pfEn } from './platform';
 import { prId, prEn } from './profile';
 import { sbId, sbEn } from './sandbox';
+import { qgId, qgEn } from './qrisgate';
 
 export const LANGS = ['id', 'en', 'ja'] as const;
 export type Lang = (typeof LANGS)[number];
@@ -556,7 +557,7 @@ const idBase = {
 	'ov.day': '{date}: {n} transaksi, {amount}'
 };
 
-const id = { ...idBase, ...idExtra, ...pfId, ...prId, ...sbId };
+const id = { ...idBase, ...idExtra, ...pfId, ...prId, ...sbId, ...qgId };
 
 const enBase: Record<keyof typeof idBase, string> = {
 	'nav.workspace': 'Workspace',
@@ -1106,7 +1107,7 @@ const enBase: Record<keyof typeof idBase, string> = {
 	'ov.day': '{date}: {n} transactions, {amount}'
 };
 
-const en: Record<keyof typeof id, string> = { ...enBase, ...enExtra, ...pfEn, ...prEn, ...sbEn };
+const en: Record<keyof typeof id, string> = { ...enBase, ...enExtra, ...pfEn, ...prEn, ...sbEn, ...qgEn };
 
 export type Key = keyof typeof id;
 export const messages: Record<Lang, Record<Key, string>> = { id, en, ja };

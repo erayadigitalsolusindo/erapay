@@ -38,17 +38,19 @@ const ENV = /^(sandbox|production)$/;
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 	const token = guardPlatform(locals, cookies);
-	const [r, rt] = await Promise.all([
+	const [r, rt, qf] = await Promise.all([
 		platformApi<CredOverview>(fetch, token, 'GET', '/gateway-credentials'),
-		platformApi<RoutingOverview>(fetch, token, 'GET', '/payment-routing')
+		platformApi<RoutingOverview>(fetch, token, 'GET', '/payment-routing'),
+		platformApi<{ fee: number; max: number }>(fetch, token, 'GET', '/qrisgate-fee')
 	]);
+	const qrisgateFee = qf.ok ? qf.value : null; // null = API belum punya setelan ini
 	// null = API belum punya fitur jalur (belum di-update): kartu pilihan jalur disembunyikan.
 	const routing = rt.ok ? rt.value : null;
 	if (!r.ok) {
 		// 404 = server tanpa ERAPAY_ENCRYPTION_KEY (fitur ini mati); selain itu galat sementara.
-		return { overview: null as CredOverview | null, routing, unavailable: r.status === 404, error: r.status === 404 ? null : r.message };
+		return { overview: null as CredOverview | null, routing, qrisgateFee, unavailable: r.status === 404, error: r.status === 404 ? null : r.message };
 	}
-	return { overview: r.value, routing, unavailable: false, error: null as string | null };
+	return { overview: r.value, routing, qrisgateFee, unavailable: false, error: null as string | null };
 };
 
 function target(f: FormData) {
@@ -58,6 +60,19 @@ function target(f: FormData) {
 }
 
 export const actions: Actions = {
+	// Potongan per transaksi QRISGate dari saldo tenant (rupiah utuh; 0 = tidak memotong). Berlaku untuk transaksi berikutnya.
+	qrisgateFee: async ({ request, cookies, locals, fetch }) => {
+		const token = guardPlatform(locals, cookies);
+		const f = await request.formData();
+		const raw = String(f.get('fee') ?? '').trim();
+		if (!/^\d{1,7}$/.test(raw)) return fail(400, { key: 'qgfee', error: 'Potongan harus angka rupiah utuh (0 atau lebih).' });
+		const reason = String(f.get('reason') ?? '').trim();
+		if (reason.length < 3) return fail(400, { key: 'qgfee', error: 'Alasan wajib diisi (minimal 3 karakter).' });
+		const r = await platformApi(fetch, token, 'PUT', '/qrisgate-fee', { fee: Number(raw), reason });
+		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { key: 'qgfee', error: r.message });
+		return { key: 'qgfee', feeSaved: true };
+	},
+
 	// Pilih gateway untuk transaksi BARU. Transaksi yang sudah dibuat tetap di gateway-nya.
 	route: async ({ request, cookies, locals, fetch }) => {
 		const token = guardPlatform(locals, cookies);

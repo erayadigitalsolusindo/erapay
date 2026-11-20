@@ -72,7 +72,15 @@ type CreateInput struct {
 	PaymentMethod     string
 	Gateway           string
 	ExpiresAt         *time.Time
+	// Purpose is PurposePayment (default) or PurposeQRISGateTopup: a top-up charges no platform fee and its
+	// whole net (gross - MDR) is credited to the tenant's QRISGate balance instead of merchant_payable.
+	Purpose string
 }
+
+const (
+	PurposePayment       = "payment"
+	PurposeQRISGateTopup = "qrisgate_topup"
+)
 
 func (in CreateInput) validate(now time.Time) error {
 	switch {
@@ -182,14 +190,24 @@ func (s *Service) CreateTx(ctx context.Context, tx pgx.Tx, in CreateInput) (Paym
 	if err != nil {
 		return Payment{}, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
+	purpose := in.Purpose
+	switch purpose {
+	case "":
+		purpose = PurposePayment
+	case PurposePayment:
+	case PurposeQRISGateTopup:
+		b.MerchantNet, b.PlatformFee = b.Gross-b.MDRFee, 0
+	default:
+		return Payment{}, fmt.Errorf("%w: unknown purpose", ErrValidation)
+	}
 
 	return scan(tx.QueryRow(ctx, `
 		INSERT INTO payments (merchant_id, outlet_id, merchant_reference, description, amount, currency,
-		    payment_method, gateway, mdr_fee, platform_fee, merchant_net, pricing_plan_id, plan_version, expires_at)
-		VALUES ($1, NULLIF($2,'')::uuid, $3, NULLIF($4,''), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		    payment_method, gateway, mdr_fee, platform_fee, merchant_net, pricing_plan_id, plan_version, expires_at, purpose)
+		VALUES ($1, NULLIF($2,'')::uuid, $3, NULLIF($4,''), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING `+cols,
 		in.MerchantID, in.OutletID, in.MerchantReference, in.Description, in.Amount, in.Currency,
-		in.PaymentMethod, in.Gateway, b.MDRFee, b.PlatformFee, b.MerchantNet, planID, b.PlanVersion, in.ExpiresAt))
+		in.PaymentMethod, in.Gateway, b.MDRFee, b.PlatformFee, b.MerchantNet, planID, b.PlanVersion, in.ExpiresAt, purpose))
 }
 
 // Get is tenant-scoped: a payment of another merchant is indistinguishable from a missing one.
@@ -233,14 +251,14 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	var cur string
-	var mid, currency, merchantRef, method, gw string
+	var mid, currency, merchantRef, method, gw, purpose string
 	var amount, mdr, plat, net int64
 	var planVer int
 	err = tx.QueryRow(ctx, `
 		SELECT status, merchant_id::text, currency, amount, mdr_fee, platform_fee, merchant_net, plan_version,
-		       merchant_reference, payment_method, gateway
+		       merchant_reference, payment_method, gateway, purpose
 		FROM payments WHERE id = $1 FOR NO KEY UPDATE`, in.PaymentID).
-		Scan(&cur, &mid, &currency, &amount, &mdr, &plat, &net, &planVer, &merchantRef, &method, &gw)
+		Scan(&cur, &mid, &currency, &amount, &mdr, &plat, &net, &planVer, &merchantRef, &method, &gw, &purpose)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Result{}, ErrNotFound
 	}
@@ -300,6 +318,24 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 	}
 	if err := event(true); err != nil {
 		return Result{}, err
+	}
+	if purpose == PurposeQRISGateTopup && in.To.IsFinal() {
+		// A top-up is not a merchant sale: credit the tenant's QRISGate balance (or close the request) in this
+		// same transaction, and queue no merchant webhook.
+		if in.To == Succeeded {
+			if _, err := ledger.PostTx(ctx, tx, ledger.QRISGateTopupPaid(ledger.ClearingAccount(gw), mid, in.PaymentID, currency, amount, mdr)); err != nil {
+				return Result{}, err
+			}
+		}
+		to := "cancelled"
+		if in.To == Succeeded {
+			to = "confirmed"
+		}
+		if _, err := tx.Exec(ctx, `UPDATE qrisgate_topups SET status = $2, decided_at = now() WHERE payment_id = $1 AND status = 'requested'`, in.PaymentID, to); err != nil {
+			return Result{}, err
+		}
+		res.Status, res.Applied = in.To, true
+		return res, tx.Commit(ctx)
 	}
 	if in.To == Succeeded {
 		j, err := ledger.PaymentSucceededVia(ledger.ClearingAccount(gw), mid, in.PaymentID, pricing.Breakdown{

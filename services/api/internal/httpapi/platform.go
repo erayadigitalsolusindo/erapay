@@ -289,6 +289,10 @@ func (d Deps) mountPlatform(r chi.Router) {
 				r.Get("/payment-routing", d.platformPaymentRouting)
 				r.Put("/payment-routing", d.platformSetPaymentRouting)
 			}
+			if d.Settings != nil {
+				r.Get("/qrisgate-fee", d.qrisgateFee)
+				r.Put("/qrisgate-fee", d.platformSetQRISGateFee)
+			}
 			r.Get("/audit-logs", d.platformAudit)
 			r.Get("/stats", d.platformStats)
 			// MFA for the panel (DEWA), using the platform session.

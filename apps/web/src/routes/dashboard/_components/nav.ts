@@ -51,6 +51,13 @@ export const nav: NavItem[] = [
 		permission: 'merchant:read'
 	},
 	{
+		href: '/dashboard/qrisgate',
+		icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v7M14 20h3"/>',
+		label: 'nav.qrisgate',
+		desc: 'nav.qrisgate.desc',
+		permission: 'merchant:read'
+	},
+	{
 		href: '/dashboard/merchant',
 		icon: '<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9v11h16V9"/>',
 		label: 'nav.myMerchant',
@@ -88,6 +95,14 @@ export const nav: NavItem[] = [
 		desc: 'nav.fRefunds.desc',
 		permission: 'refund:review',
 		tenantPermission: 'refund:read',
+		platform: true
+	},
+	{
+		href: '/dashboard/finance/qrisgate',
+		icon: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M12 10v5m-2.5-2.5h5"/>',
+		label: 'nav.fQrisgate',
+		desc: 'nav.fQrisgate.desc',
+		permission: 'settlement:read',
 		platform: true
 	},
 	{

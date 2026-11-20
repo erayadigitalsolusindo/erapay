@@ -104,7 +104,7 @@ func (s *Service) PlatformStats(ctx context.Context) (PlatformStats, error) {
 		       count(*) FILTER (WHERE created_at > now() - interval '24 hours' AND status IN ('failed','expired','cancelled')),
 		       count(*) FILTER (WHERE status IN ('created','pending','unknown')),
 		       COALESCE(sum(amount) FILTER (WHERE created_at > now() - interval '24 hours' AND status = 'succeeded'), 0)
-		FROM payments WHERE NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = payments.merchant_id AND sm.is_sandbox)`).
+		FROM payments WHERE purpose = 'payment' AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = payments.merchant_id AND sm.is_sandbox)`).
 		Scan(&st.Payments.Total24h, &st.Payments.Succeeded24h, &st.Payments.Failed24h, &st.Payments.Pending, &st.Payments.Volume24h)
 
 	_ = s.db.QueryRow(ctx, `

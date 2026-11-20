@@ -196,3 +196,30 @@ func (d Deps) resolveException(w http.ResponseWriter, r *http.Request) {
 		d.internalErr(w, r, "resolve exception", err)
 	}
 }
+
+// gatewayMargin: GET /v1/admin/gateway-margin?from=&to= (dates in WIB, `to` inclusive; default last 30 days).
+func (d Deps) gatewayMargin(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	now := time.Now().In(wib)
+	from, to := now.AddDate(0, 0, -29), now.AddDate(0, 0, 1)
+	for _, p := range []struct {
+		name string
+		end  bool
+		dst  *time.Time
+	}{{"from", false, &from}, {"to", true, &to}} {
+		if v := q.Get(p.name); v != "" {
+			t, ok := parseTimeParam(v, p.end)
+			if !ok {
+				writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", p.name+" must be YYYY-MM-DD", false)
+				return
+			}
+			*p.dst = t
+		}
+	}
+	rows, err := d.Settlement.MarginByGateway(r.Context(), from, to)
+	if err != nil {
+		d.internalErr(w, r, "gateway margin", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": rows})
+}

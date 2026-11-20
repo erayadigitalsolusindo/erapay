@@ -18,7 +18,7 @@
 
 	const keyOf = (g: CredGateway, e: CredEnv) => `${g.gateway}/${e.environment}`;
 
-	const rf = $derived(form as { key?: string; error?: string; routed?: string } | null);
+	const rf = $derived(form as { key?: string; error?: string; routed?: string; feeSaved?: boolean } | null);
 	const routing = $derived(data.routing);
 	const LABEL: Record<string, string> = { doku: 'DOKU', ids: 'IDS Payments', finpay: 'FINPAY', xendit: 'Xendit', midtrans: 'Midtrans' };
 	// Pilihan di form; mengikuti pilihan tersimpan sampai admin mengubahnya.
@@ -104,6 +104,49 @@
 					</button>
 					{#if mineRoute && rf?.error}<p class="text-xs font-semibold text-red-700" role="alert">{rf.error}</p>{/if}
 					{#if mineRoute && rf?.routed}<p class="text-xs font-semibold text-emerald-700" role="status">{tx('pf.rt.saved', 'Tersimpan. Transaksi berikutnya lewat')} {LABEL[rf.routed] ?? rf.routed}.</p>{/if}
+				</div>
+			</form>
+		</section>
+	{/if}
+
+	{#if data.qrisgateFee}
+		<section class="card overflow-hidden" aria-labelledby="qgfee-title">
+			<div class="space-y-1 p-4 sm:p-5">
+				<h2 id="qgfee-title" class="font-display text-lg font-extrabold uppercase">Potongan QRISGate</h2>
+				<p class="text-xs leading-relaxed text-ink/70">
+					Rupiah yang dipotong dari saldo EraPay tenant untuk tiap transaksi QRISGate yang sukses. Bawaan 0 (tidak memotong). Berlaku untuk transaksi berikutnya; pemotongan baru berjalan setelah integrasi QRISGate aktif.
+				</p>
+				<p class="text-[11px] font-semibold text-ink/60">Dipakai sekarang: <b>Rp{data.qrisgateFee.fee.toLocaleString('id-ID')}</b> per transaksi</p>
+			</div>
+			<form
+				method="POST"
+				action="?/qrisgateFee"
+				autocomplete="off"
+				use:enhance={() => {
+					busy = 'qgfee';
+					return async ({ update }) => {
+						await update({ reset: false });
+						busy = null;
+					};
+				}}
+				class="space-y-3 border-t border-ink/10 p-4 sm:p-5"
+			>
+				<div class="grid gap-3 sm:grid-cols-2">
+					<div>
+						<label class="lbl mb-1" for="qgfee-fee">Potongan per transaksi (Rp)</label>
+						<input id="qgfee-fee" name="fee" inputmode="numeric" pattern="[0-9]*" required value={data.qrisgateFee.fee} class="inp" />
+					</div>
+					<div>
+						<label class="lbl mb-1" for="qgfee-reason">{tx('pf.gw.fNote', 'Alasan (wajib, masuk audit)')}</label>
+						<input id="qgfee-reason" name="reason" required minlength="3" maxlength="500" class="inp" placeholder="mis. biaya layanan QRISGate" />
+					</div>
+				</div>
+				<div class="flex flex-wrap items-center gap-3">
+					<button disabled={busy !== null} class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-merah-tua disabled:opacity-50">
+						{busy === 'qgfee' ? 'Menyimpan…' : 'Simpan potongan'}
+					</button>
+					{#if rf?.key === 'qgfee' && rf?.error}<p class="text-xs font-semibold text-red-700" role="alert">{rf.error}</p>{/if}
+					{#if rf?.key === 'qgfee' && rf?.feeSaved}<p class="text-xs font-semibold text-emerald-700" role="status">Tersimpan.</p>{/if}
 				</div>
 			</form>
 		</section>

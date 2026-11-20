@@ -431,3 +431,26 @@ func TestAcceptedVarianceBooksDifferenceOnceAndKeepsMerchantNet(t *testing.T) {
 		t.Fatal("exception stayed open after the variance was accepted")
 	}
 }
+
+func TestMarginByGatewayAddsVarianceToPlatformFee(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	p1, p2 := e.ok(t, e.a, "gw1", "M1", 100000), e.ok(t, e.a, "gw1", "M2", 50000)
+	e.ok(t, e.a, "gw2", "M3", 20000)                              // other gateway, not settled
+	in := e.batch("MARGIN-1", net(100000)+net(50000)+300, p1, p2) // gateway charged 300 less than expected
+	in.AcceptVariance, in.Note = true, "MDR asli lebih murah"
+	if _, err := e.svc.RecordBatch(ctx, in, Actor{}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.svc.MarginByGateway(ctx, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Now().Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]GatewayMargin{
+		"gw1": {Gateway: "gw1", Currency: "IDR", Payments: 2, Gross: 150000, MDRCharged: 1050, PlatformFee: 1500, Variance: 300, EstMargin: 1800},
+		"gw2": {Gateway: "gw2", Currency: "IDR", Payments: 1, Gross: 20000, MDRCharged: 140, PlatformFee: 200, EstMargin: 200},
+	}
+	if len(got) != 2 || got[0] != want["gw1"] || got[1] != want["gw2"] {
+		t.Fatalf("got %+v", got)
+	}
+}

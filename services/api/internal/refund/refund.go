@@ -114,7 +114,7 @@ func (s *Service) createTx(ctx context.Context, tx pgx.Tx, in RequestInput) (str
 	}
 	var amount int64
 	var currency, status string
-	err := tx.QueryRow(ctx, `SELECT amount, currency, status FROM payments WHERE id::text = $1 AND merchant_id = $2 FOR NO KEY UPDATE`,
+	err := tx.QueryRow(ctx, `SELECT amount, currency, status FROM payments WHERE id::text = $1 AND merchant_id = $2 AND purpose = 'payment' FOR NO KEY UPDATE`,
 		in.PaymentID, in.MerchantID).Scan(&amount, &currency, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrNotFound // another tenant's payment is indistinguishable from a missing one
