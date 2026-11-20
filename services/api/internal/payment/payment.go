@@ -75,6 +75,9 @@ type CreateInput struct {
 	// Purpose is PurposePayment (default) or PurposeQRISGateTopup: a top-up charges no platform fee and its
 	// whole net (gross - MDR) is credited to the tenant's QRISGate balance instead of merchant_payable.
 	Purpose string
+	// Direct marks a payment of a Direct gateway (capability): the money goes to the merchant, not through the
+	// platform, so it is priced by the platform's fixed direct plan and never settles or refunds.
+	Direct bool
 }
 
 const (
@@ -110,7 +113,7 @@ func NewService(db *pgxpool.Pool) *Service { return &Service{db: db, now: time.N
 const cols = `id::text, merchant_id::text, COALESCE(outlet_id::text,''), merchant_reference, COALESCE(description,''),
 	amount, currency, payment_method, status, gateway, COALESCE(gateway_reference,''),
 	mdr_fee, platform_fee, merchant_net, expires_at, final_at, created_at, COALESCE(qr_payload,''),
-		CASE WHEN status <> 'succeeded' THEN 'not_expected'
+		CASE WHEN status <> 'succeeded' OR direct THEN 'not_expected'
 		     WHEN EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = payments.id) THEN 'settled'
 		     ELSE 'expected' END,
 		COALESCE((SELECT SUM(r.amount) FROM refunds r WHERE r.payment_id = payments.id AND r.status = 'refunded'), 0),
@@ -168,14 +171,23 @@ func (s *Service) CreateTx(ctx context.Context, tx pgx.Tx, in CreateInput) (Paym
 	var planID string
 	var plan pricing.Plan
 	var mdrR, platR string
+	// A Direct gateway has no per-merchant plan: the platform's fixed zero-fee plan applies to everyone.
 	err = tx.QueryRow(ctx, `
 		SELECT p.id::text, p.version, p.mdr_bps, p.mdr_fixed, p.mdr_rounding,
 		       p.platform_bps, p.platform_fixed, p.platform_rounding,
 		       p.mdr_cap, p.mdr_cap_up_to, p.mdr_flat_up_to, p.mdr_flat_fee
+		FROM pricing_plans p
+		WHERE $5::boolean AND p.code = 'qrisgate-direct' AND p.gateway = $2 AND p.payment_method = $3
+		UNION ALL
+		SELECT * FROM (
+		SELECT p.id::text, p.version, p.mdr_bps, p.mdr_fixed, p.mdr_rounding,
+		       p.platform_bps, p.platform_fixed, p.platform_rounding,
+		       p.mdr_cap, p.mdr_cap_up_to, p.mdr_flat_up_to, p.mdr_flat_fee
 		FROM merchant_pricing_assignments a JOIN pricing_plans p ON p.id = a.plan_id
-		WHERE a.merchant_id = $1 AND p.gateway = $2 AND p.payment_method = $3 AND a.effective_from <= $4
-		ORDER BY a.effective_from DESC LIMIT 1`,
-		in.MerchantID, in.Gateway, in.PaymentMethod, s.now()).
+		WHERE NOT $5::boolean AND a.merchant_id = $1 AND p.gateway = $2 AND p.payment_method = $3 AND a.effective_from <= $4
+		ORDER BY a.effective_from DESC LIMIT 1) x
+		LIMIT 1`,
+		in.MerchantID, in.Gateway, in.PaymentMethod, s.now(), in.Direct).
 		Scan(&planID, &plan.Version, &plan.MDR.BPS, &plan.MDR.Fixed, &mdrR,
 			&plan.Platform.BPS, &plan.Platform.Fixed, &platR, &plan.MDR.Cap, &plan.MDR.CapUpTo,
 			&plan.MDR.FlatUpTo, &plan.MDR.FlatFee)
@@ -203,11 +215,11 @@ func (s *Service) CreateTx(ctx context.Context, tx pgx.Tx, in CreateInput) (Paym
 
 	return scan(tx.QueryRow(ctx, `
 		INSERT INTO payments (merchant_id, outlet_id, merchant_reference, description, amount, currency,
-		    payment_method, gateway, mdr_fee, platform_fee, merchant_net, pricing_plan_id, plan_version, expires_at, purpose)
-		VALUES ($1, NULLIF($2,'')::uuid, $3, NULLIF($4,''), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		    payment_method, gateway, mdr_fee, platform_fee, merchant_net, pricing_plan_id, plan_version, expires_at, purpose, direct)
+		VALUES ($1, NULLIF($2,'')::uuid, $3, NULLIF($4,''), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		RETURNING `+cols,
 		in.MerchantID, in.OutletID, in.MerchantReference, in.Description, in.Amount, in.Currency,
-		in.PaymentMethod, in.Gateway, b.MDRFee, b.PlatformFee, b.MerchantNet, planID, b.PlanVersion, in.ExpiresAt, purpose))
+		in.PaymentMethod, in.Gateway, b.MDRFee, b.PlatformFee, b.MerchantNet, planID, b.PlanVersion, in.ExpiresAt, purpose, in.Direct))
 }
 
 // Get is tenant-scoped: a payment of another merchant is indistinguishable from a missing one.
@@ -252,13 +264,14 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 
 	var cur string
 	var mid, currency, merchantRef, method, gw, purpose string
+	var direct bool
 	var amount, mdr, plat, net int64
 	var planVer int
 	err = tx.QueryRow(ctx, `
 		SELECT status, merchant_id::text, currency, amount, mdr_fee, platform_fee, merchant_net, plan_version,
-		       merchant_reference, payment_method, gateway, purpose
+		       merchant_reference, payment_method, gateway, purpose, direct
 		FROM payments WHERE id = $1 FOR NO KEY UPDATE`, in.PaymentID).
-		Scan(&cur, &mid, &currency, &amount, &mdr, &plat, &net, &planVer, &merchantRef, &method, &gw, &purpose)
+		Scan(&cur, &mid, &currency, &amount, &mdr, &plat, &net, &planVer, &merchantRef, &method, &gw, &purpose, &direct)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Result{}, ErrNotFound
 	}
@@ -337,7 +350,19 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 		res.Status, res.Applied = in.To, true
 		return res, tx.Commit(ctx)
 	}
-	if in.To == Succeeded {
+	if in.To == Succeeded && direct {
+		// Direct gateway: the money never reached the platform, so there is no sale journal. Only the QRISGate fee
+		// (setting qrisgate_fee, default 0 = none) is charged to the tenant's credit; the balance may go negative.
+		var fee int64
+		if err := tx.QueryRow(ctx, `SELECT int_value FROM platform_settings WHERE key = 'qrisgate_fee'`).Scan(&fee); err != nil {
+			return Result{}, err
+		}
+		if fee > 0 {
+			if _, err := ledger.PostTx(ctx, tx, ledger.QRISGateFee(mid, in.PaymentID, currency, fee)); err != nil {
+				return Result{}, err
+			}
+		}
+	} else if in.To == Succeeded {
 		j, err := ledger.PaymentSucceededVia(ledger.ClearingAccount(gw), mid, in.PaymentID, pricing.Breakdown{
 			Currency: currency, Gross: amount, MDRFee: mdr, PlatformFee: plat, MerchantNet: net, PlanVersion: planVer})
 		if err != nil {

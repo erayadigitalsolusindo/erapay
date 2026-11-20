@@ -55,7 +55,37 @@ func (d Deps) qrisgateOverview(w http.ResponseWriter, r *http.Request) {
 		d.internalErr(w, r, "qrisgate balance", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"fee": fee, "balance": bal, "currency": qrisgate.Currency, "max_topup": qrisgate.MaxTopup})
+	acc, err := d.QRISGate.Account(r.Context(), PrincipalFrom(r.Context()).MerchantID)
+	if err != nil {
+		d.internalErr(w, r, "qrisgate account", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"fee": fee, "balance": bal, "currency": qrisgate.Currency, "max_topup": qrisgate.MaxTopup, "account": acc})
+}
+
+// qrisgateSaveAccount: PUT /v1/qrisgate/account {api_key, webhook_secret} (tenant session, merchant:write).
+// Write-only: the key and secret are never returned. The gateway stays OFF until DEWA activates the account.
+func (d Deps) qrisgateSaveAccount(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		APIKey        string `json:"api_key"`
+		WebhookSecret string `json:"webhook_secret"`
+	}
+	if _, ok := decodeStrict(w, r, 8<<10, &body); !ok {
+		return
+	}
+	p := PrincipalFrom(r.Context())
+	err := d.QRISGate.SaveAccount(r.Context(), p.MerchantID, p.UserID, middleware.GetReqID(r.Context()), body.APIKey, body.WebhookSecret)
+	switch {
+	case errors.Is(err, qrisgate.ErrUnavailable):
+		writeError(w, r, http.StatusUnprocessableEntity, "QRISGATE_UNAVAILABLE", "QRISGate credentials cannot be saved for this account", false)
+	case d.qrisgateErr(w, r, err):
+		acc, err := d.QRISGate.Account(r.Context(), p.MerchantID)
+		if err != nil {
+			d.internalErr(w, r, "qrisgate account", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, acc)
+	}
 }
 
 func (d Deps) qrisgateErr(w http.ResponseWriter, r *http.Request, err error) bool {

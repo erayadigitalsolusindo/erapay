@@ -17,9 +17,11 @@ import (
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/account"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apprelease"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
+	qrisgategw "github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/qrisgate"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwaccount"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwcred"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/httpapi"
@@ -147,6 +149,18 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	settingsSvc := platformsetting.NewService(pool)
+	qgSvc := qrisgate.NewService(pool, settingsSvc, nil)
+	if box != nil {
+		// QRISGate keys are per tenant (encrypted in qrisgate_accounts), so it needs the encryption key. Registered
+		// always; a merchant is only routed to it once DEWA activates their gateway account (the per-merchant flag).
+		qgSvc.SetBox(box)
+		qg, err := qrisgategw.New(qrisgategw.Config{Creds: qgSvc})
+		if err != nil {
+			return err
+		}
+		reg.Register(qg)
+	}
 	if credSvc != nil {
 		credSvc.SetLive(reg)
 	}
@@ -180,7 +194,13 @@ func run(log *slog.Logger) error {
 	if sbxReg != nil {
 		flow.SetSandbox(sbxReg)
 	}
-	settingsSvc := platformsetting.NewService(pool)
+	qgSvc.SetPayer(flow)
+	var appReleases *apprelease.Service
+	if cfg.APKStorageDir != "" {
+		if appReleases, err = apprelease.NewService(pool, cfg.APKStorageDir); err != nil {
+			return err
+		}
+	}
 	routingSvc := routing.NewService(pool, reg, apikey.EnvFromApp(cfg.Env))
 	flow.SetRouting(routingSvc)
 	go flow.RunPoller(ctx, 15*time.Second)
@@ -276,7 +296,8 @@ func run(log *slog.Logger) error {
 			GWCreds:       credSvc,
 			Routing:       routingSvc,
 			Settings:      settingsSvc,
-			QRISGate:      qrisgate.NewService(pool, settingsSvc, flow),
+			QRISGate:      qgSvc,
+			AppReleases:   appReleases,
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 			ARUSProvisionToken: cfg.ARUSProvisionToken, ARUSKeyToken: cfg.ARUSKeyToken,
 			WebURL:             cfg.WebURL,

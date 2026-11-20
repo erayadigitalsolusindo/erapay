@@ -3,14 +3,21 @@ package qrisgate
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/platformsetting"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/secretbox"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/settlement"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/testdb"
 )
 
@@ -296,3 +303,191 @@ func TestFailedQRISTopupClosesRequestWithoutCredit(t *testing.T) {
 		t.Fatalf("cancelled %d balance %d; want 1 and 0", len(got), e.bal(t))
 	}
 }
+
+func (e env) box(t *testing.T) {
+	t.Helper()
+	b, err := secretbox.New([]byte("0123456789abcdef0123456789abcdef"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.svc.SetBox(b)
+}
+
+const goodKey = "qg_live_abcdefghij1234"
+const goodSecret = "whsec-0123456789abcdef"
+
+func TestSaveAccountEncryptsAndStartsPendingActivation(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", goodKey, goodSecret); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("without an encryption key: %v", err)
+	}
+	e.box(t)
+	for _, c := range [][2]string{{"nokey", goodSecret}, {"qg_live_short", goodSecret}, {goodKey, "short"}, {"qg_live_with space 1234", goodSecret}} {
+		if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", c[0], c[1]); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("SaveAccount(%q,%q) = %v; want ErrInvalid", c[0], c[1], err)
+		}
+	}
+	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "req-1", goodKey, goodSecret); err != nil {
+		t.Fatal(err)
+	}
+	k, s, err := e.svc.Credentials(ctx, e.merchant)
+	if err != nil || k != goodKey || s != goodSecret {
+		t.Fatalf("round trip: %q %q %v", k, s, err)
+	}
+	var raw int
+	if err := e.db.QueryRow(ctx, `SELECT count(*) FROM qrisgate_accounts WHERE position(convert_to($1,'UTF8') in api_key_enc) > 0`, goodKey).Scan(&raw); err != nil || raw != 0 {
+		t.Fatalf("API key found in plaintext in the table: %d %v", raw, err)
+	}
+	acc, err := e.svc.Account(ctx, e.merchant)
+	if err != nil || !acc.Configured || acc.ActivationStatus != "pending_confirmation" || acc.KeyHint != "…1234" || acc.WebhookPath != "/webhooks/qrisgate/"+e.merchant {
+		t.Fatalf("account: %+v %v", acc, err)
+	}
+	// Saving again keeps the activation state DEWA may already have set.
+	if _, err := e.db.Exec(ctx, `UPDATE merchant_gateway_accounts SET activation_status = 'active' WHERE merchant_id = $1 AND gateway = 'qrisgate'`, e.merchant); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", "qg_live_rotatedkey9999", goodSecret); err != nil {
+		t.Fatal(err)
+	}
+	if acc, _ := e.svc.Account(ctx, e.merchant); acc.ActivationStatus != "active" || acc.KeyHint != "…9999" {
+		t.Fatalf("after rotation: %+v", acc)
+	}
+	if _, _, err := e.svc.Credentials(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrNoAccount) {
+		t.Fatalf("unknown merchant: %v", err)
+	}
+	var sbx string
+	if err := e.db.QueryRow(ctx, `INSERT INTO merchants (legal_name, display_name, onboarding_status, is_sandbox, parent_id) VALUES ('S','S','approved',true,$1) RETURNING id::text`, e.merchant).Scan(&sbx); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.SaveAccount(ctx, sbx, e.tenant, "", goodKey, goodSecret); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("sandbox merchant: %v", err)
+	}
+}
+
+func (e env) directPayment(t *testing.T, ref string, amount int64) payment.Payment {
+	t.Helper()
+	ctx := context.Background()
+	tx, _ := e.db.Begin(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck
+	p, err := e.pay.CreateTx(ctx, tx, payment.CreateInput{MerchantID: e.merchant, MerchantReference: ref, Amount: amount, Currency: "IDR",
+		PaymentMethod: "QRIS", Gateway: "qrisgate", Direct: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pay.Transition(ctx, payment.TransitionInput{PaymentID: p.ID, To: payment.Pending, Source: payment.SourceInternal}); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestDirectPaymentChargesFeeOnceAndNeverSettlesOrTouchesSalesBalance(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	p := e.directPayment(t, "D1", 25_000)
+	if p.Fee.MDRFee != 0 || p.Fee.PlatformFee != 0 || p.Fee.MerchantNet != 25_000 || p.SettlementStatus != "not_expected" {
+		t.Fatalf("direct snapshot: %+v", p)
+	}
+	succeed := func(id string) {
+		var wg sync.WaitGroup
+		for i := 0; i < 6; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if _, err := e.pay.Transition(ctx, payment.TransitionInput{PaymentID: id, To: payment.Succeeded, Source: payment.SourceWebhook}); err != nil {
+					t.Errorf("transition: %v", err)
+				}
+			}()
+		}
+		wg.Wait()
+	}
+	succeed(p.ID) // fee setting is 0 by default: nothing is charged
+	if e.bal(t) != 0 || e.count(t, `SELECT count(*) FROM ledger_transactions WHERE source_id = $1`, p.ID) != 0 {
+		t.Fatalf("a direct payment with fee 0 must post nothing: balance %d", e.bal(t))
+	}
+	if err := e.set.SetFee(ctx, 150, "biaya awal", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	p2 := e.directPayment(t, "D2", 40_000)
+	succeed(p2.ID)
+	if e.bal(t) != -150 {
+		t.Fatalf("balance %d; want -150 (fee charged once, negative allowed)", e.bal(t))
+	}
+	if n := e.count(t, `SELECT COALESCE(SUM(debit_minus_credit),0) FROM ledger_account_balances WHERE code = 'merchant_payable'`); n != 0 {
+		t.Fatalf("merchant_payable %d; the money never reached the platform", n)
+	}
+	for _, code := range []string{"cash_doku_clearing", "cash_bank_pt"} {
+		if n := e.count(t, `SELECT COALESCE(SUM(debit_minus_credit),0) FROM ledger_account_balances WHERE code = $1`, code); n != 0 {
+			t.Fatalf("%s %d; a direct payment has no cash leg", code, n)
+		}
+	}
+	// Excluded from every settlement view: never "pending" funds, never listed as unsettled, never batch-able.
+	st := settlement.NewService(e.db)
+	if rows, err := st.ListUnsettled(ctx, "qrisgate", "IDR", 50); err != nil || len(rows) != 0 {
+		t.Fatalf("unsettled: %v %v", rows, err)
+	}
+	if rows, err := st.ListUnsettledFor(ctx, e.merchant, "IDR", 50); err != nil || len(rows) != 0 {
+		t.Fatalf("unsettled for merchant: %v %v", rows, err)
+	}
+	if b, err := st.Balance(ctx, e.merchant, "IDR"); err != nil || b.Pending != 0 || b.Available != 0 {
+		t.Fatalf("balance: %+v %v", b, err)
+	}
+	if _, err := st.RecordBatch(ctx, settlement.BatchInput{Gateway: "qrisgate", BatchRef: "B1", Currency: "IDR", SettlementDate: time.Now(),
+		ReportedNet: 40_000, PaymentIDs: []string{p2.ID}}, settlement.Actor{}); err == nil {
+		t.Fatal("a direct payment was accepted into a settlement batch")
+	}
+}
+
+func TestWebhookOfAnotherMerchantCannotTouchThePayment(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	p := e.directPayment(t, "D3", 10_000)
+	o := payment.NewOrchestrator(e.pay, e.db, nil, nil, "production", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ev := gateway.WebhookEvent{PaymentRef: p.ID, RawStatus: "PAID", Status: gateway.StatusSucceeded, StatusOK: true, Amount: 10_000, Currency: "IDR",
+		DedupKey: "qrisgate:webhook:x", MerchantID: "99999999-9999-9999-9999-999999999999"}
+	if _, err := o.ApplyWebhook(ctx, "qrisgate", ev); !errors.Is(err, payment.ErrNotFound) {
+		t.Fatalf("foreign merchant: %v; want ErrNotFound", err)
+	}
+	ev.MerchantID = e.merchant
+	if res, err := o.ApplyWebhook(ctx, "qrisgate", ev); err != nil || !res.Applied {
+		t.Fatalf("own merchant: %+v %v", res, err)
+	}
+}
+
+func TestTopupIsNeverRoutedToADirectGateway(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	// The tenant has an active QRISGate account only: a top-up (money for the platform) must not use it.
+	if _, err := e.db.Exec(ctx, `INSERT INTO merchant_gateway_accounts (merchant_id, gateway, environment, gateway_ref, activation_status)
+		VALUES ($1::uuid,'qrisgate','production',$2,'active')`, e.merchant, e.merchant); err != nil {
+		t.Fatal(err)
+	}
+	gws := stubGateways{"qrisgate": directAdapter{}}
+	o := payment.NewOrchestrator(e.pay, e.db, idempotency.NewStore(e.db), gws, "production", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := o.Create(ctx, payment.CreateRequest{MerchantID: e.merchant, MerchantReference: "T1", Amount: 20_000, Currency: "IDR", PaymentMethod: "QRIS",
+		IdempotencyKey: "idem-topup-0001", RequestHash: []byte("h"), Purpose: payment.PurposeQRISGateTopup}); !errors.Is(err, payment.ErrMethodUnavailable) {
+		t.Fatalf("top-up via a direct-only merchant: %v; want ErrMethodUnavailable", err)
+	}
+}
+
+type stubGateways map[string]gateway.Adapter
+
+func (g stubGateways) Get(code string) (gateway.Adapter, bool) { a, ok := g[code]; return a, ok }
+
+type directAdapter struct{}
+
+func (directAdapter) Code() string { return "qrisgate" }
+func (directAdapter) Capabilities() gateway.Capabilities {
+	return gateway.Capabilities{PaymentMethods: []string{"QRIS"}, Direct: true}
+}
+func (directAdapter) CreatePayment(context.Context, gateway.CreateRequest) (gateway.CreateResult, error) {
+	return gateway.CreateResult{}, errors.New("must not be called")
+}
+func (directAdapter) GetPayment(context.Context, gateway.QueryRequest) (gateway.QueryResult, error) {
+	return gateway.QueryResult{}, nil
+}
+func (directAdapter) CancelPayment(context.Context, gateway.CancelRequest) error { return nil }
+func (directAdapter) MapStatus(string) (gateway.Status, bool)                    { return "", false }

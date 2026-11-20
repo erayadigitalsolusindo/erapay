@@ -44,7 +44,7 @@ func BalanceOf(ctx context.Context, q Querier, merchantID, currency string) (Bal
 		  (SELECT -COALESCE(SUM(debit_minus_credit), 0) FROM ledger_account_balances
 		    WHERE merchant_id = $1 AND currency = $2 AND code = 'merchant_payable'),
 		  (SELECT COALESCE(SUM(p.merchant_net), 0) FROM payments p
-		    WHERE p.merchant_id = $1 AND p.currency = $2 AND p.status = 'succeeded' AND p.purpose = 'payment'
+		    WHERE p.merchant_id = $1 AND p.currency = $2 AND p.status = 'succeeded' AND p.purpose = 'payment' AND NOT p.direct
 		      AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)
 		      AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = p.merchant_id AND sm.is_sandbox)), -- sandbox funds are available at once: they are never settled
 		  (SELECT -COALESCE(SUM(debit_minus_credit), 0) FROM ledger_account_balances
@@ -77,7 +77,7 @@ func (s *Service) ListUnsettled(ctx context.Context, gateway, currency string, l
 		SELECT p.id::text, p.merchant_id::text, p.gateway, COALESCE(p.gateway_reference,''), p.currency,
 		       p.amount, p.mdr_fee, p.amount - p.mdr_fee, p.final_at
 		FROM payments p
-		WHERE p.status = 'succeeded' AND ($1 = '' OR p.gateway = $1) AND ($2 = '' OR p.currency = $2)
+		WHERE p.status = 'succeeded' AND NOT p.direct AND ($1 = '' OR p.gateway = $1) AND ($2 = '' OR p.currency = $2)
 		  AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)
 		  AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = p.merchant_id AND sm.is_sandbox)
 		ORDER BY p.final_at, p.id LIMIT $3`, gateway, currency, limit)
@@ -100,7 +100,7 @@ func (s *Service) ListUnsettledFor(ctx context.Context, merchantID, currency str
 		SELECT p.id::text, p.merchant_id::text, p.gateway, COALESCE(p.gateway_reference,''), p.currency,
 		       p.amount, p.mdr_fee, p.amount - p.mdr_fee, p.final_at
 		FROM payments p
-		WHERE p.merchant_id = $1 AND p.status = 'succeeded' AND ($2 = '' OR p.currency = $2)
+		WHERE p.merchant_id = $1 AND p.status = 'succeeded' AND NOT p.direct AND ($2 = '' OR p.currency = $2)
 		  AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)
 		ORDER BY p.final_at, p.id LIMIT $3`, merchantID, currency, limit)
 	if err != nil {
@@ -203,7 +203,10 @@ type GatewayMargin struct {
 func (s *Service) MarginByGateway(ctx context.Context, from, to time.Time) ([]GatewayMargin, error) {
 	rows, err := s.db.Query(ctx, `
 		WITH p AS (
-			SELECT gateway, currency, count(*) n, sum(amount) gross, sum(mdr_fee) mdr, sum(platform_fee) pf
+			SELECT gateway, currency, count(*) n, sum(amount) gross, sum(mdr_fee) mdr,
+			       sum(CASE WHEN direct THEN (SELECT COALESCE(sum(e.amount),0) FROM ledger_transactions t JOIN ledger_entries e ON e.txn_id = t.id
+			            JOIN ledger_accounts a ON a.id = e.account_id WHERE t.source_type = 'qrisgate_fee' AND t.source_id = payments.id::text
+			            AND a.code = 'platform_fee_revenue') ELSE platform_fee END) pf
 			FROM payments WHERE status = 'succeeded' AND purpose = 'payment' AND final_at >= $1 AND final_at < $2 GROUP BY 1, 2
 		), v AS (
 			SELECT gateway, currency, sum(reported_net - expected_net) var

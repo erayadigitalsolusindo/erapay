@@ -563,11 +563,16 @@ func (d Deps) mountV1(r chi.Router) {
 				if d.APIKeys != nil && d.Merchants != nil {
 					// Sandbox twin of this merchant; keys are issued for the twin, not for this merchant.
 					r.With(requirePerm("merchant:read")).Get("/sandbox", d.sandboxStatus)
+					if d.AppReleases != nil {
+						r.With(requirePerm("merchant:read")).Get("/qrisgate/listener", d.qrisgateListenerInfo)
+						r.With(requirePerm("merchant:read")).Get("/qrisgate/listener/download", d.qrisgateListenerDownload)
+					}
 					if d.Settings != nil && d.QRISGate != nil {
 						r.With(requirePerm("merchant:read")).Get("/qrisgate", d.qrisgateOverview)
 						r.With(requirePerm("merchant:read")).Get("/qrisgate/topups", d.qrisgateListTopups)
 						r.With(requirePerm("merchant:read")).Get("/qrisgate/history", d.qrisgateHistory)
 						r.With(requirePerm("merchant:write")).Post("/qrisgate/topups", d.qrisgateRequestTopup)
+						r.With(requirePerm("merchant:write")).Put("/qrisgate/account", d.qrisgateSaveAccount)
 						r.With(requirePerm("merchant:write")).Post("/qrisgate/topups/qris", d.qrisgateRequestQRISTopup)
 						r.With(requirePerm("merchant:write")).Post("/qrisgate/topups/{id}/cancel", d.qrisgateCancelTopup)
 					}

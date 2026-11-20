@@ -23,12 +23,16 @@ function session(locals: App.Locals, cookies: import('@sveltejs/kit').Cookies) {
 }
 
 // Semua aturan (nominal, izin, idempotency, saldo) ada di Go; di sini hanya meneruskan.
+export type ListenerInfo = { available: boolean; release?: { version_name: string; size_bytes: number; sha256: string; note?: string; created_at: string } };
+export type QGAccount = { configured: boolean; key_hint?: string; activation_status?: string; webhook_path: string };
+
 export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 	const token = session(locals, cookies);
-	const [overview, topups, history] = await Promise.all([
-		read<{ fee: number; balance: number }>(fetch, token, '/v1/qrisgate'),
+	const [overview, topups, history, listener] = await Promise.all([
+		read<{ fee: number; balance: number; account: QGAccount }>(fetch, token, '/v1/qrisgate'),
 		read<{ data: Topup[] }>(fetch, token, '/v1/qrisgate/topups'),
-		read<{ data: Movement[] }>(fetch, token, '/v1/qrisgate/history')
+		read<{ data: Movement[] }>(fetch, token, '/v1/qrisgate/history'),
+		read<ListenerInfo>(fetch, token, '/v1/qrisgate/listener')
 	]);
 	const list = topups?.data ?? [];
 	// Hanya top-up QRIS yang masih bisa dibayar punya qr_payload; QR digambar di server.
@@ -36,15 +40,24 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 	for (const tp of list) if (tp.qr_payload) qr[tp.id] = await qrSvg(tp.qr_payload);
 	return {
 		overview,
+		listener,
 		topups: list,
 		qr,
 		history: history?.data ?? [],
+		// URL publik API untuk disalin ke dashboard QRISGate; kosong = halaman menampilkan placeholder.
+		apiBase: (process.env.ERAPAY_PUBLIC_API_URL ?? '').replace(/\/$/, ''),
 		canRequest: locals.user!.permissions.includes('merchant:write'),
 		idem: newIdemKey('qgtopup')
 	};
 };
 
 export const actions: Actions = {
+	account: async ({ request, locals, cookies, fetch }) => {
+		const token = session(locals, cookies);
+		const f = await request.formData();
+		const r = await call(fetch, token, 'PUT', '/v1/qrisgate/account', { api_key: str(f, 'api_key'), webhook_secret: str(f, 'webhook_secret') });
+		return r.ok ? { savedAccount: true } : fail(r.status === 422 ? 422 : 400, { accountError: true, unavailable: r.status === 422 });
+	},
 	topup: async ({ request, locals, cookies, fetch }) => {
 		const token = session(locals, cookies);
 		const f = await request.formData();

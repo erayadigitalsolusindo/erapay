@@ -15,6 +15,7 @@ import (
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/account"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apprelease"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwaccount"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwcred"
@@ -54,6 +55,7 @@ type Deps struct {
 	GWAccounts         *gwaccount.Service       // nil disables /v1/platform/merchants/{id}/gateway-accounts
 	GWCreds            *gwcred.Service          // nil (no ERAPAY_ENCRYPTION_KEY) disables /v1/platform/gateway-credentials
 	Routing            *routing.Service         // nil disables /v1/platform/payment-routing
+	AppReleases        *apprelease.Service      // nil disables the listener APK upload/download
 	QRISGate           *qrisgate.Service        // nil disables QRISGate credit and top-ups
 	Settings           *platformsetting.Service // nil disables the QRISGate fee setting
 	ARUSKeyToken       string                   // token terpisah (min 32) untuk menerbitkan API key tenant ARUS; kosong = rute mati

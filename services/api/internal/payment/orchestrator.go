@@ -107,7 +107,7 @@ func (o *Orchestrator) SetRouting(r Routing) { o.routing = r }
 // this merchant right now; otherwise it falls back to the merchant's own active account. The fallback
 // happens here, before any gateway call, so it can never double-charge: failing over after an
 // ambiguous create is a different thing and is deliberately not done.
-func (o *Orchestrator) route(ctx context.Context, merchantID, method string) (gateway.Adapter, string, error) {
+func (o *Orchestrator) route(ctx context.Context, merchantID, method string, noDirect bool) (gateway.Adapter, string, error) {
 	gws, env, err := o.world(ctx, merchantID)
 	if err != nil {
 		return nil, "", err
@@ -122,14 +122,14 @@ func (o *Orchestrator) route(ctx context.Context, merchantID, method string) (ga
 			if err != nil {
 				return nil, "", err
 			}
-			if ok {
+			if ok && !(noDirect && ad.Capabilities().Direct) {
 				return ad, ref, nil
 			}
 			o.log.Warn("preferred gateway cannot take this merchant; using the merchant's own gateway account",
 				"gateway", pref, "merchant_id", merchantID, "method", method)
 		}
 	}
-	return o.routeOwn(ctx, gws, env, merchantID, method)
+	return o.routeOwn(ctx, gws, env, merchantID, method, noDirect)
 }
 
 // routeTo resolves one specific gateway for the merchant. ok=false means it cannot serve them: not
@@ -156,24 +156,32 @@ func (o *Orchestrator) routeTo(ctx context.Context, gws Gateways, env, merchantI
 	return ad, ref, true, nil
 }
 
-// routeOwn picks the merchant's own active gateway account (the oldest one).
-func (o *Orchestrator) routeOwn(ctx context.Context, gws Gateways, env, merchantID, method string) (gateway.Adapter, string, error) {
-	var code, ref string
-	err := o.db.QueryRow(ctx, `
+// routeOwn picks the merchant's own active gateway account (the oldest one that can take the method).
+// noDirect skips Direct gateways: money meant for the platform (a top-up) must never go straight to the merchant.
+func (o *Orchestrator) routeOwn(ctx context.Context, gws Gateways, env, merchantID, method string, noDirect bool) (gateway.Adapter, string, error) {
+	rows, err := o.db.Query(ctx, `
 		SELECT gateway, gateway_ref FROM merchant_gateway_accounts
 		WHERE merchant_id = $1 AND environment = $2 AND activation_status = 'active' AND gateway_ref IS NOT NULL
-		ORDER BY created_at LIMIT 1`, merchantID, env).Scan(&code, &ref)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, "", ErrMethodUnavailable
-	}
+		ORDER BY created_at`, merchantID, env)
 	if err != nil {
 		return nil, "", err
 	}
-	ad, ok := gws.Get(code)
-	if !ok || !ad.Capabilities().SupportsMethod(method) {
-		return nil, "", ErrMethodUnavailable
+	defer rows.Close()
+	for rows.Next() {
+		var code, ref string
+		if err := rows.Scan(&code, &ref); err != nil {
+			return nil, "", err
+		}
+		ad, ok := gws.Get(code)
+		if !ok || !ad.Capabilities().SupportsMethod(method) || (noDirect && ad.Capabilities().Direct) {
+			continue
+		}
+		return ad, ref, nil
 	}
-	return ad, ref, nil
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	return nil, "", ErrMethodUnavailable
 }
 
 // Create implements POST /v1/payments. See the type comment for the guarantees.
@@ -181,7 +189,7 @@ func (o *Orchestrator) Create(ctx context.Context, r CreateRequest) (Outcome, er
 	if !idempotency.ValidKey(r.IdempotencyKey) {
 		return Outcome{}, fmt.Errorf("%w: Idempotency-Key header is required (8-128 chars)", ErrValidation)
 	}
-	ad, accountRef, err := o.route(ctx, r.MerchantID, r.PaymentMethod)
+	ad, accountRef, err := o.route(ctx, r.MerchantID, r.PaymentMethod, r.Purpose == PurposeQRISGateTopup)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -209,7 +217,7 @@ func (o *Orchestrator) Create(ctx context.Context, r CreateRequest) (Outcome, er
 
 	p, err := o.createRow(work, CreateInput{MerchantID: r.MerchantID, OutletID: r.OutletID, MerchantReference: r.MerchantReference,
 		Description: r.Description, Amount: r.Amount, Currency: r.Currency, PaymentMethod: r.PaymentMethod,
-		Gateway: ad.Code(), ExpiresAt: &expires, Purpose: r.Purpose})
+		Gateway: ad.Code(), ExpiresAt: &expires, Purpose: r.Purpose, Direct: ad.Capabilities().Direct})
 	if err != nil {
 		o.fail(work, sc, err)
 		return Outcome{}, err

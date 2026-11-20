@@ -18,7 +18,7 @@
 
 	const keyOf = (g: CredGateway, e: CredEnv) => `${g.gateway}/${e.environment}`;
 
-	const rf = $derived(form as { key?: string; error?: string; routed?: string; feeSaved?: boolean } | null);
+	const rf = $derived(form as { key?: string; error?: string; routed?: string; feeSaved?: boolean; apkSaved?: string } | null);
 	const routing = $derived(data.routing);
 	const LABEL: Record<string, string> = { doku: 'DOKU', ids: 'IDS Payments', finpay: 'FINPAY', xendit: 'Xendit', midtrans: 'Midtrans' };
 	// Pilihan di form; mengikuti pilihan tersimpan sampai admin mengubahnya.
@@ -106,6 +106,65 @@
 					{#if mineRoute && rf?.routed}<p class="text-xs font-semibold text-emerald-700" role="status">{tx('pf.rt.saved', 'Tersimpan. Transaksi berikutnya lewat')} {LABEL[rf.routed] ?? rf.routed}.</p>{/if}
 				</div>
 			</form>
+		</section>
+	{/if}
+
+	{#if data.apkReleases}
+		<section class="card overflow-hidden" aria-labelledby="apk-title">
+			<div class="space-y-1 p-4 sm:p-5">
+				<h2 id="apk-title" class="font-display text-lg font-extrabold uppercase">APK Listener QRISGate</h2>
+				<p class="text-xs leading-relaxed text-ink/70">
+					Unggah APK listener notifikasi. Versi terbaru langsung tersedia untuk diunduh tenant di menu QRISGate. Versi yang sama tidak bisa diunggah dua kali; untuk memperbaiki, unggah versi baru. Maksimal 60 MB.
+				</p>
+				{#if data.apkReleases[0]}
+					<p class="text-[11px] font-semibold text-ink/60">
+						Terbaru: <b>v{data.apkReleases[0].version_name}</b> · {(data.apkReleases[0].size_bytes / 1048576).toFixed(1)} MB · {fmt(data.apkReleases[0].created_at)}
+					</p>
+					<p class="break-all font-mono text-[10px] text-ink/50">sha256 {data.apkReleases[0].sha256}</p>
+				{:else}
+					<p class="text-[11px] font-semibold text-ink/60">Belum ada APK yang diunggah.</p>
+				{/if}
+			</div>
+			<form
+				method="POST"
+				action="?/uploadApk"
+				enctype="multipart/form-data"
+				use:enhance={() => {
+					busy = 'apk';
+					return async ({ update }) => {
+						await update({ reset: true });
+						busy = null;
+					};
+				}}
+				class="space-y-3 border-t border-ink/10 p-4 sm:p-5"
+			>
+				<div class="grid gap-3 sm:grid-cols-2">
+					<div>
+						<label class="lbl mb-1" for="apk-file">Berkas APK</label>
+						<input id="apk-file" name="apk" type="file" accept=".apk,application/vnd.android.package-archive" required class="inp" />
+					</div>
+					<div>
+						<label class="lbl mb-1" for="apk-ver">Versi (mis. 1.0.1)</label>
+						<input id="apk-ver" name="version" required maxlength="32" class="inp" />
+					</div>
+				</div>
+				<div>
+					<label class="lbl mb-1" for="apk-note">Catatan rilis (opsional)</label>
+					<input id="apk-note" name="note" maxlength="500" class="inp" />
+				</div>
+				<div class="flex flex-wrap items-center gap-3">
+					<button disabled={busy !== null} class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-merah-tua disabled:opacity-50">
+						{busy === 'apk' ? 'Mengunggah…' : 'Unggah APK'}
+					</button>
+					{#if rf?.key === 'apk' && rf?.error}<p class="text-xs font-semibold text-red-700" role="alert">{rf.error}</p>{/if}
+					{#if rf?.key === 'apk' && rf?.apkSaved}<p class="text-xs font-semibold text-emerald-700" role="status">v{rf.apkSaved} tersimpan dan tersedia untuk diunduh.</p>{/if}
+				</div>
+			</form>
+			{#if data.apkReleases.length > 1}
+				<ul class="space-y-1 border-t border-ink/10 p-4 text-[11px] text-ink/60 sm:p-5">
+					{#each data.apkReleases.slice(1) as r (r.id)}<li>v{r.version_name} · {(r.size_bytes / 1048576).toFixed(1)} MB · {fmt(r.created_at)}</li>{/each}
+				</ul>
+			{/if}
 		</section>
 	{/if}
 

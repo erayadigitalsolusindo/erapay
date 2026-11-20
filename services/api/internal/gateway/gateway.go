@@ -38,6 +38,9 @@ type Capabilities struct {
 	// PlatformAccount: the gateway is contracted once for the whole platform, so a merchant needs no
 	// merchant_gateway_accounts row (and no gateway-side merchant id) to be routed to it.
 	PlatformAccount bool
+	// Direct: the payer's money goes straight to the merchant's own account (detected from their bank/e-wallet
+	// mutation), never through the platform. No clearing, no settlement, no merchant_payable credit, no refund.
+	Direct bool
 }
 
 func (c Capabilities) SupportsMethod(m string) bool {
@@ -173,6 +176,9 @@ type WebhookEvent struct {
 	Amount     int64  // minor units
 	Currency   string
 	DedupKey   string // unique per notification (gateway-scoped)
+	// MerchantID is set by adapters whose credentials are per merchant: the notification was authenticated with
+	// THAT merchant's secret, so it may only touch that merchant's payments.
+	MerchantID string
 }
 
 // WebhookVerifier is implemented by adapters whose notification format and signature

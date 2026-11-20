@@ -136,7 +136,7 @@ func (s *Service) recordTx(ctx context.Context, in BatchInput, a Actor) (Batch, 
 	err = tx.QueryRow(ctx, `
 		SELECT count(*), COALESCE(SUM(p.amount - p.mdr_fee), 0)
 		FROM payments p
-		WHERE p.id = ANY($1::uuid[]) AND p.status = 'succeeded' AND p.gateway = $2 AND p.currency = $3
+		WHERE p.id = ANY($1::uuid[]) AND p.status = 'succeeded' AND p.gateway = $2 AND p.currency = $3 AND NOT p.direct
 		  AND NOT EXISTS (SELECT 1 FROM settlement_items si WHERE si.payment_id = p.id)
 		  AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = p.merchant_id AND sm.is_sandbox)`,
 		ids, in.Gateway, in.Currency).Scan(&count, &expected)
@@ -176,7 +176,7 @@ func (s *Service) recordTx(ctx context.Context, in BatchInput, a Actor) (Batch, 
 	tag, err := tx.Exec(ctx, `
 		INSERT INTO settlement_items (batch_id, payment_id, merchant_id, gross, mdr_fee, expected_net)
 		SELECT $1, p.id, p.merchant_id, p.amount, p.mdr_fee, p.amount - p.mdr_fee
-		FROM payments p WHERE p.id = ANY($2::uuid[]) AND p.status = 'succeeded'
+		FROM payments p WHERE p.id = ANY($2::uuid[]) AND p.status = 'succeeded' AND NOT p.direct
 		  AND NOT EXISTS (SELECT 1 FROM merchants sm WHERE sm.id = p.merchant_id AND sm.is_sandbox)
 		ORDER BY p.id ON CONFLICT (payment_id) DO NOTHING`, batchID, ids)
 	if err != nil {

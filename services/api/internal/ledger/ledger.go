@@ -262,6 +262,15 @@ func QRISGateTopupPaid(clearing, merchantID, paymentID, currency string, gross, 
 			{QRISGateCredit, merchantID, Credit, gross - mdr}}}
 }
 
+// QRISGateFee is the per-transaction fee charged to the tenant's QRISGate credit when a payment succeeds
+// (debit qrisgate_credit, credit platform_fee_revenue). Dedup per payment, so any caller posts it at most once.
+func QRISGateFee(merchantID, paymentID, currency string, fee int64) Txn {
+	return Txn{DedupKey: "qrisgate_fee:" + paymentID, SourceType: "qrisgate_fee", SourceID: paymentID, Currency: currency,
+		Entries: []Entry{
+			{QRISGateCredit, merchantID, Debit, fee},
+			{PlatformFeeRevenue, "", Credit, fee}}}
+}
+
 // Reverse returns the mirror journal of an already posted transaction (corrections
 // are reversals, never edits). Its dedup key makes the reversal happen once.
 func (s *Service) Reverse(ctx context.Context, originalDedupKey, reason string) (Result, error) {

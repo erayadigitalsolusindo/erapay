@@ -204,6 +204,23 @@ async function callPlatform<T>(f: typeof fetch, token: string, method: 'GET' | '
 	return { ok: false, message: j?.error?.message ?? 'Permintaan gagal.', status: res.status, body: j };
 }
 
+/** Unggah berkas mentah (mis. APK) ke jalur /v1/platform; query dikirim apa adanya (sudah di-encode pemanggil). */
+export async function platformUpload<T = unknown>(f: typeof fetch, token: string, path: string, data: ArrayBuffer): Promise<PlatformResult<T>> {
+	let res: Response;
+	try {
+		res = await f(`${BASE}/v1/platform${path}`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/octet-stream', cookie: `${PLATFORM_COOKIE}=${token}` },
+			body: data
+		});
+	} catch {
+		return { ok: false, message: 'Layanan tidak dapat dihubungi.', status: 0 };
+	}
+	const j = await res.json().catch(() => null);
+	if (res.ok) return { ok: true, value: j as T, status: res.status };
+	return { ok: false, message: j?.error?.message ?? 'Unggah gagal.', status: res.status, body: j };
+}
+
 // bentuk akhir untuk file lain
 export type PlatformResult<T> = { ok: true; value: T; status: number } | { ok: false; message: string; status: number; body?: any };
 

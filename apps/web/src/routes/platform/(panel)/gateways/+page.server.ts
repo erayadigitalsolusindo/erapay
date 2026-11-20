@@ -1,5 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { guardPlatform, platformApi } from '../../../../lib/server/platform';
+import { guardPlatform, platformApi, platformUpload } from '../../../../lib/server/platform';
 import type { Actions, PageServerLoad } from './$types';
 
 export type CredField = {
@@ -24,6 +24,7 @@ export type CredEnv = {
 export type CredGateway = { gateway: string; label: string; fields: CredField[]; environments: CredEnv[] };
 export type CredOverview = { server_environment: string; gateways: CredGateway[] };
 export type CredStep = { name: string; ok: boolean; code?: string; message?: string };
+export type ApkRelease = { id: string; version_name: string; sha256: string; size_bytes: number; note?: string; created_at: string };
 export type RouteOption = { code: string; available: boolean; platform_account: boolean };
 export type RoutingOverview = {
 	server_environment: string;
@@ -38,19 +39,21 @@ const ENV = /^(sandbox|production)$/;
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 	const token = guardPlatform(locals, cookies);
-	const [r, rt, qf] = await Promise.all([
+	const [r, rt, qf, apk] = await Promise.all([
 		platformApi<CredOverview>(fetch, token, 'GET', '/gateway-credentials'),
 		platformApi<RoutingOverview>(fetch, token, 'GET', '/payment-routing'),
-		platformApi<{ fee: number; max: number }>(fetch, token, 'GET', '/qrisgate-fee')
+		platformApi<{ fee: number; max: number }>(fetch, token, 'GET', '/qrisgate-fee'),
+		platformApi<{ data: ApkRelease[] }>(fetch, token, 'GET', '/listener-apk')
 	]);
+	const apkReleases = apk.ok ? apk.value.data : null; // null = API tanpa penyimpanan APK (ERAPAY_APK_STORAGE_DIR / KYC dir belum diset)
 	const qrisgateFee = qf.ok ? qf.value : null; // null = API belum punya setelan ini
 	// null = API belum punya fitur jalur (belum di-update): kartu pilihan jalur disembunyikan.
 	const routing = rt.ok ? rt.value : null;
 	if (!r.ok) {
 		// 404 = server tanpa ERAPAY_ENCRYPTION_KEY (fitur ini mati); selain itu galat sementara.
-		return { overview: null as CredOverview | null, routing, qrisgateFee, unavailable: r.status === 404, error: r.status === 404 ? null : r.message };
+		return { overview: null as CredOverview | null, routing, qrisgateFee, apkReleases, unavailable: r.status === 404, error: r.status === 404 ? null : r.message };
 	}
-	return { overview: r.value, routing, qrisgateFee, unavailable: false, error: null as string | null };
+	return { overview: r.value, routing, qrisgateFee, apkReleases, unavailable: false, error: null as string | null };
 };
 
 function target(f: FormData) {
@@ -61,6 +64,21 @@ function target(f: FormData) {
 
 export const actions: Actions = {
 	// Potongan per transaksi QRISGate dari saldo tenant (rupiah utuh; 0 = tidak memotong). Berlaku untuk transaksi berikutnya.
+	// Unggah APK listener (maks 60 MB). Validasi isi (ZIP berisi AndroidManifest.xml + classes.dex), versi unik, dan audit ada di Go.
+	uploadApk: async ({ request, cookies, locals, fetch }) => {
+		const token = guardPlatform(locals, cookies);
+		const f = await request.formData();
+		const file = f.get('apk');
+		const version = String(f.get('version') ?? '').trim();
+		const note = String(f.get('note') ?? '').trim();
+		if (!(file instanceof File) || file.size === 0) return fail(400, { key: 'apk', error: 'Pilih berkas APK.' });
+		if (!/^[0-9A-Za-z][0-9A-Za-z._+-]{0,31}$/.test(version)) return fail(400, { key: 'apk', error: 'Versi 1-32 karakter (huruf, angka, . _ + -).' });
+		if (file.size > 60 * 1024 * 1024) return fail(400, { key: 'apk', error: 'APK lebih dari 60 MB.' });
+		const r = await platformUpload(fetch, token, `/listener-apk?version=${encodeURIComponent(version)}&note=${encodeURIComponent(note)}`, await file.arrayBuffer());
+		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { key: 'apk', error: r.message });
+		return { key: 'apk', apkSaved: version };
+	},
+
 	qrisgateFee: async ({ request, cookies, locals, fetch }) => {
 		const token = guardPlatform(locals, cookies);
 		const f = await request.formData();

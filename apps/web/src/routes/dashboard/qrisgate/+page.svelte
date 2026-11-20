@@ -13,6 +13,9 @@
 		const id = setInterval(() => void invalidateAll(), 5000);
 		return () => clearInterval(id);
 	});
+	const acc = $derived(data.overview?.account);
+	const accState = $derived(!acc?.configured ? 'none' : acc.activation_status === 'active' ? 'active' : acc.activation_status === 'suspended' ? 'suspended' : 'pending');
+	const hookUrl = $derived((data.apiBase || 'https://<host-api-erapay>') + (acc?.webhook_path ?? ''));
 	const when = (iso: string) => new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 </script>
 
@@ -20,8 +23,8 @@
 <p class="muted mt-1 mb-4 max-w-2xl text-xs">{t('qg.sub')}</p>
 
 <section class="card mb-4 p-5" role="status">
-	<p class="text-sm font-bold">{t('qg.status')}</p>
-	<p class="muted mt-1 text-xs">{t('qg.statusNote')}</p>
+	<p class="text-sm font-bold">{t(`qg.acc.${accState}` as Key)}</p>
+	<p class="muted mt-1 text-xs">{t(`qg.acc.${accState}.note` as Key)}</p>
 	{#if data.overview}
 		<p class="mt-2 text-xs font-semibold">
 			{data.overview.fee > 0 ? t('qg.fee.some').replace('{amount}', formatIDR(data.overview.fee)) : t('qg.fee.zero')}
@@ -30,6 +33,31 @@
 </section>
 
 {#if data.overview}
+	<section class="card mb-4 p-5">
+		<h2 class="text-sm font-bold">{t('qg.acc.title')}</h2>
+		<p class="muted mt-1 mb-3 max-w-2xl text-xs">{t('qg.acc.help')}</p>
+		{#if acc?.configured}<p class="mb-2 text-xs font-semibold">{t('qg.acc.key')}: <span class="font-mono">{acc.key_hint}</span></p>{/if}
+		<p class="mb-1 text-xs font-semibold">{t('qg.acc.hook')}</p>
+		<code class="mb-3 block break-all rounded bg-ink/5 p-2 text-[11px]">{hookUrl}</code>
+		{#if data.canRequest}
+			<form method="POST" action="?/account" use:enhance autocomplete="off" class="grid max-w-xl gap-3">
+				<div>
+					<label class="lbl mb-1" for="qg-key">{t('qg.acc.apiKey')}</label>
+					<input id="qg-key" name="api_key" required minlength="16" maxlength="200" placeholder="qg_live_…" class="inp" />
+				</div>
+				<div>
+					<label class="lbl mb-1" for="qg-sec">{t('qg.acc.secret')}</label>
+					<input id="qg-sec" name="webhook_secret" type="password" required minlength="16" maxlength="200" class="inp" />
+				</div>
+				<div><button class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.acc.save')}</button></div>
+			</form>
+			{#if (form as { accountError?: boolean; unavailable?: boolean } | null)?.accountError}
+				<p class="mt-2 text-xs font-semibold text-red-700" role="alert">{(form as { unavailable?: boolean }).unavailable ? t('qg.acc.unavailable') : t('qg.acc.invalid')}</p>
+			{/if}
+			{#if (form as { savedAccount?: boolean } | null)?.savedAccount}<p class="mt-2 text-xs font-semibold text-emerald-700" role="status">{t('qg.acc.saved')}</p>{/if}
+		{/if}
+	</section>
+
 	<section class="card mb-4 p-5">
 		<p class="muted text-xs font-semibold">{t('qg.bal.title')}</p>
 		<p class="mt-1 text-2xl font-extrabold {data.overview.balance < 0 ? 'text-red-700' : ''}">{formatIDR(data.overview.balance)}</p>
@@ -111,6 +139,27 @@
 					{/each}
 				</tbody>
 			</table>
+		{/if}
+	</section>
+{/if}
+
+{#if data.listener}
+	<section class="card mb-4 p-5">
+		<h2 class="text-sm font-bold">{t('qg.apk.title')}</h2>
+		<p class="muted mt-1 mb-3 max-w-2xl text-xs">{t('qg.apk.help')}</p>
+		{#if data.listener.available && data.listener.release}
+			<p class="text-xs font-semibold">v{data.listener.release.version_name} · {(data.listener.release.size_bytes / 1048576).toFixed(1)} MB · {when(data.listener.release.created_at)}</p>
+			{#if data.listener.release.note}<p class="muted mt-1 text-xs">{data.listener.release.note}</p>{/if}
+			<p class="mt-1 break-all font-mono text-[10px] opacity-60">sha256 {data.listener.release.sha256}</p>
+			<a href="/dashboard/qrisgate/apk" download class="mt-3 inline-block rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.apk.download')}</a>
+			<ol class="muted mt-3 list-decimal space-y-1 pl-5 text-xs">
+				<li>{t('qg.apk.s1')}</li>
+				<li>{t('qg.apk.s2')}</li>
+				<li>{t('qg.apk.s3')}</li>
+				<li>{t('qg.apk.s4')}</li>
+			</ol>
+		{:else}
+			<p class="muted text-xs">{t('qg.apk.none')}</p>
 		{/if}
 	</section>
 {/if}

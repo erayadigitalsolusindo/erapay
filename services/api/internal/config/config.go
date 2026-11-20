@@ -61,6 +61,7 @@ type Config struct {
 
 	// KYC wizard (data diri + dokumen) — ERAPAY_KYC_STORAGE_DIR wajib untuk mengaktifkan
 	// seluruh route /v1/kyc/* (draft & edit). Tanpa penyimpanan, wizard mati total.
+	APKStorageDir     string // ERAPAY_APK_STORAGE_DIR: direktori APK listener yang diunggah DEWA (bawaan: <KYC dir>/apk)
 	KYCStorageDir     string // ERAPAY_KYC_STORAGE_DIR: direktori lokal (LocalFS) untuk dokumen & bukti
 	KYCRecheckPolicy  string // ERAPAY_KYC_RECHECK_POLICY: open (default) | closed — akses produksi saat re-check
 	KYCDocUploadPerIP int    // ERAPAY_KYC_UPLOAD_PER_IP per jam (default 60)
@@ -200,6 +201,10 @@ func Load() (Config, error) {
 		c.TrustedProxies = append(c.TrustedProxies, p)
 	}
 	c.KYCStorageDir = strings.TrimSpace(os.Getenv("ERAPAY_KYC_STORAGE_DIR"))
+	c.APKStorageDir = strings.TrimSpace(os.Getenv("ERAPAY_APK_STORAGE_DIR"))
+	if c.APKStorageDir == "" && c.KYCStorageDir != "" {
+		c.APKStorageDir = c.KYCStorageDir + "/apk"
+	}
 	c.KYCRecheckPolicy = strings.ToLower(strings.TrimSpace(os.Getenv("ERAPAY_KYC_RECHECK_POLICY")))
 	switch c.KYCRecheckPolicy {
 	case "", "open":

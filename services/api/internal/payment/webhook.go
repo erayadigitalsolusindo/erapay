@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -36,13 +37,14 @@ func (o *Orchestrator) applyWebhook(ctx context.Context, sandbox bool, gw string
 	if !uuidRe.MatchString(ev.PaymentRef) {
 		return Result{}, ErrNotFound
 	}
-	var pgw, currency string
+	var pgw, currency, merchantID string
 	var amount int64
 	var isSandbox bool
-	err := o.db.QueryRow(ctx, `SELECT p.gateway, p.currency, p.amount, m.is_sandbox
+	err := o.db.QueryRow(ctx, `SELECT p.gateway, p.currency, p.amount, m.is_sandbox, p.merchant_id::text
 		FROM payments p JOIN merchants m ON m.id = p.merchant_id WHERE p.id = $1`, ev.PaymentRef).
-		Scan(&pgw, &currency, &amount, &isSandbox)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (pgw != gw || isSandbox != sandbox)) {
+		Scan(&pgw, &currency, &amount, &isSandbox, &merchantID)
+	// A per-merchant secret authenticates only that merchant: another merchant's payment is "not found".
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (pgw != gw || isSandbox != sandbox || (ev.MerchantID != "" && !strings.EqualFold(ev.MerchantID, merchantID)))) {
 		return Result{}, ErrNotFound
 	}
 	if err != nil {
