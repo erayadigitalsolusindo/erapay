@@ -1,6 +1,7 @@
 package gwcred
 
 import (
+	"encoding/base64"
 	"encoding/pem"
 	"regexp"
 	"strings"
@@ -20,6 +21,7 @@ type Field struct {
 
 	pattern *regexp.Regexp
 	pem     bool
+	b64     bool // with pem: bare base64 DER (no BEGIN/END lines) is accepted too, as DANA's dashboard copies it
 }
 
 // Schema is the credential form of one gateway.
@@ -57,9 +59,9 @@ var schemas = []Schema{{
 		{Key: "merchant_id", Label: "Merchant ID", Required: true, pattern: regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)},
 		{Key: "client_id", Label: "Client ID (X-PARTNER-ID)", Required: true, pattern: regexp.MustCompile(`^[A-Za-z0-9._-]{1,36}$`)},
 		{Key: "store_id", Label: "Store ID", Hint: "Wajib untuk membuat QRIS. Asalnya belum terkonfirmasi (kemungkinan externalShopId dari Create Shop)", Required: true, pattern: regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)},
-		{Key: "channel_id", Label: "Channel ID", Hint: "Header CHANNEL-ID, maks 5 karakter. Nilai dari DANA", Required: true, pattern: regexp.MustCompile(`^[A-Za-z0-9]{1,5}$`)},
-		{Key: "private_key", Label: "Private key (PEM)", Hint: "RSA milik Anda, PKCS#8 atau PKCS#1. Public key-nya diunggah ke Merchant Portal DANA", Required: true, Secret: true, Multiline: true, pem: true},
-		{Key: "dana_public_key", Label: "Public key DANA (PEM)", Hint: "Memverifikasi notifikasi Finish Notify. Sandbox ada di docs DANA; key produksi diminta ke tim DANA. Kosong = notifikasi ditolak, status hanya lewat inquiry", Multiline: true, pem: true},
+		{Key: "channel_id", Label: "Channel ID", Hint: "Header CHANNEL-ID, maks 5 karakter. Kosong = 95221, nilai tetap di SDK resmi DANA", pattern: regexp.MustCompile(`^[A-Za-z0-9]{1,5}$`)},
+		{Key: "private_key", Label: "Private key (PEM)", Hint: "RSA milik Anda, PKCS#8 atau PKCS#1; PEM atau teks base64 polos seperti disalin dari dasbor DANA", Required: true, Secret: true, Multiline: true, pem: true, b64: true},
+		{Key: "dana_public_key", Label: "Public key DANA (PEM)", Hint: "Memverifikasi notifikasi Finish Notify. Bukan public key Anda di dasbor. Sandbox: key di docs DANA (authentication-asymmetric); produksi diminta ke tim DANA. Kosong = notifikasi ditolak, status hanya lewat inquiry", Multiline: true, pem: true, b64: true},
 	},
 }, {
 	Gateway: "ids",
@@ -110,6 +112,11 @@ func (f Field) check(v string) error {
 	switch {
 	case len(v) > 8192:
 		return invalid("%s terlalu panjang", f.Label)
+	case f.pem && f.b64 && !strings.Contains(v, "-----BEGIN"):
+		if raw, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(v), "")); err != nil || len(raw) == 0 {
+			return invalid("%s bukan PEM atau base64 yang valid", f.Label)
+		}
+		return nil
 	case f.pem:
 		if blk, _ := pem.Decode([]byte(f.normalize(v))); blk == nil {
 			return invalid("%s bukan PEM yang valid", f.Label)
@@ -139,6 +146,9 @@ func (f Field) check(v string) error {
 // normalize canonicalizes a value before it is stored (PEM pasted with literal \n).
 func (f Field) normalize(v string) string {
 	v = strings.TrimSpace(v)
+	if f.pem && f.b64 && !strings.Contains(v, "-----BEGIN") {
+		return v // bare base64: the adapter decodes it
+	}
 	if f.pem {
 		v = strings.ReplaceAll(v, `\n`, "\n")
 		// Keys copied from docs often carry a stray space before a line (DANA's END line): trim every line.

@@ -418,3 +418,79 @@ func asSig(err error, se **gateway.SignatureError) bool {
 	*se = s
 	return ok
 }
+
+// ---- from DANA's official Go SDK (dana-id/dana-go) ----
+
+func TestChannelIDDefaultsToSDKValue(t *testing.T) {
+	var got string
+	a := newAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("CHANNEL-ID")
+		reply(w, 200, `{"responseCode":"2004700","qrContent":"000201"}`)
+	})
+	a.cfg.ChannelID = "" // not through New: prove the default is applied by New itself below
+	c, err := New(Config{BaseURL: a.cfg.BaseURL, MerchantID: "M1", ClientID: "C1", StoreID: "S1", PrivateKeyPEM: privPEM(merchantKey), Now: a.cfg.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := create(c); err != nil || got != "95221" {
+		t.Fatalf("CHANNEL-ID = %q err=%v", got, err)
+	}
+}
+
+// DANA's dashboard copies keys as bare base64 (no BEGIN/END lines); both key fields must accept that.
+func TestKeysAcceptBareBase64(t *testing.T) {
+	bare := func(pemText string) string {
+		b, _ := pem.Decode([]byte(pemText))
+		return base64.StdEncoding.EncodeToString(b.Bytes)
+	}
+	a, err := New(Config{BaseURL: SandboxURL, MerchantID: "M1", ClientID: "C1", StoreID: "S1",
+		PrivateKeyPEM: bare(privPEM(merchantKey)), PublicKeyPEM: bare(pubPEM(&danaKey.PublicKey))})
+	if err != nil || a.priv == nil || a.pub == nil {
+		t.Fatalf("bare base64 keys rejected: %v", err)
+	}
+	// PKCS#1 private key, bare as well.
+	if _, err := New(Config{BaseURL: SandboxURL, MerchantID: "M1", ClientID: "C1", StoreID: "S1",
+		PrivateKeyPEM: base64.StdEncoding.EncodeToString(x509.MarshalPKCS1PrivateKey(merchantKey))}); err != nil {
+		t.Errorf("bare PKCS#1: %v", err)
+	}
+}
+
+// DANA's SDK also accepts a body signed over the exact bytes received (not only the minified form).
+func TestVerifyWebhookAcceptsSignatureOverRawBytes(t *testing.T) {
+	a := newAdapter(t, nil)
+	const path = "/webhooks/sandbox/dana"
+	raw := []byte("{\"originalPartnerReferenceNo\": \"" + func() string { r, _ := shortRef(payID); return r }() + "\",\n \"originalReferenceNo\":\"D-1\",\"merchantId\":\"M1\"," +
+		"\"amount\":{\"value\":\"10000.00\",\"currency\":\"IDR\"},\"latestTransactionStatus\":\"00\"}")
+	ts := "2026-11-20T14:05:00+07:00"
+	h := sha256.Sum256([]byte(stringToSign("POST", path, raw, ts)))
+	sig, _ := rsa.SignPKCS1v15(rand.Reader, danaKey, crypto.SHA256, h[:])
+	hdr := http.Header{"X-Signature": {base64.StdEncoding.EncodeToString(sig)}, "X-Timestamp": {ts}}
+	if ev, err := a.VerifyWebhook(hdr, path, raw); err != nil || ev.PaymentRef != payID {
+		t.Fatalf("raw-bytes signature: ev=%+v err=%v", ev, err)
+	}
+}
+
+// The debug header is a sandbox-only convenience: it must never be sent to production.
+func TestDebugHeaderOnlyInSandbox(t *testing.T) {
+	for host, want := range map[string]string{SandboxURL: "true", ProductionURL: ""} {
+		var got string
+		rt := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			got = r.Header.Get("X-Debug-Mode")
+			return &http.Response{StatusCode: 400, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(
+				`{"responseCode":"4004702","responseMessage":"Invalid Mandatory Field","additionalInfo":{"debugMessage":"storeId not registered"}}`))}, nil
+		})
+		a, _ := New(Config{BaseURL: host, MerchantID: "M1", ClientID: "C1", StoreID: "S1", PrivateKeyPEM: privPEM(merchantKey),
+			HTTP: &http.Client{Transport: rt}, Now: func() time.Time { return now }})
+		_, err := create(a)
+		if got != want {
+			t.Errorf("%s: X-Debug-Mode = %q, want %q", host, got, want)
+		}
+		if ge, ok := err.(*gateway.Error); !ok || !strings.Contains(ge.Message, "storeId not registered") {
+			t.Errorf("%s: debug reason not surfaced: %v", host, err)
+		}
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

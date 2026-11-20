@@ -35,9 +35,9 @@ type notify struct {
 // VerifyWebhook authenticates a Finish Notify with DANA's public key over
 // POST:<path>:hex(sha256(compact body)):X-TIMESTAMP and parses it. path is the request path as DANA called it.
 //
-// shortcut: no replay window (DANA documents no skew); callers must confirm every status by inquiry before
-// applying it, so a replayed or reordered notification cannot move money. Pin the signed path and the minify
-// form against a captured sandbox callback before go-live (docs/integrations/dana.md).
+// shortcut: no replay window (DANA documents no skew) and none of the SDK's proxy-artifact body repairs
+// (escaped quotes, wrapped keys); callers must confirm every status by inquiry before applying it, so a replayed
+// or reordered notification cannot move money. Check against a captured sandbox callback (docs/integrations/dana.md).
 func (a *Adapter) VerifyWebhook(h http.Header, path string, body []byte) (gateway.WebhookEvent, error) {
 	if a.pub == nil {
 		return gateway.WebhookEvent{}, &gateway.SignatureError{Reason: "no_public_key"}
@@ -54,14 +54,18 @@ func (a *Adapter) VerifyWebhook(h http.Header, path string, body []byte) (gatewa
 	if json.Compact(&min, body) != nil {
 		return gateway.WebhookEvent{}, errors.New("dana webhook: malformed body")
 	}
-	// DANA documents Finish Notify as /v1.0/debit/notify but calls the URL registered in its dashboard; which of
-	// the two it signs is unconfirmed, so either is accepted (both are DANA-signed paths, nothing else is).
+	// DANA's SDK tries the exact received bytes first ("signature may also use the exact request bytes as
+	// received") and the minified form after; either may be what was signed.
+	bodies := [][]byte{body, min.Bytes()}
+	// DANA's SDK verifies against the path of the request it received, so the registered URL path is the expected
+	// one; the documented /v1.0/debit/notify is accepted as well (both are DANA-signed paths, nothing else is).
 	verified := false
 	for _, p := range []string{path, pathNotify} {
-		h256 := sha256.Sum256([]byte(stringToSign(http.MethodPost, p, min.Bytes(), ts)))
-		if rsa.VerifyPKCS1v15(a.pub, crypto.SHA256, h256[:], sig) == nil {
-			verified = true
-			break
+		for _, b := range bodies {
+			h256 := sha256.Sum256([]byte(stringToSign(http.MethodPost, p, b, ts)))
+			if rsa.VerifyPKCS1v15(a.pub, crypto.SHA256, h256[:], sig) == nil {
+				verified = true
+			}
 		}
 	}
 	if !verified {

@@ -47,6 +47,9 @@ const (
 
 	// rawNotFound is the DANA status "07" (order not found); a 4045501 answer is reported as the same.
 	rawNotFound = "07"
+
+	// defaultChannelID is the CHANNEL-ID DANA's official SDKs send on every request (dana-id/dana-go, utils/snap_header.go).
+	defaultChannelID = "95221"
 )
 
 var wib = time.FixedZone("WIB", 7*3600)
@@ -56,7 +59,7 @@ type Config struct {
 	MerchantID    string
 	ClientID      string // X-PARTNER-ID
 	StoreID       string // required by Generate QRIS
-	ChannelID     string // CHANNEL-ID header, max 5 chars
+	ChannelID     string // CHANNEL-ID header, max 5 chars; empty = defaultChannelID
 	PrivateKeyPEM string // RSA, PKCS#8 or PKCS#1. Secret.
 	PublicKeyPEM  string // DANA's public key, verifies Finish Notify. Optional until the webhook is used.
 	HTTP          *http.Client
@@ -70,8 +73,11 @@ type Adapter struct {
 }
 
 func New(cfg Config) (*Adapter, error) {
-	if cfg.MerchantID == "" || cfg.ClientID == "" || cfg.StoreID == "" || cfg.ChannelID == "" {
-		return nil, errors.New("dana: merchant id, client id, store id and channel id are required")
+	if cfg.ChannelID == "" {
+		cfg.ChannelID = defaultChannelID
+	}
+	if cfg.MerchantID == "" || cfg.ClientID == "" || cfg.StoreID == "" {
+		return nil, errors.New("dana: merchant id, client id and store id are required")
 	}
 	if len(cfg.ClientID) > 36 || len(cfg.ChannelID) > 5 {
 		return nil, errors.New("dana: client id (max 36) or channel id (max 5) is too long")
@@ -101,27 +107,40 @@ func New(cfg Config) (*Adapter, error) {
 	return a, nil
 }
 
-// normalizePEM trims each line: the DANA public key in their docs has a stray space before the END line.
-func normalizePEM(s string) []byte {
+// keyDER decodes a key given as PEM, or as the bare base64 DER that DANA's dashboard copies (no BEGIN/END lines).
+// Lines are trimmed: the DANA public key in their docs has a stray space before the END line.
+func keyDER(s string) ([]byte, error) {
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {
 		lines[i] = strings.TrimSpace(l)
 	}
-	return []byte(strings.Join(lines, "\n"))
+	s = strings.Join(lines, "\n")
+	if strings.Contains(s, "-----BEGIN") {
+		blk, _ := pem.Decode([]byte(s))
+		if blk == nil {
+			return nil, errors.New("not PEM")
+		}
+		return blk.Bytes, nil
+	}
+	der, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(s), ""))
+	if err != nil || len(der) == 0 {
+		return nil, errors.New("neither PEM nor base64")
+	}
+	return der, nil
 }
 
 func parsePrivateKey(s string) (*rsa.PrivateKey, error) {
-	blk, _ := pem.Decode(normalizePEM(s))
-	if blk == nil {
-		return nil, errors.New("dana: private key is not PEM")
+	der, err := keyDER(s)
+	if err != nil {
+		return nil, errors.New("dana: private key is " + err.Error())
 	}
-	if k, err := x509.ParsePKCS8PrivateKey(blk.Bytes); err == nil {
+	if k, err := x509.ParsePKCS8PrivateKey(der); err == nil {
 		if rk, ok := k.(*rsa.PrivateKey); ok {
 			return rk, nil
 		}
 		return nil, errors.New("dana: private key is not RSA")
 	}
-	k, err := x509.ParsePKCS1PrivateKey(blk.Bytes)
+	k, err := x509.ParsePKCS1PrivateKey(der)
 	if err != nil {
 		return nil, errors.New("dana: private key is neither PKCS#8 nor PKCS#1")
 	}
@@ -129,11 +148,11 @@ func parsePrivateKey(s string) (*rsa.PrivateKey, error) {
 }
 
 func parsePublicKey(s string) (*rsa.PublicKey, error) {
-	blk, _ := pem.Decode(normalizePEM(s))
-	if blk == nil {
-		return nil, errors.New("dana: public key is not PEM")
+	der, err := keyDER(s)
+	if err != nil {
+		return nil, errors.New("dana: public key is " + err.Error())
 	}
-	k, err := x509.ParsePKIXPublicKey(blk.Bytes)
+	k, err := x509.ParsePKIXPublicKey(der)
 	if err != nil {
 		return nil, errors.New("dana: public key is not PKIX")
 	}
@@ -216,9 +235,12 @@ type money struct {
 }
 
 type envelope struct {
-	ResponseCode            string `json:"responseCode"`
-	ResponseMessage         string `json:"responseMessage"`
-	ReferenceNo             string `json:"referenceNo"`
+	ResponseCode    string `json:"responseCode"`
+	ResponseMessage string `json:"responseMessage"`
+	ReferenceNo     string `json:"referenceNo"`
+	AdditionalInfo  struct {
+		DebugMessage string `json:"debugMessage"`
+	} `json:"additionalInfo"`
 	QRContent               string `json:"qrContent"`
 	LatestTransactionStatus string `json:"latestTransactionStatus"`
 	TransAmount             *money `json:"transAmount"`
@@ -253,6 +275,10 @@ func (a *Adapter) do(ctx context.Context, path string, payload any, okCode strin
 	req.Header.Set("X-PARTNER-ID", a.cfg.ClientID)
 	req.Header.Set("X-EXTERNAL-ID", hex.EncodeToString(ext)) // 32 chars, unique per request
 	req.Header.Set("CHANNEL-ID", a.cfg.ChannelID)
+	if a.cfg.BaseURL == SandboxURL {
+		// DANA's SDK sends this in sandbox: failures then carry the reason in additionalInfo.debugMessage.
+		req.Header.Set("X-Debug-Mode", "true")
+	}
 	resp, err := a.cfg.HTTP.Do(req)
 	if err != nil {
 		return envelope{}, 0, &gateway.Error{Kind: gateway.Ambiguous, Retryable: true, Message: "no response from gateway"}
@@ -277,14 +303,23 @@ func classify(status int, env envelope, okCode string) error {
 	if len(rc) == 7 {
 		switch {
 		case rc[0] == '4':
-			return &gateway.Error{Kind: gateway.Rejected, Code: rc, HTTPStatus: status, Retryable: rc[:3] == "429", Message: safeMsg(env.ResponseMessage)}
+			return &gateway.Error{Kind: gateway.Rejected, Code: rc, HTTPStatus: status, Retryable: rc[:3] == "429", Message: reason(env)}
 		case rc[:3] == "500" && rc[5:] == "00":
-			return &gateway.Error{Kind: gateway.Rejected, Code: rc, HTTPStatus: status, Message: safeMsg(env.ResponseMessage)}
+			return &gateway.Error{Kind: gateway.Rejected, Code: rc, HTTPStatus: status, Message: reason(env)}
 		}
 	} else if status >= 400 && status < 500 {
-		return &gateway.Error{Kind: gateway.Rejected, Code: rc, HTTPStatus: status, Message: safeMsg(env.ResponseMessage)}
+		return &gateway.Error{Kind: gateway.Rejected, Code: rc, HTTPStatus: status, Message: reason(env)}
 	}
 	return &gateway.Error{Kind: gateway.Ambiguous, Code: rc, HTTPStatus: status, Retryable: true, Message: "gateway outcome unknown"}
+}
+
+// reason is the sanitized text shown to operators: DANA's message plus, in sandbox, its debug reason.
+func reason(env envelope) string {
+	m := safeMsg(env.ResponseMessage)
+	if d := safeMsg(env.AdditionalInfo.DebugMessage); d != "" {
+		m += ": " + d
+	}
+	return safeMsg(m)
 }
 
 func safeMsg(s string) string {

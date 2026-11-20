@@ -2,6 +2,8 @@
 
 Sumber: dokumentasi resmi DANA Merchant Portal (`https://dashboard.dana.id/api-docs-v2/llms/...`, disalin Seira dan dibaca 20 Nov 2026): `guide/authentication/authentication-asymmetric`, `api/overview`, `api/qris-acquirer/{overview,generate-qris,finish-notify}`, `.../optional-api/{query-payment,cancel-order,refund-order}`, `guide/settlement-file/payment-services`. Kode: `services/api/internal/gateway/dana` (signing, create QRIS, inquiry, uji koneksi, verifikasi Finish Notify; tes dengan server palsu dan key RSA buatan sendiri). **Belum diuji ke sandbox DANA.** Terdaftar di `cmd/api/gateways.go` (hanya bila kredensial disimpan di panel, tanpa fallback env), `gwcred` (form kredensial), `routing`, `onboarding`, akun clearing `cash_dana_clearing` (migrasi `0056`) dan label panel. Tanpa kredensial di panel adapter tidak ada, jadi efektif OFF. Belum untuk uang nyata. Gate aktivasi: `docs/prd/gateway-new.md`.
 
+SDK resmi: `https://github.com/dana-id/dana-go` (v2, dibaca 20 Nov 2026). SDK itu mencakup Gapura, Widget, Disbursement, dan Merchant Management, **tidak** QRIS Acquirer; endpoint QRIS di bawah hanya bersumber dari dokumentasi, belum ada contoh kode resmi. Dari SDK dipastikan: `CHANNEL-ID`, public key sandbox, cara verifikasi webhook, dan header debug sandbox. DANA juga meminta menjalankan skrip UAT resmi (`https://github.com/dana-id/uat-script`) sebelum integrasi; belum dijalankan.
+
 Lingkup: hanya **QRIS MPM** (EraPay menampilkan QR, pembeli memindai). Tidak dibaca dan tidak dicakup: QRIS CPM, Gapura, DANA Widget, Disbursement, Merchant Management.
 
 Item bertanda **BELUM JELAS** tidak ada atau bertentangan di dokumentasi. Jangan ditebak di kode; uji di sandbox atau tanyakan ke DANA (Discord developer, tertaut di docs mereka).
@@ -14,11 +16,11 @@ Per environment, dari dasbor DANA (sandbox: `https://dashboard.dana.id/sandbox/`
 |---|---|
 | `merchant_id` | `merchantId` di body |
 | `client_id` | Header `X-PARTNER-ID` (juga disebut clientId) |
-| `private_key` | RSA-2048 (PKCS#8 atau PKCS#1). Secret. Penanda tangan request. |
+| `private_key` | RSA-2048 (PKCS#8 atau PKCS#1), PEM atau base64 polos seperti disalin dari dasbor DANA. Secret. Penanda tangan request. |
 | `store_id` | `storeId` di Generate QRIS (**wajib**). Dari mana nilainya: **BELUM JELAS** (kemungkinan externalShopId dari Create Shop). |
 | `sub_merchant_id` | Opsional, harus terdaftar lewat Create Division. |
-| `channel_id` | Header `CHANNEL-ID`, maks 5 karakter. Nilai yang benar: **BELUM JELAS** (contoh docs `95221`). |
-| `dana_public_key` | Memverifikasi webhook. Docs mencantumkan satu key; apakah itu sandbox saja: **BELUM JELAS**. Key produksi diminta ke tim DANA. |
+| `channel_id` | Header `CHANNEL-ID`, maks 5 karakter. **Opsional, bawaan `95221`**: SDK resmi DANA mengirim nilai tetap itu di semua request. |
+| `dana_public_key` | Memverifikasi webhook. Key di docs (`authentication-asymmetric`) terkonfirmasi sebagai **key sandbox** (konstanta `sandboxWebhookPublicKey` di SDK). Key produksi diminta ke tim DANA. Bukan Public Key di dasbor kredensial (itu pasangan private key Anda). |
 | `callback_url` | Alamat Finish Notify, didaftarkan di dasbor developer. Host API, bukan host web. |
 
 `Client Secret` dikeluarkan DANA tapi jalur asymmetric tidak memakainya. Jangan taruh nilai asli di repo, docs, atau `.env` yang di-commit.
@@ -45,7 +47,8 @@ X-SIGNATURE  = base64(RSA-SHA256-PKCS1v15(privateKey, stringToSign))
 - Body harus persis byte yang dihash: minify (tanpa spasi), lalu kirim byte yang sama.
 - Header lain: `Content-Type: application/json`, `X-PARTNER-ID`, `X-EXTERNAL-ID` (unik per hari, maks 36), `CHANNEL-ID`, `ORIGIN` (opsional).
 - Timeout yang diharapkan DANA: 8 detik.
-- **BELUM JELAS**: apakah `relativePath` memuat query string (tidak ada query di API QRIS), dan apakah "minify" menjaga urutan key (jaga urutan struct di Go).
+- SDK resmi memakai path saja (tanpa query) dan SHA-256 atas body persis yang dikirim. Adapter menandatangani byte yang sama dengan yang dikirim (JSON tanpa spasi, urutan field mengikuti struct/map terurut, tanpa escape HTML).
+- Di **sandbox** adapter mengirim `X-Debug-Mode: true` (seperti SDK untuk Gapura): kegagalan membawa alasan di `additionalInfo.debugMessage`, yang ditampilkan ke operator (disaring). Belum dikonfirmasi bahwa QRIS mendukungnya; header ini tidak pernah dikirim ke produksi.
 
 ## Panggilan keluar
 
@@ -101,8 +104,8 @@ Hanya `01`/`00` yang jelas teramati dari contoh docs; belum satu pun teramati di
 `POST /v1.0/debit/notify` ke `callback_url`. Header sama seperti request biasa (`X-SIGNATURE`, `X-TIMESTAMP`, `X-PARTNER-ID`, `X-EXTERNAL-ID`, `CHANNEL-ID`).
 
 - Body penting: `originalPartnerReferenceNo`, `originalReferenceNo`, `merchantId`, `amount{value,currency}`, `latestTransactionStatus` (**hanya `00` sukses atau `05` ditutup/kedaluwarsa**), `createdTime`, `finishedTime`, `additionalInfo.paymentInfo{paidTime, payOptionInfos[]{payMethod,payOption,payAmount,chargeAmount}}`, `additionalInfo.extendInfo.closedReason` (bila ditutup).
-- Verifikasi: string `POST:<path>:lowercase(hex(sha256(minify(body)))):X-TIMESTAMP`, diverifikasi dengan **public key DANA** (kebalikan dari signing keluar). Gagal berarti tolak.
-- Path yang ditandatangani: adapter menerima path URL yang dipanggil DANA **atau** `/v1.0/debit/notify`. **BELUM JELAS** yang mana yang DANA pakai (tangkap satu callback sandbox), dan toleransi `X-TIMESTAMP` untuk anti-replay, dan format persis minify pihak DANA. Tangkap callback sandbox nyata sebelum menulis verifikasi, dan verifikasi atas byte mentah yang diterima, jangan re-encode.
+- Verifikasi: string `POST:<path>:lowercase(hex(sha256(body))):X-TIMESTAMP`, diverifikasi dengan **public key DANA** (kebalikan dari signing keluar). Gagal berarti tolak. Menurut SDK resmi, `<path>` adalah path request yang DANA kirim (URL yang didaftarkan), dan body yang di-hash bisa **byte persis yang diterima** atau versi tanpa spasi; adapter mencoba keduanya, dan juga `/v1.0/debit/notify`. Perbaikan artefak proxy milik SDK (escape kutip, spasi di nama key) tidak ditiru.
+- **BELUM JELAS**: toleransi `X-TIMESTAMP` untuk anti-replay (tidak ada di docs maupun SDK). Tanpa jendela replay, keamanan bertumpu pada konfirmasi inquiry. Cocokkan dengan satu callback sandbox nyata sebelum go-live.
 - Callback tidak boleh mengubah status sendirian: cocokkan dengan Query Payment dulu (pola sama dengan IDS dan finpay).
 - Balasan: JSON `{"responseCode":"2005600","responseMessage":"Successful"}` (handler webhook memakainya lewat `gateway.WebhookAcker`; gateway lain tetap menerima `{"status":"ok"}`). Signature salah dijawab 400 dengan body umum EraPay, bukan format DANA. Jawab `5005601` bila gagal diproses; DANA mengulang berkala sampai **7 hari**, maka handler harus idempoten dan menangani urutan terbalik atau duplikat.
 - `payOption` mencakup `NETWORK_PAY_PG_QRIS` dan dompet lain (acquirer QRIS menerima e-wallet lain), jadi `payMethod` bukan hanya DANA.
@@ -130,8 +133,9 @@ File CSV harian, delimiter `;`, nama `MERCHANT_SETTLEMENT_<MID>_<UNIT>_<UNITNAME
 
 ## Yang harus dijawab sebelum kode (urut prioritas)
 
-1. Skema referensi pendek untuk `partnerReferenceNo` (maks 25 karakter).
-2. Asal `storeId` dan nilai `CHANNEL-ID`.
-3. Tangkap callback sandbox nyata: path yang ditandatangani, timestamp, urutan key.
+1. ~~Skema referensi pendek~~ dan ~~`CHANNEL-ID`~~ (selesai: base36 25 karakter; `95221`).
+2. Asal `storeId`.
+3. Tangkap callback sandbox nyata untuk mencocokkan verifikasi (path, byte body) dan melihat toleransi timestamp.
 4. Perilaku create ulang dengan referensi sama, dan status `02`.
 5. Pengiriman dan format settlement QRIS, model fee.
+6. Jalankan skrip UAT resmi DANA (`dana-id/uat-script`) dengan kredensial sandbox.
