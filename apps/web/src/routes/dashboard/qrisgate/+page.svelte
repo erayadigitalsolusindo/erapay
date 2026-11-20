@@ -43,11 +43,11 @@
 			<form method="POST" action="?/account" use:enhance autocomplete="off" class="grid max-w-xl gap-3">
 				<div>
 					<label class="lbl mb-1" for="qg-key">{t('qg.acc.apiKey')}</label>
-					<input id="qg-key" name="api_key" required minlength="16" maxlength="200" placeholder="qg_live_…" class="inp" />
+					<input id="qg-key" name="api_key" required={!acc?.configured} minlength="16" maxlength="200" placeholder={acc?.configured ? t('qg.acc.keep') : 'qg_live_…'} class="inp" />
 				</div>
 				<div>
 					<label class="lbl mb-1" for="qg-sec">{t('qg.acc.secret')}</label>
-					<input id="qg-sec" name="webhook_secret" type="password" required minlength="16" maxlength="200" class="inp" />
+					<input id="qg-sec" name="webhook_secret" type="password" required={!acc?.configured} minlength="16" maxlength="200" placeholder={acc?.configured ? t('qg.acc.keep') : ''} class="inp" />
 				</div>
 				<div><button class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.acc.save')}</button></div>
 			</form>

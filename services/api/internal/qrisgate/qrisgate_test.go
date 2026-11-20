@@ -328,6 +328,9 @@ func TestSaveAccountEncryptsAndStartsPendingActivation(t *testing.T) {
 			t.Fatalf("SaveAccount(%q,%q) = %v; want ErrInvalid", c[0], c[1], err)
 		}
 	}
+	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", goodKey, ""); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("first save with only a key: %v", err)
+	}
 	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "req-1", goodKey, goodSecret); err != nil {
 		t.Fatal(err)
 	}
@@ -352,6 +355,28 @@ func TestSaveAccountEncryptsAndStartsPendingActivation(t *testing.T) {
 	}
 	if acc, _ := e.svc.Account(ctx, e.merchant); acc.ActivationStatus != "active" || acc.KeyHint != "…9999" {
 		t.Fatalf("after rotation: %+v", acc)
+	}
+	// Edit one field at a time: blank keeps the stored value, activation is untouched.
+	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", "", "whsec-rotated-secret-1"); err != nil {
+		t.Fatal(err)
+	}
+	if k, sec, _ := e.svc.Credentials(ctx, e.merchant); k != "qg_live_rotatedkey9999" || sec != "whsec-rotated-secret-1" {
+		t.Fatalf("secret-only edit: %q %q", k, sec)
+	}
+	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", "qg_live_newkeyonly77777", ""); err != nil {
+		t.Fatal(err)
+	}
+	if k, sec, _ := e.svc.Credentials(ctx, e.merchant); k != "qg_live_newkeyonly77777" || sec != "whsec-rotated-secret-1" {
+		t.Fatalf("key-only edit: %q %q", k, sec)
+	}
+	if acc, _ := e.svc.Account(ctx, e.merchant); acc.ActivationStatus != "active" || acc.KeyHint != "…7777" {
+		t.Fatalf("after partial edits: %+v", acc)
+	}
+	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", "bad", ""); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("invalid replacement key: %v", err)
+	}
+	if k, _, _ := e.svc.Credentials(ctx, e.merchant); k != "qg_live_newkeyonly77777" {
+		t.Fatal("a rejected edit changed the stored key")
 	}
 	if _, _, err := e.svc.Credentials(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrNoAccount) {
 		t.Fatalf("unknown merchant: %v", err)

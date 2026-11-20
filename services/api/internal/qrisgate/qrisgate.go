@@ -325,23 +325,21 @@ func (s *Service) Account(ctx context.Context, merchantID string) (Account, erro
 
 // SaveAccount stores the tenant's own key and webhook secret (encrypted) and makes sure a gateway account row
 // exists in pending_confirmation: that row is the per-merchant flag, OFF until DEWA activates it.
+//
+// It is also the edit path: once an account exists, a blank apiKey or webhookSecret keeps the stored value, so a
+// tenant can rotate just the key or just the secret without revoking anything. Editing never changes the
+// activation state DEWA set; the first save needs both values.
 func (s *Service) SaveAccount(ctx context.Context, merchantID, userID, requestID, apiKey, webhookSecret string) error {
 	if s.box == nil {
 		return ErrUnavailable
 	}
 	apiKey, webhookSecret = strings.TrimSpace(apiKey), strings.TrimSpace(webhookSecret)
-	if !strings.HasPrefix(apiKey, "qg_live_") || len(apiKey) < 16 || len(apiKey) > 200 || len(webhookSecret) < 16 || len(webhookSecret) > 200 ||
+	if (apiKey != "" && (!strings.HasPrefix(apiKey, "qg_live_") || len(apiKey) < 16 || len(apiKey) > 200)) ||
+		(webhookSecret != "" && (len(webhookSecret) < 16 || len(webhookSecret) > 200)) ||
 		strings.ContainsAny(apiKey+webhookSecret, " \t\r\n") {
 		return ErrInvalid
 	}
-	keyEnc, err := s.box.Seal([]byte(apiKey), aad(merchantID, "api_key"))
-	if err != nil {
-		return err
-	}
-	secEnc, err := s.box.Seal([]byte(webhookSecret), aad(merchantID, "webhook_secret"))
-	if err != nil {
-		return err
-	}
+	changedKey, changedSecret := apiKey != "", webhookSecret != ""
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -353,6 +351,38 @@ func (s *Service) SaveAccount(ctx context.Context, merchantID, userID, requestID
 	}
 	if sandbox { // QRISGate documents no sandbox: it only exists for real merchants
 		return ErrUnavailable
+	}
+	// Lock the existing row so two edits (one per field) cannot overwrite each other.
+	var keyEnc, secEnc []byte
+	err = tx.QueryRow(ctx, `SELECT api_key_enc, webhook_secret_enc FROM qrisgate_accounts WHERE merchant_id = $1 FOR UPDATE`, merchantID).Scan(&keyEnc, &secEnc)
+	exists := !errors.Is(err, pgx.ErrNoRows)
+	if err != nil && exists {
+		return err
+	}
+	if apiKey == "" || webhookSecret == "" {
+		if !exists {
+			return ErrInvalid // first save needs both
+		}
+		if apiKey == "" {
+			b, err := s.box.Open(keyEnc, aad(merchantID, "api_key"))
+			if err != nil {
+				return err
+			}
+			apiKey = string(b)
+		}
+		if webhookSecret == "" {
+			b, err := s.box.Open(secEnc, aad(merchantID, "webhook_secret"))
+			if err != nil {
+				return err
+			}
+			webhookSecret = string(b)
+		}
+	}
+	if keyEnc, err = s.box.Seal([]byte(apiKey), aad(merchantID, "api_key")); err != nil {
+		return err
+	}
+	if secEnc, err = s.box.Seal([]byte(webhookSecret), aad(merchantID, "webhook_secret")); err != nil {
+		return err
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO qrisgate_accounts (merchant_id, api_key_enc, webhook_secret_enc, key_hint, updated_by)
@@ -367,7 +397,8 @@ func (s *Service) SaveAccount(ctx context.Context, merchantID, userID, requestID
 		VALUES ($1::uuid, 'qrisgate', 'production', $2, 'pending_confirmation') ON CONFLICT (merchant_id, gateway, environment) DO NOTHING`, merchantID, merchantID); err != nil {
 		return err
 	}
-	if err := audit.Record(ctx, tx, audit.Entry{ActorID: userID, Action: "qrisgate_account.save", EntityType: "merchant", EntityID: merchantID, RequestID: requestID}); err != nil {
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: userID, Action: "qrisgate_account.save", EntityType: "merchant", EntityID: merchantID, RequestID: requestID,
+		Metadata: map[string]any{"edit": exists, "api_key_changed": changedKey, "webhook_secret_changed": changedSecret}}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

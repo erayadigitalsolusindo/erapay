@@ -57,7 +57,7 @@ export const qgId = {
 	'qg.acc.suspended': 'Ditangguhkan',
 	'qg.acc.suspended.note': 'Akun QRISGate Anda ditangguhkan. Hubungi admin EraPay.',
 	'qg.acc.title': 'Akun QRISGate',
-	'qg.acc.help': 'Salin URL webhook di bawah ke dashboard QRISGate, lalu isi API key dan secret webhook dari sana. Nilai tidak pernah ditampilkan lagi setelah disimpan.',
+	'qg.acc.help': 'QRISGate adalah layanan terpisah: API key dan secret webhook dibuat di dashboard QRISGate Anda. Salin URL webhook di bawah ke sana, lalu tempel API key dan secret webhook-nya di sini. Setelah disimpan nilainya tidak ditampilkan lagi (hanya 4 karakter terakhir kunci). Untuk mengganti, isi kolom yang berubah saja; kolom kosong tidak mengubah apa pun.',
 	'qg.acc.key': 'API key tersimpan',
 	'qg.acc.hook': 'URL webhook',
 	'qg.acc.apiKey': 'API key (qg_live_…)',
@@ -73,7 +73,8 @@ export const qgId = {
 	'qg.apk.s1': 'Izinkan pemasangan dari sumber ini di HP (APK dipasang langsung, bukan dari Play Store).',
 	'qg.apk.s2': 'Buka aplikasi, isi URL webhook (https), secret bersama, dan nama paket aplikasi bank atau e-wallet, satu per baris.',
 	'qg.apk.s3': 'Beri izin akses notifikasi, lalu matikan penghemat baterai untuk aplikasi ini.',
-	'qg.apk.s4': 'Tekan "Kirim tes ke webhook" untuk memastikan penerima bisa memverifikasi.'
+	'qg.apk.s4': 'Tekan "Kirim tes ke webhook" untuk memastikan penerima bisa memverifikasi.',
+	'qg.acc.keep': 'Kosongkan untuk tetap memakai yang tersimpan'
 };
 
 export const qgEn: Record<keyof typeof qgId, string> = {
@@ -150,7 +151,8 @@ export const qgEn: Record<keyof typeof qgId, string> = {
 	'qg.apk.s1': 'Allow installs from this source on the phone (the APK is sideloaded, not from the Play Store).',
 	'qg.apk.s2': 'Open the app and enter the webhook URL (https), the shared secret, and the package names of your bank or e-wallet apps, one per line.',
 	'qg.apk.s3': 'Grant notification access, then turn off battery saving for this app.',
-	'qg.apk.s4': 'Tap "Send test to webhook" to confirm the receiver can verify it.'
+	'qg.apk.s4': 'Tap "Send test to webhook" to confirm the receiver can verify it.',
+	'qg.acc.keep': 'Leave blank to keep the stored value'
 };
 
 export const qgJa: Record<keyof typeof qgId, string> = {
@@ -227,5 +229,6 @@ export const qgJa: Record<keyof typeof qgId, string> = {
 	'qg.apk.s1': '端末でこの提供元からのインストールを許可してください(Play ストアではなく APK を直接インストールします)。',
 	'qg.apk.s2': 'アプリを開き、Webhook URL (https)、共有シークレット、銀行や電子ウォレットアプリのパッケージ名を 1 行ずつ入力します。',
 	'qg.apk.s3': '通知へのアクセスを許可し、このアプリの省電力を無効にしてください。',
-	'qg.apk.s4': '「Webhook にテスト送信」を押して、受信側が検証できることを確認してください。'
+	'qg.apk.s4': '「Webhook にテスト送信」を押して、受信側が検証できることを確認してください。',
+	'qg.acc.keep': '空欄のままなら保存済みの値を維持します'
 };
