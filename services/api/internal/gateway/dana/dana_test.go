@@ -494,3 +494,13 @@ func TestDebugHeaderOnlyInSandbox(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestAmbiguousErrorKeepsDanaReason(t *testing.T) {
+	a := newAdapter(t, func(w http.ResponseWriter, _ *http.Request) {
+		reply(w, 500, `{"responseCode":"5005501","responseMessage":"Internal Server Error","additionalInfo":{"debugMessage":"merchant not active"}}`)
+	})
+	_, err := create(a)
+	if !gateway.IsAmbiguous(err) || !strings.Contains(err.Error(), "merchant not active") || !strings.Contains(err.Error(), "Internal Server Error") {
+		t.Fatalf("err = %v", err)
+	}
+}

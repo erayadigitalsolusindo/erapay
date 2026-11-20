@@ -310,7 +310,11 @@ func classify(status int, env envelope, okCode string) error {
 	} else if status >= 400 && status < 500 {
 		return &gateway.Error{Kind: gateway.Rejected, Code: rc, HTTPStatus: status, Message: reason(env)}
 	}
-	return &gateway.Error{Kind: gateway.Ambiguous, Code: rc, HTTPStatus: status, Retryable: true, Message: "gateway outcome unknown"}
+	msg := "gateway outcome unknown"
+	if r := reason(env); r != "" { // DANA's own words (and sandbox debugMessage) make a 5xx diagnosable
+		msg += ": " + r
+	}
+	return &gateway.Error{Kind: gateway.Ambiguous, Code: rc, HTTPStatus: status, Retryable: true, Message: msg}
 }
 
 // reason is the sanitized text shown to operators: DANA's message plus, in sandbox, its debug reason.
