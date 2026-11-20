@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -80,7 +82,19 @@ func (d Deps) applyWebhook(r *http.Request, sandbox bool, gw string, body []byte
 	ev, err := v.VerifyWebhook(r.Header, r.URL.Path, body)
 	switch {
 	case errors.Is(err, gateway.ErrInvalidSignature):
-		d.Log.Warn("webhook signature rejected", "request_id", rid, "gateway", gw)
+		// Header NAMES only (never values) and the failing check: enough to see that a gateway names its headers
+		// differently or signs another way, without logging a signature or a secret.
+		var se *gateway.SignatureError
+		reason := ""
+		if errors.As(err, &se) {
+			reason = se.Reason
+		}
+		names := make([]string, 0, len(r.Header))
+		for k := range r.Header {
+			names = append(names, k)
+		}
+		sort.Strings(names)
+		d.Log.Warn("webhook signature rejected", "request_id", rid, "gateway", gw, "reason", reason, "method", r.Method, "header_names", strings.Join(names, ","))
 		return http.StatusBadRequest
 	case err != nil:
 		d.Log.Warn("webhook authentic but unusable", "request_id", rid, "gateway", gw, "err", err)

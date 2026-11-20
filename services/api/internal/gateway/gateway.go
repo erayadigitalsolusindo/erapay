@@ -166,6 +166,16 @@ type ConnectionTester interface {
 // ErrInvalidSignature: the notification is not authentic. Callers answer 4xx and change nothing.
 var ErrInvalidSignature = errors.New("gateway: invalid webhook signature")
 
+// SignatureError is an ErrInvalidSignature that also says WHICH check failed (e.g. "missing_signature_header",
+// "timestamp_skew:512s", "signature_mismatch"). The reason is for operator logs only: it is never sent back to the
+// caller, and it never contains a secret, a signature, or a body.
+type SignatureError struct{ Reason string }
+
+func (e *SignatureError) Error() string {
+	return "gateway: invalid webhook signature (" + e.Reason + ")"
+}
+func (e *SignatureError) Is(target error) bool { return target == ErrInvalidSignature }
+
 // WebhookEvent is an authenticated, normalized inbound payment notification.
 // It carries no PII: adapters must drop payer data while parsing.
 type WebhookEvent struct {

@@ -48,24 +48,31 @@ func merchantFromPath(path string) (string, bool) {
 // constant-time) and parses a QRISGate notification. The signature may carry a "sha256=" prefix (not yet
 // confirmed which form the real service sends, so both are accepted). DedupKey is the Delivery-Id.
 func (a *Adapter) VerifyWebhook(h http.Header, path string, body []byte) (gateway.WebhookEvent, error) {
+	bad := func(reason string) (gateway.WebhookEvent, error) {
+		return gateway.WebhookEvent{}, &gateway.SignatureError{Reason: reason}
+	}
 	merchantID, ok := merchantFromPath(path)
 	if !ok {
-		return gateway.WebhookEvent{}, gateway.ErrInvalidSignature
+		return bad("no_merchant_id_in_path")
 	}
-	ts, err := strconv.ParseInt(h.Get("X-QRISGate-Timestamp"), 10, 64)
-	sig := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(h.Get("X-QRISGate-Signature"))), "sha256=")
-	if err != nil || sig == "" {
-		return gateway.WebhookEvent{}, gateway.ErrInvalidSignature
+	rawTS, rawSig := h.Get("X-QRISGate-Timestamp"), h.Get("X-QRISGate-Signature")
+	if rawSig == "" {
+		return bad("missing_signature_header")
 	}
+	ts, err := strconv.ParseInt(rawTS, 10, 64)
+	if err != nil {
+		return bad("missing_or_bad_timestamp_header")
+	}
+	sig := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(rawSig)), "sha256=")
 	if d := a.cfg.Now().Unix() - ts; d > int64(MaxSkew/time.Second) || d < -int64(MaxSkew/time.Second) {
-		return gateway.WebhookEvent{}, gateway.ErrInvalidSignature
+		return bad("timestamp_skew:" + strconv.FormatInt(d, 10) + "s")
 	}
 	_, secret, err := a.cfg.Creds.Credentials(context.Background(), merchantID)
 	if err != nil || secret == "" {
-		return gateway.WebhookEvent{}, gateway.ErrInvalidSignature
+		return bad("no_credentials_for_merchant")
 	}
 	if !hmac.Equal([]byte(Signature(secret, ts, body)), []byte(sig)) {
-		return gateway.WebhookEvent{}, gateway.ErrInvalidSignature
+		return bad("signature_mismatch")
 	}
 	var n notification
 	if json.Unmarshal(body, &n) != nil || n.OrderID == "" {

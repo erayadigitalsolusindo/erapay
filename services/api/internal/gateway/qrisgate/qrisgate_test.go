@@ -192,3 +192,44 @@ func TestTestWebhookUsesTheStoredSecretAndNeverLeaksIt(t *testing.T) {
 		t.Fatalf("bad merchant id accepted: %+v", steps)
 	}
 }
+
+func TestRejectionNamesTheFailingCheckWithoutLeakingSecrets(t *testing.T) {
+	a, _ := newAdapter(t, func(w http.ResponseWriter, r *http.Request) {})
+	body := []byte(`{"external_order_id":"` + payID + `"}`)
+	pathA := "/webhooks/qrisgate/" + merchantA
+	now := int64(1_700_000_000)
+	reason := func(h http.Header, path string) string {
+		_, err := a.VerifyWebhook(h, path, body)
+		var se *gateway.SignatureError
+		if !errors.As(err, &se) || !errors.Is(err, gateway.ErrInvalidSignature) {
+			t.Fatalf("not a signature error: %v", err)
+		}
+		return se.Reason
+	}
+	good := hook("secretA-0123456789", now, string(body), "payment.paid", "d")
+	if r := reason(http.Header{}, "/webhooks/qrisgate"); r != "no_merchant_id_in_path" {
+		t.Errorf("path: %s", r)
+	}
+	if r := reason(http.Header{}, pathA); r != "missing_signature_header" {
+		t.Errorf("no headers: %s", r)
+	}
+	noTS := good.Clone()
+	noTS.Del("X-QRISGate-Timestamp")
+	if r := reason(noTS, pathA); r != "missing_or_bad_timestamp_header" {
+		t.Errorf("no timestamp: %s", r)
+	}
+	if r := reason(hook("secretA-0123456789", now-400, string(body), "payment.paid", "d"), pathA); r != "timestamp_skew:400s" {
+		t.Errorf("skew: %s", r)
+	}
+	if r := reason(hook("secretA-0123456789", now, string(body), "payment.paid", "d"), "/webhooks/qrisgate/44444444-4444-4444-4444-444444444444"); r != "no_credentials_for_merchant" {
+		t.Errorf("no credentials: %s", r)
+	}
+	if r := reason(hook("wrong-wrong-wrong-wrong", now, string(body), "payment.paid", "d"), pathA); r != "signature_mismatch" {
+		t.Errorf("mismatch: %s", r)
+	}
+	for _, r := range []string{reason(good.Clone(), pathA+"x")} {
+		if strings.Contains(r, "secretA") || strings.Contains(r, good.Get("X-QRISGate-Signature")) {
+			t.Errorf("reason leaks a secret or signature: %s", r)
+		}
+	}
+}
