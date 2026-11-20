@@ -18,7 +18,7 @@ import (
 // MaxSkew is how far the notification timestamp may differ from now.
 const MaxSkew = 300 * time.Second
 
-// Signature is hex(HMAC-SHA256(secret, timestamp + "." + rawBody)).
+// Signature is hex(HMAC-SHA256(secret, timestamp + "." + rawBody)), the scheme apps/listener-android signs with.
 func Signature(secret string, timestamp int64, body []byte) string {
 	m := hmac.New(sha256.New, []byte(secret))
 	m.Write([]byte(strconv.FormatInt(timestamp, 10) + "."))
@@ -27,13 +27,16 @@ func Signature(secret string, timestamp int64, body []byte) string {
 }
 
 type notification struct {
-	Event       string `json:"event"`
-	Transaction string `json:"transaction_id"`
-	OrderID     string `json:"external_order_id"`
-	BaseAmount  int64  `json:"base_amount"`
+	Event      string `json:"event"`
+	DeliveryID string `json:"delivery_id"`
+	Package    string `json:"package"`
+	Title      string `json:"title"`
+	Text       string `json:"text"`
+	Amount     *int64 `json:"amount"`
+	PostedAt   string `json:"posted_at"`
 }
 
-// merchantFromPath reads the merchant id out of /webhooks/qrisgate/<merchant_id>: each merchant gives QRISGate
+// merchantFromPath reads the merchant id out of /webhooks/qrisgate/<merchant_id>: the listener is configured with
 // that URL, and the secret that verifies it is that merchant's own.
 func merchantFromPath(path string) (string, bool) {
 	i := strings.Index(path, "/qrisgate/")
@@ -44,9 +47,11 @@ func merchantFromPath(path string) (string, bool) {
 	return id, uuidRe.MatchString(id)
 }
 
-// VerifyWebhook authenticates (HMAC over timestamp.rawBody with the merchant's webhook secret, 5 minute skew,
-// constant-time) and parses a QRISGate notification. The signature may carry a "sha256=" prefix (not yet
-// confirmed which form the real service sends, so both are accepted). DedupKey is the Delivery-Id.
+// VerifyWebhook authenticates a notification from the merchant's listener (X-Listener-Timestamp, X-Listener-Signature
+// = HMAC over timestamp.rawBody with the merchant's listener secret, 5 minute skew, constant-time compare; an optional
+// "sha256=" prefix is accepted) and matches it to a payment. It returns a PAID event for exactly one payment whose pay
+// amount equals the notification's amount; anything else (test, unmatched, ignored, replay of an unmatched one) comes
+// back with no PaymentRef, which the caller acknowledges without changing a payment.
 func (a *Adapter) VerifyWebhook(h http.Header, path string, body []byte) (gateway.WebhookEvent, error) {
 	bad := func(reason string) (gateway.WebhookEvent, error) {
 		return gateway.WebhookEvent{}, &gateway.SignatureError{Reason: reason}
@@ -55,71 +60,80 @@ func (a *Adapter) VerifyWebhook(h http.Header, path string, body []byte) (gatewa
 	if !ok {
 		return bad("no_merchant_id_in_path")
 	}
-	rawTS, rawSig := h.Get("X-QRISGate-Timestamp"), h.Get("X-QRISGate-Signature")
+	rawSig := h.Get("X-Listener-Signature")
 	if rawSig == "" {
 		return bad("missing_signature_header")
 	}
-	ts, err := strconv.ParseInt(rawTS, 10, 64)
+	ts, err := strconv.ParseInt(h.Get("X-Listener-Timestamp"), 10, 64)
 	if err != nil {
 		return bad("missing_or_bad_timestamp_header")
 	}
-	sig := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(rawSig)), "sha256=")
 	if d := a.cfg.Now().Unix() - ts; d > int64(MaxSkew/time.Second) || d < -int64(MaxSkew/time.Second) {
 		return bad("timestamp_skew:" + strconv.FormatInt(d, 10) + "s")
 	}
-	_, secret, err := a.cfg.Creds.Credentials(context.Background(), merchantID)
+	secret, err := a.cfg.Port.ListenerSecret(context.Background(), merchantID)
 	if err != nil || secret == "" {
-		return bad("no_credentials_for_merchant")
+		return bad("no_listener_secret_for_merchant")
 	}
+	sig := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(rawSig)), "sha256=")
 	if !hmac.Equal([]byte(Signature(secret, ts, body)), []byte(sig)) {
 		return bad("signature_mismatch")
 	}
 	var n notification
-	if json.Unmarshal(body, &n) != nil || n.OrderID == "" {
-		return gateway.WebhookEvent{}, errors.New("qrisgate webhook: unusable payload")
+	if json.Unmarshal(body, &n) != nil {
+		return gateway.WebhookEvent{}, errors.New("qrisgate listener: unusable payload")
 	}
-	delivery := h.Get("X-QRISGate-Delivery-Id")
+	if n.Event == "listener.test" {
+		return gateway.WebhookEvent{RawStatus: "TEST", MerchantID: merchantID}, nil
+	}
+	delivery := h.Get("X-Listener-Delivery-Id")
 	if delivery == "" {
-		return gateway.WebhookEvent{}, errors.New("qrisgate webhook: missing delivery id")
+		delivery = n.DeliveryID
 	}
-	raw := strings.ToUpper(strings.TrimPrefix(h.Get("X-QRISGate-Event"), "payment."))
-	if raw == "" {
-		raw = strings.ToUpper(strings.TrimPrefix(n.Event, "payment."))
+	if delivery == "" || n.Package == "" {
+		return gateway.WebhookEvent{}, errors.New("qrisgate listener: missing delivery id or package")
 	}
-	if raw == "PAID" || raw == "EXPIRED" || raw == "CANCELLED" {
-		st, ok := a.MapStatus(raw)
-		return gateway.WebhookEvent{PaymentRef: n.OrderID, RawStatus: raw, Status: st, StatusOK: ok,
-			Amount: n.BaseAmount, Currency: "IDR", DedupKey: Code + ":webhook:" + delivery, MerchantID: merchantID}, nil
+	posted, err := time.Parse(time.RFC3339, n.PostedAt)
+	if err != nil {
+		posted = a.cfg.Now() // a device with a broken clock must not be able to widen the matching window
 	}
-	return gateway.WebhookEvent{PaymentRef: n.OrderID, RawStatus: raw, Amount: n.BaseAmount, Currency: "IDR",
-		DedupKey: Code + ":webhook:" + delivery, MerchantID: merchantID}, nil
+	var amount int64
+	if n.Amount != nil {
+		amount = *n.Amount
+	}
+	pid, base, matched, err := a.cfg.Port.MatchNotification(context.Background(), merchantID, delivery, n.Package, n.Title, n.Text, amount, posted)
+	if err != nil {
+		return gateway.WebhookEvent{}, err // transient (database): the caller answers 5xx and the listener retries
+	}
+	if !matched {
+		return gateway.WebhookEvent{RawStatus: "UNMATCHED", MerchantID: merchantID}, nil
+	}
+	st, ok := a.MapStatus("PAID")
+	return gateway.WebhookEvent{PaymentRef: pid, RawStatus: "PAID", Status: st, StatusOK: ok, Amount: base, Currency: "IDR",
+		DedupKey: Code + ":listener:" + delivery, MerchantID: merchantID}, nil
 }
 
-var _ gateway.WebhookVerifier = (*Adapter)(nil)
-
-// TestWebhook checks, without any network call, that this merchant's stored webhook secret works: it builds a
-// notification for a payment that does not exist, signs it with the stored secret exactly like QRISGate would, and
-// verifies it through VerifyWebhook. It proves the credentials are saved and readable and that the signing scheme
-// round-trips; it does not prove that QRISGate can reach the public URL or that its own secret matches. The
-// secret itself is never returned.
+// TestWebhook checks, without any network call, that the merchant's listener secret works: it signs a test
+// notification with the stored secret exactly like the listener does and verifies it. The secret is never returned.
 func (a *Adapter) TestWebhook(ctx context.Context, merchantID string) []gateway.ConnectionStep {
 	if !uuidRe.MatchString(merchantID) {
-		return []gateway.ConnectionStep{{Name: "credentials", Code: "bad_merchant", Message: "invalid merchant id"}}
+		return []gateway.ConnectionStep{{Name: "secret", Code: "bad_merchant", Message: "invalid merchant id"}}
 	}
-	_, secret, err := a.cfg.Creds.Credentials(ctx, merchantID)
+	secret, err := a.cfg.Port.ListenerSecret(ctx, merchantID)
 	if err != nil || secret == "" {
-		return []gateway.ConnectionStep{{Name: "credentials", Code: "no_credentials", Message: "API key and webhook secret are not saved yet"}}
+		return []gateway.ConnectionStep{{Name: "secret", Code: "no_secret", Message: "no listener secret yet"}}
 	}
-	steps := []gateway.ConnectionStep{{Name: "credentials", OK: true}}
+	steps := []gateway.ConnectionStep{{Name: "secret", OK: true}}
 	now := a.cfg.Now()
-	body := []byte(`{"event":"payment.paid","transaction_id":"listener-test","external_order_id":"00000000-0000-0000-0000-000000000000","base_amount":10000}`)
+	body := []byte(`{"event":"listener.test","delivery_id":"erapay-self-test","package":"erapay.test","title":"Tes","text":"Rp 10.000 masuk (tes)"}`)
 	h := http.Header{}
-	h.Set("X-QRISGate-Timestamp", strconv.FormatInt(now.Unix(), 10))
-	h.Set("X-QRISGate-Signature", Signature(secret, now.Unix(), body))
-	h.Set("X-QRISGate-Event", "payment.paid")
-	h.Set("X-QRISGate-Delivery-Id", "erapay-self-test")
+	h.Set("X-Listener-Timestamp", strconv.FormatInt(now.Unix(), 10))
+	h.Set("X-Listener-Signature", "sha256="+Signature(secret, now.Unix(), body))
+	h.Set("X-Listener-Delivery-Id", "erapay-self-test")
 	if _, err := a.VerifyWebhook(h, "/webhooks/qrisgate/"+merchantID, body); err != nil {
 		return append(steps, gateway.ConnectionStep{Name: "signature", Code: "verify_failed", Message: "a test notification signed with the stored secret did not verify"})
 	}
 	return append(steps, gateway.ConnectionStep{Name: "signature", OK: true})
 }
+
+var _ gateway.WebhookVerifier = (*Adapter)(nil)

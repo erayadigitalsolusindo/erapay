@@ -24,7 +24,7 @@ function session(locals: App.Locals, cookies: import('@sveltejs/kit').Cookies) {
 
 // Semua aturan (nominal, izin, idempotency, saldo) ada di Go; di sini hanya meneruskan.
 export type ListenerInfo = { available: boolean; release?: { version_name: string; size_bytes: number; sha256: string; note?: string; created_at: string } };
-export type QGAccount = { configured: boolean; key_hint?: string; activation_status?: string; webhook_path: string };
+export type QGAccount = { has_qris: boolean; has_secret: boolean; packages: string[]; ready: boolean; activation_status?: string; webhook_path: string };
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch }) => {
 	const token = session(locals, cookies);

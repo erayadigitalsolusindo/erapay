@@ -4,232 +4,217 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/qrisgate"
 )
 
 const (
 	merchantA = "11111111-1111-1111-1111-111111111111"
 	merchantB = "22222222-2222-2222-2222-222222222222"
 	payID     = "33333333-3333-3333-3333-333333333333"
+	secretA   = "qls_secretA-0123456789"
 )
 
-type creds map[string][2]string
-
-func (c creds) Credentials(_ context.Context, id string) (string, string, error) {
-	v, ok := c[id]
-	if !ok {
-		return "", "", errors.New("not configured")
+// fakePort stands in for the domain service.
+type fakePort struct {
+	secrets  map[string]string
+	claimErr error
+	expired  bool
+	found    bool
+	matchPID string
+	matchErr error
+	got      struct {
+		pkg, title, text string
+		amount           int64
+		delivery         string
+		posted           time.Time
 	}
-	return v[0], v[1], nil
 }
 
-var testCreds = creds{merchantA: {"qg_live_keyA", "secretA-0123456789"}, merchantB: {"qg_live_keyB", "secretB-0123456789"}}
+func (f *fakePort) Claim(_ context.Context, merchantID, paymentID string, base int64, _ time.Time) (int64, string, error) {
+	if f.claimErr != nil {
+		return 0, "", f.claimErr
+	}
+	return base + 7, "QR:" + strconv.FormatInt(base+7, 10), nil
+}
+func (f *fakePort) ClaimExpired(context.Context, string) (bool, bool, error) {
+	return f.found, f.expired, nil
+}
+func (f *fakePort) ListenerSecret(_ context.Context, m string) (string, error) {
+	if s, ok := f.secrets[m]; ok {
+		return s, nil
+	}
+	return "", qrisgate.ErrNoAccount
+}
+func (f *fakePort) MatchNotification(_ context.Context, m, delivery, pkg, title, text string, amount int64, posted time.Time) (string, int64, bool, error) {
+	f.got.pkg, f.got.title, f.got.text, f.got.amount, f.got.delivery, f.got.posted = pkg, title, text, amount, delivery, posted
+	if f.matchErr != nil {
+		return "", 0, false, f.matchErr
+	}
+	return f.matchPID, 25_000, f.matchPID != "", nil
+}
 
-func newAdapter(t *testing.T, h http.HandlerFunc) (*Adapter, *httptest.Server) {
+var now0 = time.Unix(1_700_000_000, 0)
+
+func newAdapter(t *testing.T, f *fakePort) *Adapter {
 	t.Helper()
-	srv := httptest.NewServer(h)
-	t.Cleanup(srv.Close)
-	a, err := New(Config{BaseURL: srv.URL, Creds: testCreds, Now: func() time.Time { return time.Unix(1_700_000_000, 0) }})
+	if f.secrets == nil {
+		f.secrets = map[string]string{merchantA: secretA}
+	}
+	a, err := New(Config{Port: f, Now: func() time.Time { return now0 }})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return a, srv
+	return a
 }
 
 func createReq() gateway.CreateRequest {
-	return gateway.CreateRequest{Reference: payID, AccountRef: merchantA, Method: "QRIS", Amount: 25_000, Currency: "IDR"}
+	return gateway.CreateRequest{Reference: payID, AccountRef: merchantA, Method: "QRIS", Amount: 25_000, Currency: "IDR", ExpiresAt: now0.Add(15 * time.Minute)}
 }
 
-func TestCreateSuccessUsesMerchantKeyAndKeepsBaseAmount(t *testing.T) {
-	a, _ := newAdapter(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer qg_live_keyA" || r.URL.Path != "/api/v1/transactions" {
-			t.Errorf("auth %q path %q", r.Header.Get("Authorization"), r.URL.Path)
-		}
-		w.WriteHeader(201)
-		_, _ = w.Write([]byte(`{"data":{"transaction_id":"tx-1","base_amount":25000,"unique_code":7,"total_amount":25007,"status":"PENDING","qr_string":"000201QR"}}`))
-	})
+func TestCreateReturnsTheDynamicQRAndClassifiesFailures(t *testing.T) {
+	a := newAdapter(t, &fakePort{})
 	res, err := a.CreatePayment(context.Background(), createReq())
-	if err != nil || res.GatewayReference != "tx-1" || res.QRPayload != "000201QR" || res.RawStatus != "PENDING" {
+	if err != nil || res.QRPayload != "QR:25007" || res.RawStatus != "PENDING" || res.GatewayReference != "own-"+payID {
 		t.Fatalf("%+v %v", res, err)
 	}
 	if st, ok := a.MapStatus(res.RawStatus); !ok || st != gateway.StatusPending {
-		t.Fatalf("PENDING maps to %v %v", st, ok)
+		t.Fatal("PENDING must map to pending")
 	}
-}
-
-func TestCreateFailureClassification(t *testing.T) {
-	for code, want := range map[int]gateway.Kind{401: gateway.Rejected, 422: gateway.Rejected, 429: gateway.Ambiguous, 500: gateway.Ambiguous, 409: gateway.Ambiguous, 408: gateway.Ambiguous} {
-		a, _ := newAdapter(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(code) })
+	for name, c := range map[string]struct {
+		err  error
+		want gateway.Kind
+	}{
+		"no QRIS saved":   {qrisgate.ErrNoQRIS, gateway.Rejected},
+		"no free code":    {qrisgate.ErrNoFreeCode, gateway.Rejected},
+		"database broken": {errors.New("db down"), gateway.Ambiguous},
+	} {
+		a := newAdapter(t, &fakePort{claimErr: c.err})
 		_, err := a.CreatePayment(context.Background(), createReq())
 		var ge *gateway.Error
-		if !errors.As(err, &ge) || ge.Kind != want {
-			t.Errorf("http %d: %v; want kind %v", code, err, want)
+		if !errors.As(err, &ge) || ge.Kind != c.want {
+			t.Errorf("%s: %v; want kind %v", name, err, c.want)
 		}
 	}
-	// A timeout is Ambiguous: the request may have landed (never "failed").
-	a, srv := newAdapter(t, func(w http.ResponseWriter, r *http.Request) {})
-	srv.Close()
-	if _, err := a.CreatePayment(context.Background(), createReq()); !gateway.IsAmbiguous(err) {
-		t.Errorf("transport failure: %v; want ambiguous", err)
-	}
-	// A merchant without credentials is rejected before any call.
-	req := createReq()
-	req.AccountRef = "44444444-4444-4444-4444-444444444444"
-	if _, err := a.CreatePayment(context.Background(), req); !gateway.IsRejected(err) {
-		t.Errorf("no credentials: %v; want rejected", err)
-	}
-	// An incomplete or amount-changing answer is never trusted as a created QR.
-	a, _ = newAdapter(t, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"data":{"transaction_id":"x","base_amount":1,"qr_string":"q"}}`))
-	})
-	if _, err := a.CreatePayment(context.Background(), createReq()); !gateway.IsAmbiguous(err) {
-		t.Errorf("amount changed: %v", err)
+	for name, mod := range map[string]func(*gateway.CreateRequest){
+		"other method":     func(r *gateway.CreateRequest) { r.Method = "VA" },
+		"bad merchant ref": func(r *gateway.CreateRequest) { r.AccountRef = "x" },
+		"bad payment ref":  func(r *gateway.CreateRequest) { r.Reference = "x" },
+		"zero amount":      func(r *gateway.CreateRequest) { r.Amount = 0 },
+		"no expiry":        func(r *gateway.CreateRequest) { r.ExpiresAt = time.Time{} },
+	} {
+		r := createReq()
+		mod(&r)
+		if _, err := a.CreatePayment(context.Background(), r); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
 	}
 }
 
-func TestGetPaymentMapsStatusAndNeedsGatewayReference(t *testing.T) {
-	a, _ := newAdapter(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/transactions/tx-1" {
-			t.Errorf("path %q", r.URL.Path)
+func TestInquiryOnlyEverReportsPendingOrExpired(t *testing.T) {
+	for name, c := range map[string]struct {
+		f    fakePort
+		want string
+	}{"open": {fakePort{found: true}, "PENDING"}, "ran out": {fakePort{found: true, expired: true}, "EXPIRED"}} {
+		q, err := newAdapter(t, &c.f).GetPayment(context.Background(), gateway.QueryRequest{Reference: payID, AccountRef: merchantA})
+		if err != nil || q.RawStatus != c.want || q.Amount != -1 {
+			t.Errorf("%s: %+v %v", name, q, err)
 		}
-		_, _ = w.Write([]byte(`{"data":{"transaction_id":"tx-1","base_amount":25000,"status":"PAID","paid_at":"2026-11-20T10:00:00Z"}}`))
-	})
-	q, err := a.GetPayment(context.Background(), gateway.QueryRequest{Reference: payID, GatewayReference: "tx-1", AccountRef: merchantA})
-	if st, ok := a.MapStatus(q.RawStatus); err != nil || !ok || st != gateway.StatusSucceeded || q.Amount != 25_000 || q.PaidAt == nil {
-		t.Fatalf("%+v %v", q, err)
 	}
-	if _, err := a.GetPayment(context.Background(), gateway.QueryRequest{Reference: payID, AccountRef: merchantA}); !gateway.IsAmbiguous(err) {
-		t.Fatalf("no gateway reference: %v; want ambiguous", err)
-	}
-	if _, ok := a.MapStatus("SOMETHING_NEW"); ok {
-		t.Fatal("an unknown status must stay unmapped")
+	if _, err := newAdapter(t, &fakePort{}).GetPayment(context.Background(), gateway.QueryRequest{Reference: payID, AccountRef: merchantA}); !gateway.IsAmbiguous(err) {
+		t.Errorf("no claim: %v; want ambiguous", err)
 	}
 }
 
-func hook(secret string, ts int64, body, event, delivery string) http.Header {
+func hook(secret string, ts int64, body, delivery string) http.Header {
 	h := http.Header{}
-	h.Set("X-QRISGate-Timestamp", strconv.FormatInt(ts, 10))
-	h.Set("X-QRISGate-Signature", Signature(secret, ts, []byte(body)))
-	h.Set("X-QRISGate-Event", event)
-	h.Set("X-QRISGate-Delivery-Id", delivery)
+	h.Set("X-Listener-Timestamp", strconv.FormatInt(ts, 10))
+	h.Set("X-Listener-Signature", "sha256="+Signature(secret, ts, []byte(body)))
+	h.Set("X-Listener-Delivery-Id", delivery)
 	return h
 }
 
-func TestWebhookVerification(t *testing.T) {
-	a, _ := newAdapter(t, func(w http.ResponseWriter, r *http.Request) {})
-	body := `{"event":"payment.paid","transaction_id":"tx-1","external_order_id":"` + payID + `","base_amount":25000,"total_amount":25007}`
-	pathA := "/webhooks/qrisgate/" + merchantA
-	now := int64(1_700_000_000)
+const notif = `{"event":"notification.posted","delivery_id":"d-1","package":"id.dana","title":"Dana masuk","text":"Rp 25.007 dari BUDI","amount":25007,"posted_at":"2026-11-20T10:00:00Z"}`
 
-	ev, err := a.VerifyWebhook(hook("secretA-0123456789", now, body, "payment.paid", "d-1"), pathA, []byte(body))
-	if err != nil || ev.PaymentRef != payID || ev.Status != gateway.StatusSucceeded || !ev.StatusOK || ev.Amount != 25_000 || ev.MerchantID != merchantA || ev.DedupKey != "qrisgate:webhook:d-1" {
-		t.Fatalf("valid: %+v %v", ev, err)
-	}
-	// Retry with the same delivery id = same dedup key (duplicate webhook is a no-op downstream).
-	ev2, _ := a.VerifyWebhook(hook("secretA-0123456789", now+30, body, "payment.paid", "d-1"), pathA, []byte(body))
-	if ev2.DedupKey != ev.DedupKey {
-		t.Fatalf("dedup keys differ: %q %q", ev.DedupKey, ev2.DedupKey)
-	}
-	// "sha256=" prefix is accepted.
-	h := hook("secretA-0123456789", now, body, "payment.paid", "d-2")
-	h.Set("X-QRISGate-Signature", "sha256="+h.Get("X-QRISGate-Signature"))
-	if _, err := a.VerifyWebhook(h, pathA, []byte(body)); err != nil {
-		t.Fatalf("prefixed signature: %v", err)
-	}
-	for name, c := range map[string]struct {
-		h    http.Header
-		path string
-		body string
-	}{
-		"wrong secret":        {hook("nope-nope-nope-nope", now, body, "payment.paid", "d"), pathA, body},
-		"other merchant path": {hook("secretA-0123456789", now, body, "payment.paid", "d"), "/webhooks/qrisgate/" + merchantB, body},
-		"tampered body":       {hook("secretA-0123456789", now, body, "payment.paid", "d"), pathA, body + " "},
-		"stale timestamp":     {hook("secretA-0123456789", now-301, body, "payment.paid", "d"), pathA, body},
-		"future timestamp":    {hook("secretA-0123456789", now+301, body, "payment.paid", "d"), pathA, body},
-		"no merchant in path": {hook("secretA-0123456789", now, body, "payment.paid", "d"), "/webhooks/qrisgate", body},
-		"unknown merchant":    {hook("secretA-0123456789", now, body, "payment.paid", "d"), "/webhooks/qrisgate/44444444-4444-4444-4444-444444444444", body},
-		"missing signature":   {http.Header{}, pathA, body},
-	} {
-		if _, err := a.VerifyWebhook(c.h, c.path, []byte(c.body)); !errors.Is(err, gateway.ErrInvalidSignature) {
-			t.Errorf("%s: %v; want ErrInvalidSignature", name, err)
-		}
-	}
-	// Expired and cancelled map; an unknown event stays unmapped (recorded, never applied).
-	for ev, want := range map[string]gateway.Status{"payment.expired": gateway.StatusExpired, "payment.cancelled": gateway.StatusCancelled} {
-		got, err := a.VerifyWebhook(hook("secretA-0123456789", now, body, ev, "d-"+ev), pathA, []byte(body))
-		if err != nil || !got.StatusOK || got.Status != want {
-			t.Errorf("%s: %+v %v", ev, got, err)
-		}
-	}
-	got, err := a.VerifyWebhook(hook("secretA-0123456789", now, body, "payment.refunded", "d-x"), pathA, []byte(body))
-	if err != nil || got.StatusOK {
-		t.Errorf("unknown event: %+v %v; want unmapped", got, err)
-	}
-}
+func TestWebhookMatchesSignedNotificationsOnly(t *testing.T) {
+	f := &fakePort{matchPID: payID}
+	a := newAdapter(t, f)
+	path := "/webhooks/qrisgate/" + merchantA
+	ts := now0.Unix()
 
-func TestTestWebhookUsesTheStoredSecretAndNeverLeaksIt(t *testing.T) {
-	a, _ := newAdapter(t, func(w http.ResponseWriter, r *http.Request) {})
-	steps := a.TestWebhook(context.Background(), merchantA)
-	if len(steps) != 2 || !steps[0].OK || !steps[1].OK {
-		t.Fatalf("configured merchant: %+v", steps)
+	ev, err := a.VerifyWebhook(hook(secretA, ts, notif, "d-1"), path, []byte(notif))
+	if err != nil || ev.PaymentRef != payID || ev.Status != gateway.StatusSucceeded || !ev.StatusOK || ev.Amount != 25_000 || ev.MerchantID != merchantA || ev.DedupKey != "qrisgate:listener:d-1" {
+		t.Fatalf("matched: %+v %v", ev, err)
 	}
-	for _, st := range steps {
-		if strings.Contains(st.Message+st.Code, "secretA") {
-			t.Fatalf("the secret leaked into a step: %+v", st)
-		}
+	if f.got.pkg != "id.dana" || f.got.amount != 25007 || f.got.delivery != "d-1" || !strings.Contains(f.got.text, "BUDI") || f.got.posted.Year() != 2026 {
+		t.Fatalf("what the domain was asked: %+v", f.got)
 	}
-	steps = a.TestWebhook(context.Background(), "44444444-4444-4444-4444-444444444444")
-	if len(steps) != 1 || steps[0].OK || steps[0].Code != "no_credentials" {
-		t.Fatalf("merchant without credentials: %+v", steps)
+	// Unmatched, and a test event, are acknowledged without a payment.
+	f.matchPID = ""
+	if ev, err := a.VerifyWebhook(hook(secretA, ts, notif, "d-2"), path, []byte(notif)); err != nil || ev.PaymentRef != "" || ev.StatusOK {
+		t.Fatalf("unmatched: %+v %v", ev, err)
 	}
-	if steps = a.TestWebhook(context.Background(), "not-a-uuid"); steps[0].OK {
-		t.Fatalf("bad merchant id accepted: %+v", steps)
+	test := `{"event":"listener.test","delivery_id":"t","package":"x.y","title":"Tes","text":"Rp 10.000"}`
+	if ev, err := a.VerifyWebhook(hook(secretA, ts, test, "t"), path, []byte(test)); err != nil || ev.PaymentRef != "" || ev.RawStatus != "TEST" {
+		t.Fatalf("test event: %+v %v", ev, err)
 	}
-}
+	// A transient database failure is NOT an invalid signature (the listener must retry).
+	f.matchErr = errors.New("db down")
+	if _, err := a.VerifyWebhook(hook(secretA, ts, notif, "d-3"), path, []byte(notif)); err == nil || errors.Is(err, gateway.ErrInvalidSignature) {
+		t.Fatalf("transient failure: %v", err)
+	}
+	f.matchErr = nil
 
-func TestRejectionNamesTheFailingCheckWithoutLeakingSecrets(t *testing.T) {
-	a, _ := newAdapter(t, func(w http.ResponseWriter, r *http.Request) {})
-	body := []byte(`{"external_order_id":"` + payID + `"}`)
-	pathA := "/webhooks/qrisgate/" + merchantA
-	now := int64(1_700_000_000)
-	reason := func(h http.Header, path string) string {
-		_, err := a.VerifyWebhook(h, path, body)
+	reason := func(h http.Header, p string, b string) string {
+		_, err := a.VerifyWebhook(h, p, []byte(b))
 		var se *gateway.SignatureError
 		if !errors.As(err, &se) || !errors.Is(err, gateway.ErrInvalidSignature) {
 			t.Fatalf("not a signature error: %v", err)
 		}
 		return se.Reason
 	}
-	good := hook("secretA-0123456789", now, string(body), "payment.paid", "d")
-	if r := reason(http.Header{}, "/webhooks/qrisgate"); r != "no_merchant_id_in_path" {
-		t.Errorf("path: %s", r)
-	}
-	if r := reason(http.Header{}, pathA); r != "missing_signature_header" {
-		t.Errorf("no headers: %s", r)
-	}
-	noTS := good.Clone()
-	noTS.Del("X-QRISGate-Timestamp")
-	if r := reason(noTS, pathA); r != "missing_or_bad_timestamp_header" {
-		t.Errorf("no timestamp: %s", r)
-	}
-	if r := reason(hook("secretA-0123456789", now-400, string(body), "payment.paid", "d"), pathA); r != "timestamp_skew:400s" {
-		t.Errorf("skew: %s", r)
-	}
-	if r := reason(hook("secretA-0123456789", now, string(body), "payment.paid", "d"), "/webhooks/qrisgate/44444444-4444-4444-4444-444444444444"); r != "no_credentials_for_merchant" {
-		t.Errorf("no credentials: %s", r)
-	}
-	if r := reason(hook("wrong-wrong-wrong-wrong", now, string(body), "payment.paid", "d"), pathA); r != "signature_mismatch" {
-		t.Errorf("mismatch: %s", r)
-	}
-	for _, r := range []string{reason(good.Clone(), pathA+"x")} {
-		if strings.Contains(r, "secretA") || strings.Contains(r, good.Get("X-QRISGate-Signature")) {
-			t.Errorf("reason leaks a secret or signature: %s", r)
+	noTS := hook(secretA, ts, notif, "d")
+	noTS.Del("X-Listener-Timestamp")
+	for want, got := range map[string]string{
+		"no_merchant_id_in_path":          reason(http.Header{}, "/webhooks/qrisgate", notif),
+		"missing_signature_header":        reason(http.Header{}, path, notif),
+		"missing_or_bad_timestamp_header": reason(noTS, path, notif),
+		"timestamp_skew:400s":             reason(hook(secretA, ts-400, notif, "d"), path, notif),
+		"no_listener_secret_for_merchant": reason(hook(secretA, ts, notif, "d"), "/webhooks/qrisgate/"+merchantB, notif),
+		"signature_mismatch":              reason(hook("qls_wrong-wrong-wrong-0", ts, notif, "d"), path, notif),
+	} {
+		if got != want {
+			t.Errorf("reason %q; want %q", got, want)
 		}
+		if strings.Contains(got, "secret") && !strings.Contains(got, "no_listener_secret") {
+			t.Errorf("reason leaks: %q", got)
+		}
+	}
+	if got := reason(hook(secretA, ts, notif, "d"), path, notif+" "); got != "signature_mismatch" {
+		t.Errorf("tampered body: %q", got)
+	}
+}
+
+func TestTestWebhookNeverLeaksTheSecret(t *testing.T) {
+	a := newAdapter(t, &fakePort{})
+	steps := a.TestWebhook(context.Background(), merchantA)
+	if len(steps) != 2 || !steps[0].OK || !steps[1].OK {
+		t.Fatalf("configured: %+v", steps)
+	}
+	for _, st := range steps {
+		if strings.Contains(st.Message+st.Code, "secretA") {
+			t.Fatalf("leak: %+v", st)
+		}
+	}
+	if steps = a.TestWebhook(context.Background(), merchantB); len(steps) != 1 || steps[0].OK || steps[0].Code != "no_secret" {
+		t.Fatalf("no secret: %+v", steps)
+	}
+	if steps = a.TestWebhook(context.Background(), "nope"); steps[0].OK {
+		t.Fatalf("bad id: %+v", steps)
 	}
 }

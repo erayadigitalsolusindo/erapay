@@ -5,7 +5,17 @@ import { API_HOST } from '../../../lib/utils/apiHost';
 import { call, done, read, str } from '../../../lib/server/gw';
 import type { Actions, PageServerLoad } from './$types';
 
-export type QGAccount = { configured: boolean; key_hint?: string; activation_status?: string; webhook_path: string };
+export type QGAccount = {
+	has_qris: boolean;
+	qris_name?: string;
+	has_secret: boolean;
+	secret_hint?: string;
+	packages: string[];
+	ready: boolean;
+	activation_status?: string;
+	webhook_path: string;
+};
+export type QGEvent = { id: string; received_at: string; package: string; title: string; text: string; amount?: number; status: 'matched' | 'unmatched' | 'ignored'; reason?: string; payment_id?: string };
 export type Endpoint = { id: string; url: string; status: string; secret_hint: string; created_at: string; secret?: string };
 export type Delivery = {
 	id: string;
@@ -44,6 +54,7 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 	// Tab QRISGate: akun QRISGate tenant (kunci dan secret milik tenant); hanya ada bila API-nya mendukung dan izin merchant:read ada.
 	const canQG = perms.includes('merchant:read');
 	const qg = canQG ? await read<{ account: QGAccount }>(fetch, token, '/v1/qrisgate') : null;
+	const qgEvents = qg ? await read<{ data: QGEvent[] }>(fetch, token, '/v1/qrisgate/events') : null;
 	const tab =
 		wanted === 'qrisgate' && qg ? 'qrisgate' : wanted === 'webhooks' && canHooks ? 'webhooks' : wanted === 'keys' && canKeys ? 'keys' : canKeys ? 'keys' : 'webhooks';
 	const [keys, endpoints, deliveries] = await Promise.all([
@@ -54,6 +65,7 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 	return {
 		tab,
 		qgAccount: qg?.account ?? null,
+		qgEvents: qgEvents?.data ?? [],
 		canEditQG: perms.includes('merchant:write'),
 		// URL publik API untuk disalin ke dashboard QRISGate; kosong = halaman menampilkan placeholder.
 		apiBase: (process.env.ERAPAY_PUBLIC_API_URL || API_HOST).replace(/\/$/, ''),
@@ -74,12 +86,25 @@ export const actions: Actions = {
 		const r = await call<{ ok: boolean; steps: { name: string; ok: boolean }[] }>(fetch, token, 'POST', '/v1/qrisgate/account/test', {});
 		return r.ok ? { qgTest: r.value } : fail(400, { accountError: true });
 	},
-	// Simpan atau ganti kunci QRISGate. Kolom kosong = pertahankan nilai tersimpan (aturan ada di Go).
-	qgAccount: async ({ request, cookies, fetch, locals }) => {
+	// Tiga langkah penyiapan QRISGate, masing-masing berdiri sendiri. Aturan (validasi QRIS, CRC, paket, rahasia) ada di Go.
+	qgQris: async ({ request, cookies, fetch, locals }) => {
 		const token = session(locals, cookies, 'merchant:write');
 		const f = await request.formData();
-		const r = await call(fetch, token, 'PUT', '/v1/qrisgate/account', { api_key: str(f, 'api_key'), webhook_secret: str(f, 'webhook_secret') });
-		return r.ok ? { savedAccount: true } : fail(r.status === 422 ? 422 : 400, { accountError: true, unavailable: r.status === 422 });
+		const r = await call<{ qris_name: string }>(fetch, token, 'PUT', '/v1/qrisgate/qris', { payload: str(f, 'payload') });
+		return r.ok ? { savedQris: r.value.qris_name } : fail(r.status === 422 ? 422 : 400, { accountError: 'qris', unavailable: r.status === 422 });
+	},
+	qgPackages: async ({ request, cookies, fetch, locals }) => {
+		const token = session(locals, cookies, 'merchant:write');
+		const f = await request.formData();
+		const packages = str(f, 'packages').split(/[\s,]+/).filter(Boolean);
+		const r = await call(fetch, token, 'PUT', '/v1/qrisgate/packages', { packages });
+		return r.ok ? { savedPackages: true } : fail(r.status === 422 ? 422 : 400, { accountError: 'packages', unavailable: r.status === 422 });
+	},
+	// Rahasia listener: hanya ada di respons ini; tidak disimpan di server web.
+	qgSecret: async ({ cookies, fetch, locals }) => {
+		const token = session(locals, cookies, 'merchant:write');
+		const r = await call<{ secret: string }>(fetch, token, 'POST', '/v1/qrisgate/listener-secret', {});
+		return r.ok ? { newSecret: r.value.secret } : fail(r.status === 422 ? 422 : 400, { accountError: 'secret', unavailable: r.status === 422 });
 	},
 	keyCreate: async ({ request, cookies, fetch, locals }) => {
 		const token = session(locals, cookies, KEY);

@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -36,8 +35,10 @@ var (
 	ErrInvalidState = errors.New("qrisgate: top-up is not in a state that allows this")
 	ErrSelfDecision = errors.New("qrisgate: requester cannot decide their own top-up")
 	ErrConflict     = errors.New("qrisgate: Idempotency-Key used with a different amount")
-	ErrNoAccount    = errors.New("qrisgate: credentials are not configured")
-	ErrUnavailable  = errors.New("qrisgate: saving credentials is unavailable (no encryption key or sandbox merchant)")
+	ErrNoAccount    = errors.New("qrisgate: the merchant has no QRISGate setup")
+	ErrNoQRIS       = errors.New("qrisgate: no static QRIS saved for this merchant")
+	ErrNoFreeCode   = errors.New("qrisgate: no free unique code for this amount right now")
+	ErrUnavailable  = errors.New("qrisgate: unavailable (no encryption key, or a sandbox merchant)")
 )
 
 // Payer creates the QRIS payment behind a top-up (satisfied by *payment.Orchestrator).
@@ -292,138 +293,4 @@ func (s *Service) History(ctx context.Context, merchantID string, limit int) ([]
 func isBadUUID(err error) bool {
 	var pe interface{ SQLState() string }
 	return errors.As(err, &pe) && pe.SQLState() == "22P02"
-}
-
-// ---- per-tenant QRISGate account (API key + webhook secret) ----
-
-func aad(merchantID, field string) []byte { return []byte("qrisgate/" + merchantID + "/" + field) }
-
-// Account is what the tenant may see: never the key or the secret, only a hint and the activation state.
-type Account struct {
-	Configured       bool   `json:"configured"`
-	KeyHint          string `json:"key_hint,omitempty"`
-	ActivationStatus string `json:"activation_status,omitempty"` // pending_confirmation | active | suspended; "" = no gateway account yet
-	WebhookPath      string `json:"webhook_path"`
-}
-
-func (s *Service) Account(ctx context.Context, merchantID string) (Account, error) {
-	a := Account{WebhookPath: "/webhooks/qrisgate/" + merchantID}
-	err := s.db.QueryRow(ctx, `SELECT key_hint FROM qrisgate_accounts WHERE merchant_id = $1`, merchantID).Scan(&a.KeyHint)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return a, nil
-	}
-	if err != nil {
-		return a, err
-	}
-	a.Configured = true
-	err = s.db.QueryRow(ctx, `SELECT activation_status FROM merchant_gateway_accounts WHERE merchant_id = $1 AND gateway = 'qrisgate' AND environment = 'production'`, merchantID).Scan(&a.ActivationStatus)
-	if errors.Is(err, pgx.ErrNoRows) {
-		err = nil
-	}
-	return a, err
-}
-
-// SaveAccount stores the tenant's own key and webhook secret (encrypted) and makes sure a gateway account row
-// exists in pending_confirmation: that row is the per-merchant flag, OFF until DEWA activates it.
-//
-// It is also the edit path: once an account exists, a blank apiKey or webhookSecret keeps the stored value, so a
-// tenant can rotate just the key or just the secret without revoking anything. Editing never changes the
-// activation state DEWA set; the first save needs both values.
-func (s *Service) SaveAccount(ctx context.Context, merchantID, userID, requestID, apiKey, webhookSecret string) error {
-	if s.box == nil {
-		return ErrUnavailable
-	}
-	apiKey, webhookSecret = strings.TrimSpace(apiKey), strings.TrimSpace(webhookSecret)
-	if (apiKey != "" && (!strings.HasPrefix(apiKey, "qg_live_") || len(apiKey) < 16 || len(apiKey) > 200)) ||
-		(webhookSecret != "" && (len(webhookSecret) < 16 || len(webhookSecret) > 200)) ||
-		strings.ContainsAny(apiKey+webhookSecret, " \t\r\n") {
-		return ErrInvalid
-	}
-	changedKey, changedSecret := apiKey != "", webhookSecret != ""
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-	var sandbox bool
-	if err := tx.QueryRow(ctx, `SELECT is_sandbox FROM merchants WHERE id = $1`, merchantID).Scan(&sandbox); err != nil {
-		return err
-	}
-	if sandbox { // QRISGate documents no sandbox: it only exists for real merchants
-		return ErrUnavailable
-	}
-	// Lock the existing row so two edits (one per field) cannot overwrite each other.
-	var keyEnc, secEnc []byte
-	err = tx.QueryRow(ctx, `SELECT api_key_enc, webhook_secret_enc FROM qrisgate_accounts WHERE merchant_id = $1 FOR UPDATE`, merchantID).Scan(&keyEnc, &secEnc)
-	exists := !errors.Is(err, pgx.ErrNoRows)
-	if err != nil && exists {
-		return err
-	}
-	if apiKey == "" || webhookSecret == "" {
-		if !exists {
-			return ErrInvalid // first save needs both
-		}
-		if apiKey == "" {
-			b, err := s.box.Open(keyEnc, aad(merchantID, "api_key"))
-			if err != nil {
-				return err
-			}
-			apiKey = string(b)
-		}
-		if webhookSecret == "" {
-			b, err := s.box.Open(secEnc, aad(merchantID, "webhook_secret"))
-			if err != nil {
-				return err
-			}
-			webhookSecret = string(b)
-		}
-	}
-	if keyEnc, err = s.box.Seal([]byte(apiKey), aad(merchantID, "api_key")); err != nil {
-		return err
-	}
-	if secEnc, err = s.box.Seal([]byte(webhookSecret), aad(merchantID, "webhook_secret")); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO qrisgate_accounts (merchant_id, api_key_enc, webhook_secret_enc, key_hint, updated_by)
-		VALUES ($1,$2,$3,$4,NULLIF($5,'')::uuid)
-		ON CONFLICT (merchant_id) DO UPDATE SET api_key_enc = EXCLUDED.api_key_enc, webhook_secret_enc = EXCLUDED.webhook_secret_enc,
-		    key_hint = EXCLUDED.key_hint, updated_by = EXCLUDED.updated_by, updated_at = now()`,
-		merchantID, keyEnc, secEnc, "…"+apiKey[len(apiKey)-4:], userID); err != nil {
-		return err
-	}
-	// gateway_ref = the merchant id: the adapter resolves this merchant's credentials from it.
-	if _, err := tx.Exec(ctx, `INSERT INTO merchant_gateway_accounts (merchant_id, gateway, environment, gateway_ref, activation_status)
-		VALUES ($1::uuid, 'qrisgate', 'production', $2, 'pending_confirmation') ON CONFLICT (merchant_id, gateway, environment) DO NOTHING`, merchantID, merchantID); err != nil {
-		return err
-	}
-	if err := audit.Record(ctx, tx, audit.Entry{ActorID: userID, Action: "qrisgate_account.save", EntityType: "merchant", EntityID: merchantID, RequestID: requestID,
-		Metadata: map[string]any{"edit": exists, "api_key_changed": changedKey, "webhook_secret_changed": changedSecret}}); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
-// Credentials implements the adapter's CredentialSource.
-func (s *Service) Credentials(ctx context.Context, merchantID string) (string, string, error) {
-	if s.box == nil {
-		return "", "", ErrNoAccount
-	}
-	var keyEnc, secEnc []byte
-	err := s.db.QueryRow(ctx, `SELECT api_key_enc, webhook_secret_enc FROM qrisgate_accounts WHERE merchant_id::text = $1`, merchantID).Scan(&keyEnc, &secEnc)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", ErrNoAccount
-	}
-	if err != nil {
-		return "", "", err
-	}
-	key, err := s.box.Open(keyEnc, aad(merchantID, "api_key"))
-	if err != nil {
-		return "", "", err
-	}
-	sec, err := s.box.Open(secEnc, aad(merchantID, "webhook_secret"))
-	if err != nil {
-		return "", "", err
-	}
-	return string(key), string(sec), nil
 }

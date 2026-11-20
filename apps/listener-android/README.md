@@ -7,6 +7,9 @@ ke sebuah **webhook** (mis. backend ARUS) dengan tanda tangan HMAC. Pola yang sa
 - Antrean kirim memakai WorkManager: retry otomatis saat offline/5xx/408/429; 4xx lain dianggap permanen (URL/secret salah).
 - Id kiriman stabil (`delivery_id`), jadi notifikasi yang dikirim ulang sistem tidak menggandakan event di penerima.
 
+## Dipakai dengan QRISGate EraPay
+Di menu Integrasi → tab QRISGate, EraPay menampilkan **URL webhook** (`…/webhooks/qrisgate/<merchant_id>`) dan membuat **rahasia listener** (`qls_…`, tampil sekali). Isikan keduanya di aplikasi ini, dengan nama paket yang sama seperti di langkah 2 tab itu. Penerima (EraPay) memverifikasi tanda tangan, mencocokkan nominal unik, dan melunasi pembayaran; lihat `docs/integrations/qrisgate.md`.
+
 ## Pakai
 1. Pasang APK, buka aplikasi, isi URL webhook, secret (min. 16 karakter), dan nama paket satu per baris
    (mis. `com.gojek.app`, `id.dana`). Nama paket lihat di halaman Play Store aplikasinya (`?id=...`).

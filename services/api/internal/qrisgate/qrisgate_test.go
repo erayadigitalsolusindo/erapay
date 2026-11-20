@@ -3,8 +3,10 @@ package qrisgate
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,6 +18,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/idempotency"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/payment"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/platformsetting"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/qris"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/secretbox"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/settlement"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/testdb"
@@ -313,79 +316,78 @@ func (e env) box(t *testing.T) {
 	e.svc.SetBox(b)
 }
 
-const goodKey = "qg_live_abcdefghij1234"
-const goodSecret = "whsec-0123456789abcdef"
+// staticQRIS builds a synthetic valid static QRIS (no real merchant).
+func staticQRIS(name string) string {
+	guid, nmid := "ID.CO.EXAMPLE.WWW", "936000000000000001"
+	inner := fmt.Sprintf("00%02d%s01%02d%s", len(guid), guid, len(nmid), nmid)
+	body := "000201" + "010211" + fmt.Sprintf("26%02d%s", len(inner), inner) + "52045812" + "5303360" + "5802ID" + fmt.Sprintf("59%02d%s", len(name), name) + "6007JAKARTA" + "6304"
+	return body + qris.CRC16(body)
+}
 
-func TestSaveAccountEncryptsAndStartsPendingActivation(t *testing.T) {
+func TestSetupStepsStoreEncryptedSecretOnceAndStartPendingActivation(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
-	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", goodKey, goodSecret); !errors.Is(err, ErrUnavailable) {
+	if _, err := e.svc.RotateListenerSecret(ctx, e.merchant, e.tenant, ""); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("without an encryption key: %v", err)
 	}
 	e.box(t)
-	for _, c := range [][2]string{{"nokey", goodSecret}, {"qg_live_short", goodSecret}, {goodKey, "short"}, {"qg_live_with space 1234", goodSecret}} {
-		if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", c[0], c[1]); !errors.Is(err, ErrInvalid) {
-			t.Fatalf("SaveAccount(%q,%q) = %v; want ErrInvalid", c[0], c[1], err)
+	if acc, _ := e.svc.Account(ctx, e.merchant); acc.HasQRIS || acc.Ready || acc.ActivationStatus != "" {
+		t.Fatalf("fresh account: %+v", acc)
+	}
+	if _, err := e.svc.SaveQRIS(ctx, e.merchant, e.tenant, "", "not a qris"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("garbage QRIS: %v", err)
+	}
+	for _, bad := range [][]string{nil, {}, {"nodot"}, {"com..x"}, {"com.ok", "bad name"}} {
+		if err := e.svc.SavePackages(ctx, e.merchant, e.tenant, "", bad); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("SavePackages(%v) = %v; want ErrInvalid", bad, err)
 		}
 	}
-	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", goodKey, ""); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("first save with only a key: %v", err)
+	info, err := e.svc.SaveQRIS(ctx, e.merchant, e.tenant, "", staticQRIS("TOKO CONTOH"))
+	if err != nil || info.MerchantName != "TOKO CONTOH" {
+		t.Fatalf("SaveQRIS: %+v %v", info, err)
 	}
-	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "req-1", goodKey, goodSecret); err != nil {
+	if err := e.svc.SavePackages(ctx, e.merchant, e.tenant, "", []string{"id.dana", "com.gojek.app", "id.dana"}); err != nil {
 		t.Fatal(err)
 	}
-	k, s, err := e.svc.Credentials(ctx, e.merchant)
-	if err != nil || k != goodKey || s != goodSecret {
-		t.Fatalf("round trip: %q %q %v", k, s, err)
+	secret, err := e.svc.RotateListenerSecret(ctx, e.merchant, e.tenant, "req-1")
+	if err != nil || !strings.HasPrefix(secret, "qls_") || len(secret) != 4+64 {
+		t.Fatalf("secret %q %v", secret, err)
+	}
+	got, err := e.svc.ListenerSecret(ctx, e.merchant)
+	if err != nil || got != secret {
+		t.Fatalf("round trip: %q %v", got, err)
 	}
 	var raw int
-	if err := e.db.QueryRow(ctx, `SELECT count(*) FROM qrisgate_accounts WHERE position(convert_to($1,'UTF8') in api_key_enc) > 0`, goodKey).Scan(&raw); err != nil || raw != 0 {
-		t.Fatalf("API key found in plaintext in the table: %d %v", raw, err)
+	if err := e.db.QueryRow(ctx, `SELECT count(*) FROM qrisgate_accounts WHERE position(convert_to($1,'UTF8') in listener_secret_enc) > 0`, secret).Scan(&raw); err != nil || raw != 0 {
+		t.Fatalf("secret found in plaintext: %d %v", raw, err)
 	}
 	acc, err := e.svc.Account(ctx, e.merchant)
-	if err != nil || !acc.Configured || acc.ActivationStatus != "pending_confirmation" || acc.KeyHint != "…1234" || acc.WebhookPath != "/webhooks/qrisgate/"+e.merchant {
+	if err != nil || !acc.Ready || !acc.HasSecret || acc.SecretHint != "…"+secret[len(secret)-4:] || acc.QRISName != "TOKO CONTOH" ||
+		strings.Join(acc.Packages, ",") != "com.gojek.app,id.dana" || acc.ActivationStatus != "pending_confirmation" || acc.WebhookPath != "/webhooks/qrisgate/"+e.merchant {
 		t.Fatalf("account: %+v %v", acc, err)
 	}
-	// Saving again keeps the activation state DEWA may already have set.
+	// Rotating makes the old secret useless and keeps the activation DEWA set.
 	if _, err := e.db.Exec(ctx, `UPDATE merchant_gateway_accounts SET activation_status = 'active' WHERE merchant_id = $1 AND gateway = 'qrisgate'`, e.merchant); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", "qg_live_rotatedkey9999", goodSecret); err != nil {
-		t.Fatal(err)
+	secret2, err := e.svc.RotateListenerSecret(ctx, e.merchant, e.tenant, "")
+	if err != nil || secret2 == secret {
+		t.Fatalf("rotation: %v", err)
 	}
-	if acc, _ := e.svc.Account(ctx, e.merchant); acc.ActivationStatus != "active" || acc.KeyHint != "…9999" {
-		t.Fatalf("after rotation: %+v", acc)
+	if got, _ := e.svc.ListenerSecret(ctx, e.merchant); got != secret2 {
+		t.Fatal("the old secret is still valid after rotation")
 	}
-	// Edit one field at a time: blank keeps the stored value, activation is untouched.
-	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", "", "whsec-rotated-secret-1"); err != nil {
-		t.Fatal(err)
+	if acc, _ := e.svc.Account(ctx, e.merchant); acc.ActivationStatus != "active" {
+		t.Fatalf("rotation changed activation: %+v", acc)
 	}
-	if k, sec, _ := e.svc.Credentials(ctx, e.merchant); k != "qg_live_rotatedkey9999" || sec != "whsec-rotated-secret-1" {
-		t.Fatalf("secret-only edit: %q %q", k, sec)
-	}
-	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", "qg_live_newkeyonly77777", ""); err != nil {
-		t.Fatal(err)
-	}
-	if k, sec, _ := e.svc.Credentials(ctx, e.merchant); k != "qg_live_newkeyonly77777" || sec != "whsec-rotated-secret-1" {
-		t.Fatalf("key-only edit: %q %q", k, sec)
-	}
-	if acc, _ := e.svc.Account(ctx, e.merchant); acc.ActivationStatus != "active" || acc.KeyHint != "…7777" {
-		t.Fatalf("after partial edits: %+v", acc)
-	}
-	if err := e.svc.SaveAccount(ctx, e.merchant, e.tenant, "", "bad", ""); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("invalid replacement key: %v", err)
-	}
-	if k, _, _ := e.svc.Credentials(ctx, e.merchant); k != "qg_live_newkeyonly77777" {
-		t.Fatal("a rejected edit changed the stored key")
-	}
-	if _, _, err := e.svc.Credentials(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrNoAccount) {
+	if _, err := e.svc.ListenerSecret(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, ErrNoAccount) {
 		t.Fatalf("unknown merchant: %v", err)
 	}
 	var sbx string
 	if err := e.db.QueryRow(ctx, `INSERT INTO merchants (legal_name, display_name, onboarding_status, is_sandbox, parent_id) VALUES ('S','S','approved',true,$1) RETURNING id::text`, e.merchant).Scan(&sbx); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.SaveAccount(ctx, sbx, e.tenant, "", goodKey, goodSecret); !errors.Is(err, ErrUnavailable) {
+	if _, err := e.svc.SaveQRIS(ctx, sbx, e.tenant, "", staticQRIS("X")); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("sandbox merchant: %v", err)
 	}
 }

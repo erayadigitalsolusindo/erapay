@@ -14,7 +14,9 @@
 		return () => clearInterval(id);
 	});
 	const acc = $derived(data.overview?.account);
-	const accState = $derived(!acc?.configured ? 'none' : acc.activation_status === 'active' ? 'active' : acc.activation_status === 'suspended' ? 'suspended' : 'pending');
+	const accState = $derived(
+		acc?.activation_status === 'suspended' ? 'suspended' : acc?.ready ? (acc.activation_status === 'active' ? 'active' : 'pending') : acc && (acc.has_qris || acc.has_secret || acc.packages.length > 0) ? 'incomplete' : 'none'
+	);
 	const when = (iso: string) => new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 </script>
 

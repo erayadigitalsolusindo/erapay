@@ -152,10 +152,10 @@ func run(log *slog.Logger) error {
 	settingsSvc := platformsetting.NewService(pool)
 	qgSvc := qrisgate.NewService(pool, settingsSvc, nil)
 	if box != nil {
-		// QRISGate keys are per tenant (encrypted in qrisgate_accounts), so it needs the encryption key. Registered
+		// QRISGate (our own mutation-detection gateway) keeps a per-tenant listener secret encrypted in qrisgate_accounts, so it needs the encryption key. Registered
 		// always; a merchant is only routed to it once DEWA activates their gateway account (the per-merchant flag).
 		qgSvc.SetBox(box)
-		qg, err := qrisgategw.New(qrisgategw.Config{Creds: qgSvc})
+		qg, err := qrisgategw.New(qrisgategw.Config{Port: qgSvc})
 		if err != nil {
 			return err
 		}

@@ -65,29 +65,70 @@ func (d Deps) qrisgateOverview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"fee": fee, "balance": bal, "currency": qrisgate.Currency, "max_topup": qrisgate.MaxTopup, "account": acc})
 }
 
-// qrisgateSaveAccount: PUT /v1/qrisgate/account {api_key, webhook_secret} (tenant session, merchant:write).
-// Write-only: the key and secret are never returned. The gateway stays OFF until DEWA activates the account.
-func (d Deps) qrisgateSaveAccount(w http.ResponseWriter, r *http.Request) {
+// The tenant sets up QRISGate in three independent steps (any order): their static QRIS, the allow-list of app
+// package names, and a listener secret. All need merchant:write; the gateway stays OFF until DEWA activates it.
+
+// qrisgateSaveQRIS: PUT /v1/qrisgate/qris {payload}.
+func (d Deps) qrisgateSaveQRIS(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		APIKey        string `json:"api_key"`
-		WebhookSecret string `json:"webhook_secret"`
+		Payload string `json:"payload"`
 	}
 	if _, ok := decodeStrict(w, r, 8<<10, &body); !ok {
 		return
 	}
 	p := PrincipalFrom(r.Context())
-	err := d.QRISGate.SaveAccount(r.Context(), p.MerchantID, p.UserID, middleware.GetReqID(r.Context()), body.APIKey, body.WebhookSecret)
+	info, err := d.QRISGate.SaveQRIS(r.Context(), p.MerchantID, p.UserID, middleware.GetReqID(r.Context()), body.Payload)
 	switch {
 	case errors.Is(err, qrisgate.ErrUnavailable):
-		writeError(w, r, http.StatusUnprocessableEntity, "QRISGATE_UNAVAILABLE", "QRISGate credentials cannot be saved for this account", false)
+		writeError(w, r, http.StatusUnprocessableEntity, "QRISGATE_UNAVAILABLE", "QRISGate cannot be set up for this account", false)
+	case errors.Is(err, qrisgate.ErrInvalid):
+		writeError(w, r, http.StatusBadRequest, "INVALID_QRIS", "not a valid static QRIS (check the text, its CRC, and that it has no fixed amount)", false)
 	case d.qrisgateErr(w, r, err):
-		acc, err := d.QRISGate.Account(r.Context(), p.MerchantID)
-		if err != nil {
-			d.internalErr(w, r, "qrisgate account", err)
-			return
-		}
-		writeJSON(w, http.StatusOK, acc)
+		writeJSON(w, http.StatusOK, map[string]any{"qris_name": info.MerchantName, "city": info.City})
 	}
+}
+
+// qrisgateSavePackages: PUT /v1/qrisgate/packages {packages: ["com.gojek.app", ...]}.
+func (d Deps) qrisgateSavePackages(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Packages []string `json:"packages"`
+	}
+	if _, ok := decodeStrict(w, r, 8<<10, &body); !ok {
+		return
+	}
+	p := PrincipalFrom(r.Context())
+	err := d.QRISGate.SavePackages(r.Context(), p.MerchantID, p.UserID, middleware.GetReqID(r.Context()), body.Packages)
+	switch {
+	case errors.Is(err, qrisgate.ErrUnavailable):
+		writeError(w, r, http.StatusUnprocessableEntity, "QRISGATE_UNAVAILABLE", "QRISGate cannot be set up for this account", false)
+	case errors.Is(err, qrisgate.ErrInvalid):
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "1-20 package names such as com.gojek.app", false)
+	case d.qrisgateErr(w, r, err):
+		writeJSON(w, http.StatusOK, map[string]any{"packages": body.Packages})
+	}
+}
+
+// qrisgateRotateSecret: POST /v1/qrisgate/listener-secret. The new secret is in this response only.
+func (d Deps) qrisgateRotateSecret(w http.ResponseWriter, r *http.Request) {
+	p := PrincipalFrom(r.Context())
+	secret, err := d.QRISGate.RotateListenerSecret(r.Context(), p.MerchantID, p.UserID, middleware.GetReqID(r.Context()))
+	switch {
+	case errors.Is(err, qrisgate.ErrUnavailable):
+		writeError(w, r, http.StatusUnprocessableEntity, "QRISGATE_UNAVAILABLE", "QRISGate cannot be set up for this account", false)
+	case d.qrisgateErr(w, r, err):
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusCreated, map[string]any{"secret": secret})
+	}
+}
+
+// qrisgateEvents: GET /v1/qrisgate/events: the last notifications received (matched, unmatched, ignored).
+func (d Deps) qrisgateEvents(w http.ResponseWriter, r *http.Request) {
+	rows, err := d.QRISGate.Events(r.Context(), PrincipalFrom(r.Context()).MerchantID, 30)
+	if err != nil {
+		d.internalErr(w, r, "qrisgate events", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": rows})
 }
 
 func (d Deps) qrisgateErr(w http.ResponseWriter, r *http.Request, err error) bool {

@@ -332,6 +332,12 @@ func (s *Service) Transition(ctx context.Context, in TransitionInput) (Result, e
 	if err := event(true); err != nil {
 		return Result{}, err
 	}
+	if direct && in.To.IsFinal() {
+		// Free the reserved pay amount (base + unique code) so another payment can use it. No-op for gateways without claims.
+		if _, err := tx.Exec(ctx, `UPDATE qrisgate_claims SET released_at = now() WHERE payment_id = $1 AND released_at IS NULL`, in.PaymentID); err != nil {
+			return Result{}, err
+		}
+	}
 	if purpose == PurposeQRISGateTopup && in.To.IsFinal() {
 		// A top-up is not a merchant sale: credit the tenant's QRISGate balance (or close the request) in this
 		// same transaction, and queue no merchant webhook.

@@ -12,10 +12,47 @@
 	let tab = $state<'keys' | 'webhooks' | 'qrisgate'>(data.tab as 'keys' | 'webhooks' | 'qrisgate');
 	let copied = $state('');
 	const qa = $derived(data.qgAccount);
-	const qgState = $derived(!qa?.configured ? 'none' : qa.activation_status === 'active' ? 'active' : qa.activation_status === 'suspended' ? 'suspended' : 'pending');
+	const qgState = $derived(
+		qa?.activation_status === 'suspended' ? 'suspended' : qa?.ready ? (qa.activation_status === 'active' ? 'active' : 'pending') : qa && (qa.has_qris || qa.has_secret || qa.packages.length > 0) ? 'incomplete' : 'none'
+	);
 	const qgHook = $derived((data.apiBase || API_HOST) + (qa?.webhook_path ?? ''));
-	const qgForm = $derived(form as { savedAccount?: boolean; accountError?: boolean; unavailable?: boolean; qgTest?: { ok: boolean; steps: { name: string; ok: boolean }[] } } | null);
-
+	type QGForm = {
+		savedQris?: string;
+		savedPackages?: boolean;
+		newSecret?: string;
+		accountError?: 'qris' | 'packages' | 'secret';
+		unavailable?: boolean;
+		qgTest?: { ok: boolean; steps: { name: string; ok: boolean }[] };
+	};
+	const qgForm = $derived(form as QGForm | null);
+	let qrisText = $state('');
+	let decodeFail = $state(false);
+	let pkgText = $state('');
+	$effect(() => {
+		pkgText = data.qgAccount?.packages.join('\n') ?? '';
+	});
+	// Baca gambar QR di browser (tidak diunggah ke server); hasilnya hanya mengisi kolom teks untuk diperiksa.
+	async function decodeImage(e: Event) {
+		decodeFail = false;
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		try {
+			const bmp = await createImageBitmap(file);
+			const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+			const c = document.createElement('canvas');
+			c.width = Math.round(bmp.width * scale);
+			c.height = Math.round(bmp.height * scale);
+			const ctx = c.getContext('2d')!;
+			ctx.drawImage(bmp, 0, 0, c.width, c.height);
+			const img = ctx.getImageData(0, 0, c.width, c.height);
+			const jsQR = (await import('jsqr')).default;
+			const r = jsQR(img.data, img.width, img.height);
+			if (r?.data) qrisText = r.data;
+			else decodeFail = true;
+		} catch {
+			decodeFail = true;
+		}
+	}
 	const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString(i18n.locale, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 	const keyState = (k: { revoked_at: string | null; expires_at: string | null }) =>
 		k.revoked_at ? 'revoked' : k.expires_at && new Date(k.expires_at) < new Date() ? 'expired' : 'active';
@@ -276,34 +313,69 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 {/if}
 
 {#if tab === 'qrisgate' && data.qgAccount}
+	{#if qgForm?.newSecret}
+		{@render secretBox('qgsecret', t('qg.sec.created'), t('qg.sec.warn'), qgForm.newSecret)}
+	{/if}
 	<section class="card mb-5 p-5" role="status">
 		<p class="text-sm font-bold">{t(`qg.acc.${qgState}` as const)}</p>
 		<p class="muted mt-1 text-xs">{t(`qg.acc.${qgState}.note` as const)}</p>
 	</section>
+	<p class="muted mb-4 text-xs">{t('qg.acc.help')}</p>
+
+	<!-- 1. QRIS statis -->
 	<section class="card mb-5 p-5">
-		<h2 class="text-sm font-bold">{t('qg.acc.title')}</h2>
-		<p class="muted mt-1 mb-3 text-xs">{t('qg.acc.help')}</p>
-		{#if qa?.configured}<p class="mb-2 text-xs font-semibold">{t('qg.acc.key')}: <span class="font-mono">{qa.key_hint}</span></p>{/if}
+		<h2 class="text-sm font-bold">1. {t('qg.s1.title')}</h2>
+		<p class="muted mt-1 mb-3 text-xs">{t('qg.s1.help')}</p>
+		{#if qa?.has_qris}<p class="mb-2 text-xs font-semibold text-emerald-700">✓ {t('qg.s1.saved')}: <b>{qa.qris_name}</b></p>{/if}
+		{#if data.canEditQG}
+			<form method="POST" action="?/qgQris" use:enhance autocomplete="off" class="grid w-full gap-3">
+				<div>
+					<label class="lbl mb-1" for="ig-qg-img">{t('qg.s1.image')}</label>
+					<input id="ig-qg-img" type="file" accept="image/*" onchange={decodeImage} class="inp" />
+					{#if decodeFail}<p class="mt-1 text-xs font-semibold text-red-700" role="alert">{t('qg.s1.decodeFail')}</p>{/if}
+				</div>
+				<div>
+					<label class="lbl mb-1" for="ig-qg-qris">{t('qg.s1.text')}</label>
+					<textarea id="ig-qg-qris" name="payload" bind:value={qrisText} required rows="4" maxlength="1024" placeholder="000201010211…" class="inp w-full font-mono text-[11px]"></textarea>
+				</div>
+				<div><button class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.s1.save')}</button></div>
+			</form>
+			{#if qgForm?.accountError === 'qris'}<p class="mt-2 text-xs font-semibold text-red-700" role="alert">{qgForm.unavailable ? t('qg.acc.unavailable') : t('qg.s1.invalid')}</p>{/if}
+			{#if qgForm?.savedQris}<p class="mt-2 text-xs font-semibold text-emerald-700" role="status">{t('qg.acc.saved')}</p>{/if}
+		{/if}
+	</section>
+
+	<!-- 2. Paket aplikasi -->
+	<section class="card mb-5 p-5">
+		<h2 class="text-sm font-bold">2. {t('qg.s2.title')}</h2>
+		<p class="muted mt-1 mb-3 text-xs">{t('qg.s2.help')}</p>
+		{#if data.canEditQG}
+			<form method="POST" action="?/qgPackages" use:enhance autocomplete="off" class="grid w-full gap-3">
+				<textarea name="packages" bind:value={pkgText} required rows="3" placeholder={'com.gojek.app\nid.dana'} class="inp w-full font-mono text-[11px]"></textarea>
+				<div><button class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.s2.save')}</button></div>
+			</form>
+			{#if qgForm?.accountError === 'packages'}<p class="mt-2 text-xs font-semibold text-red-700" role="alert">{qgForm.unavailable ? t('qg.acc.unavailable') : t('qg.s2.invalid')}</p>{/if}
+			{#if qgForm?.savedPackages}<p class="mt-2 text-xs font-semibold text-emerald-700" role="status">{t('qg.acc.saved')}</p>{/if}
+		{/if}
+	</section>
+
+	<!-- 3. Listener -->
+	<section class="card mb-5 p-5">
+		<h2 class="text-sm font-bold">3. {t('qg.s3.title')}</h2>
+		<p class="muted mt-1 mb-3 text-xs">{t('qg.s3.help')}</p>
 		<p class="mb-1 text-xs font-semibold">{t('qg.acc.hook')}</p>
 		<div class="mb-3 flex flex-wrap items-center gap-2">
 			<code class="block min-w-0 flex-1 rounded bg-ink/5 p-2 text-[11px] break-all">{qgHook}</code>
 			<button type="button" class="rounded-md border border-ink/15 px-3 py-1.5 text-[11px] font-bold hover:bg-ink/5" onclick={() => copy('qghook', qgHook)}>{copied === 'qghook' ? t('keys.copied') : t('keys.copy')}</button>
 		</div>
+		{#if qa?.has_secret}<p class="mb-2 text-xs font-semibold">{t('qg.s3.secret')}: <span class="font-mono">{qa.secret_hint}</span></p>{/if}
 		{#if data.canEditQG}
-			<form method="POST" action="?/qgAccount" use:enhance autocomplete="off" class="grid w-full gap-3 md:grid-cols-2">
-				<div>
-					<label class="lbl mb-1" for="ig-qg-key">{t('qg.acc.apiKey')}</label>
-					<input id="ig-qg-key" name="api_key" required={!qa?.configured} minlength="16" maxlength="200" placeholder={qa?.configured ? t('qg.acc.keep') : 'qg_live_…'} class="inp" />
-				</div>
-				<div>
-					<label class="lbl mb-1" for="ig-qg-sec">{t('qg.acc.secret')}</label>
-					<input id="ig-qg-sec" name="webhook_secret" type="password" required={!qa?.configured} minlength="16" maxlength="200" placeholder={qa?.configured ? t('qg.acc.keep') : ''} class="inp" />
-				</div>
-				<div class="md:col-span-2"><button class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{t('qg.acc.save')}</button></div>
+			<form method="POST" action="?/qgSecret" use:enhance>
+				<button class="rounded-full bg-merah px-5 py-2 text-xs font-bold text-white">{qa?.has_secret ? t('qg.s3.rotate') : t('qg.s3.create')}</button>
+				<p class="muted mt-1 text-[11px]">{t('qg.s3.note')}</p>
 			</form>
-			{#if qgForm?.accountError}<p class="mt-2 text-xs font-semibold text-red-700" role="alert">{qgForm.unavailable ? t('qg.acc.unavailable') : t('qg.acc.invalid')}</p>{/if}
-			{#if qgForm?.savedAccount}<p class="mt-2 text-xs font-semibold text-emerald-700" role="status">{t('qg.acc.saved')}</p>{/if}
-			{#if qa?.configured}
+			{#if qgForm?.accountError === 'secret'}<p class="mt-2 text-xs font-semibold text-red-700" role="alert">{qgForm.unavailable ? t('qg.acc.unavailable') : t('qg.s2.invalid')}</p>{/if}
+			{#if qa?.has_secret}
 				<form method="POST" action="?/qgTest" use:enhance class="mt-4 border-t border-ink/10 pt-4">
 					<button class="rounded-full border border-ink/20 px-5 py-2 text-xs font-bold hover:bg-ink/5">{t('qg.test.btn')}</button>
 					<p class="muted mt-1 text-[11px]">{t('qg.test.note')}</p>
@@ -312,11 +384,34 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 					<div class="mt-2 text-xs" role="status">
 						<p class="font-bold {qgForm.qgTest.ok ? 'text-emerald-700' : 'text-red-700'}">{qgForm.qgTest.ok ? t('qg.test.ok') : t('qg.test.fail')}</p>
 						<ul class="mt-1 space-y-0.5">
-							{#each qgForm.qgTest.steps as st (st.name)}<li class={st.ok ? 'text-emerald-700' : 'text-red-700'}>{st.ok ? '✓' : '✗'} {st.name === 'signature' ? t('qg.test.signature') : t('qg.test.credentials')}</li>{/each}
+							{#each qgForm.qgTest.steps as st (st.name)}<li class={st.ok ? 'text-emerald-700' : 'text-red-700'}>{st.ok ? '✓' : '✗'} {st.name === 'signature' ? t('qg.test.signature') : t('qg.test.secret')}</li>{/each}
 						</ul>
 					</div>
 				{/if}
 			{/if}
+		{/if}
+	</section>
+
+	<!-- Notifikasi yang diterima -->
+	<section class="card mb-5 overflow-x-auto p-5">
+		<h2 class="mb-1 text-sm font-bold">{t('qg.ev.title')}</h2>
+		<p class="muted mb-3 text-xs">{t('qg.ev.help')}</p>
+		{#if data.qgEvents.length === 0}
+			<p class="muted text-xs">{t('qg.empty')}</p>
+		{:else}
+			<table class="w-full text-left text-xs">
+				<thead><tr><th class="py-1">{t('qg.col.date')}</th><th>{t('qg.ev.app')}</th><th>{t('qg.col.amount')}</th><th>{t('qg.col.status')}</th></tr></thead>
+				<tbody>
+					{#each data.qgEvents as ev (ev.id)}
+						<tr class="border-t border-ink/10 align-top">
+							<td class="py-1.5">{fmt(ev.received_at)}</td>
+							<td><span class="font-mono">{ev.package}</span><br /><span class="muted">{ev.text}</span></td>
+							<td>{ev.amount ? 'Rp' + ev.amount.toLocaleString('id-ID') : '—'}</td>
+							<td class={ev.status === 'matched' ? 'text-emerald-700' : ev.status === 'unmatched' ? 'text-amber-700' : 'muted'}>{t(`qg.ev.${ev.status}` as const)}{ev.reason ? ' · ' + ev.reason : ''}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		{/if}
 	</section>
 	<p class="muted text-xs"><a class="font-bold text-merah underline" href="/dashboard/qrisgate">{t('qg.acc.more')}</a></p>
