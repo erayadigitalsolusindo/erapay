@@ -10,6 +10,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/config"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/bri"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/dana"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/doku"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/fake"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gateway/finpay"
@@ -22,7 +23,7 @@ import (
 // gatewayFactories is where gateway codes meet concrete adapter packages (PRD §0 #11). A new
 // gateway adds its credential schema in gwcred and its factory here.
 func gatewayFactories() map[string]gwcred.Factory {
-	return map[string]gwcred.Factory{doku.Code: dokuFromCreds, ids.Code: idsFromCreds, finpay.Code: finpayFromCreds, xendit.Code: xenditFromCreds, midtrans.Code: midtransFromCreds}
+	return map[string]gwcred.Factory{doku.Code: dokuFromCreds, ids.Code: idsFromCreds, finpay.Code: finpayFromCreds, dana.Code: danaFromCreds, xendit.Code: xenditFromCreds, midtrans.Code: midtransFromCreds}
 }
 
 // idsFromCreds builds the IDS adapter from credentials saved in the panel. IDS keys carry no
@@ -68,6 +69,17 @@ func finpayFromCreds(c map[string]string, env string) (gateway.Adapter, error) {
 	return finpay.New(finpay.Config{BaseURL: base, MerchantID: c["merchant_id"], MerchantKey: c["merchant_key"], CallbackURL: c["callback_url"]})
 }
 
+// danaFromCreds builds the DANA adapter. The host follows the environment, so sandbox keys can never
+// reach production (or the reverse) by a copy-paste slip.
+func danaFromCreds(c map[string]string, env string) (gateway.Adapter, error) {
+	base := dana.SandboxURL
+	if env == "production" {
+		base = dana.ProductionURL
+	}
+	return dana.New(dana.Config{BaseURL: base, MerchantID: c["merchant_id"], ClientID: c["client_id"], StoreID: c["store_id"],
+		ChannelID: c["channel_id"], PrivateKeyPEM: c["private_key"], PublicKeyPEM: c["dana_public_key"]})
+}
+
 // dokuFromCreds builds the DOKU adapter from credentials saved in the panel. Unlike the env path
 // it insists the base URL matches the environment, so sandbox keys never hit production (or the
 // reverse) by a copy-paste slip.
@@ -99,6 +111,7 @@ func buildRegistry(cfg config.Config, log *slog.Logger, creds *gwcred.Service) (
 	}
 	registerFromPanel(reg, cfg, log, creds, ids.Code, idsFromCreds)
 	registerFromPanel(reg, cfg, log, creds, finpay.Code, finpayFromCreds)
+	registerFromPanel(reg, cfg, log, creds, dana.Code, danaFromCreds)
 	registerFromPanel(reg, cfg, log, creds, xendit.Code, xenditFromCreds)
 	registerFromPanel(reg, cfg, log, creds, midtrans.Code, midtransFromCreds)
 	if _, ok := reg.Get(midtrans.Code); !ok && creds != nil && cfg.Env == "production" {

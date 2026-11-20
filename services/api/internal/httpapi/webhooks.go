@@ -55,7 +55,30 @@ func (d Deps) handleWebhook(w http.ResponseWriter, r *http.Request, sandbox bool
 		writeError(w, r, code, "WEBHOOK_REJECTED", "notification rejected", code >= 500)
 		return
 	}
+	if ack := d.webhookAck(sandbox, gw); ack != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(ack)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// webhookAck is the gateway-specific success body, or nil for the generic one.
+func (d Deps) webhookAck(sandbox bool, gw string) []byte {
+	gws := d.Gateways
+	if sandbox {
+		gws = d.SandboxGateways
+	}
+	if gws == nil {
+		return nil
+	}
+	if ad, ok := gws.Get(gw); ok {
+		if a, ok := ad.(gateway.WebhookAcker); ok {
+			return a.WebhookAck()
+		}
+	}
+	return nil
 }
 
 // applyWebhook verifies and applies a notification for gateways with a confirmed format.

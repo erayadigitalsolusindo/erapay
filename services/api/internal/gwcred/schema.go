@@ -51,6 +51,17 @@ var schemas = []Schema{{
 		{Key: "callback_url", Label: "Callback URL", Hint: "FINPAY mewajibkannya saat membuat QR. HTTPS publik ke EraPay, mis. https://api.contoh.id/webhooks/finpay", Required: true, pattern: regexp.MustCompile(`^https://[A-Za-z0-9.-]+(:[0-9]{2,5})?(/[\x21-\x7e]*)?$`)},
 	},
 }, {
+	Gateway: "dana",
+	Label:   "DANA",
+	Fields: []Field{
+		{Key: "merchant_id", Label: "Merchant ID", Required: true, pattern: regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)},
+		{Key: "client_id", Label: "Client ID (X-PARTNER-ID)", Required: true, pattern: regexp.MustCompile(`^[A-Za-z0-9._-]{1,36}$`)},
+		{Key: "store_id", Label: "Store ID", Hint: "Wajib untuk membuat QRIS. Asalnya belum terkonfirmasi (kemungkinan externalShopId dari Create Shop)", Required: true, pattern: regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)},
+		{Key: "channel_id", Label: "Channel ID", Hint: "Header CHANNEL-ID, maks 5 karakter. Nilai dari DANA", Required: true, pattern: regexp.MustCompile(`^[A-Za-z0-9]{1,5}$`)},
+		{Key: "private_key", Label: "Private key (PEM)", Hint: "RSA milik Anda, PKCS#8 atau PKCS#1. Public key-nya diunggah ke Merchant Portal DANA", Required: true, Secret: true, Multiline: true, pem: true},
+		{Key: "dana_public_key", Label: "Public key DANA (PEM)", Hint: "Memverifikasi notifikasi Finish Notify. Sandbox ada di docs DANA; key produksi diminta ke tim DANA. Kosong = notifikasi ditolak, status hanya lewat inquiry", Multiline: true, pem: true},
+	},
+}, {
 	Gateway: "ids",
 	Label:   "IDS Payments",
 	Fields: []Field{
@@ -100,8 +111,7 @@ func (f Field) check(v string) error {
 	case len(v) > 8192:
 		return invalid("%s terlalu panjang", f.Label)
 	case f.pem:
-		v = strings.ReplaceAll(strings.TrimSpace(v), `\n`, "\n")
-		if blk, _ := pem.Decode([]byte(v)); blk == nil {
+		if blk, _ := pem.Decode([]byte(f.normalize(v))); blk == nil {
 			return invalid("%s bukan PEM yang valid", f.Label)
 		}
 		return nil
@@ -131,6 +141,12 @@ func (f Field) normalize(v string) string {
 	v = strings.TrimSpace(v)
 	if f.pem {
 		v = strings.ReplaceAll(v, `\n`, "\n")
+		// Keys copied from docs often carry a stray space before a line (DANA's END line): trim every line.
+		lines := strings.Split(v, "\n")
+		for i, l := range lines {
+			lines[i] = strings.TrimSpace(l)
+		}
+		v = strings.Join(lines, "\n")
 	}
 	return v
 }

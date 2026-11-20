@@ -31,6 +31,7 @@ const (
 	CashFinpayClearing   = "cash_finpay_clearing"
 	CashXenditClearing   = "cash_xendit_clearing"
 	CashMidtransClearing = "cash_midtrans_clearing"
+	CashDanaClearing     = "cash_dana_clearing"
 	CashBankPT           = "cash_bank_pt"
 	MerchantPayable      = "merchant_payable"
 	PayoutInTransit      = "payout_in_transit"
@@ -217,7 +218,7 @@ func PaymentSucceeded(merchantID, paymentID string, b pricing.Breakdown) (Txn, e
 	return PaymentSucceededVia(CashDokuClearing, merchantID, paymentID, b)
 }
 
-// ClearingAccount is the "expected from the gateway" account of a gateway. IDS, FINPAY, Xendit, and Midtrans have their
+// ClearingAccount is the "expected from the gateway" account of a gateway. IDS, FINPAY, Xendit, Midtrans, and DANA have their
 // own; every other gateway code keeps the DOKU clearing account, so existing books do not move.
 func ClearingAccount(gateway string) string {
 	switch gateway {
@@ -229,6 +230,8 @@ func ClearingAccount(gateway string) string {
 		return CashXenditClearing
 	case "midtrans":
 		return CashMidtransClearing
+	case "dana":
+		return CashDanaClearing
 	}
 	return CashDokuClearing
 }

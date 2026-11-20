@@ -3,7 +3,7 @@ package ledger
 import "testing"
 
 func TestClearingAccountPerGateway(t *testing.T) {
-	for gw, want := range map[string]string{"ids": CashIDSClearing, "finpay": CashFinpayClearing, "xendit": CashXenditClearing, "midtrans": CashMidtransClearing, "doku": CashDokuClearing, "gw1": CashDokuClearing, "": CashDokuClearing} {
+	for gw, want := range map[string]string{"ids": CashIDSClearing, "finpay": CashFinpayClearing, "xendit": CashXenditClearing, "midtrans": CashMidtransClearing, "dana": CashDanaClearing, "doku": CashDokuClearing, "gw1": CashDokuClearing, "": CashDokuClearing} {
 		if got := ClearingAccount(gw); got != want {
 			t.Errorf("ClearingAccount(%q) = %q, want %q", gw, got, want)
 		}

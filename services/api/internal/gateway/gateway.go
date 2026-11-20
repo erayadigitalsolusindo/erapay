@@ -198,6 +198,12 @@ type WebhookVerifier interface {
 	VerifyWebhook(h http.Header, path string, body []byte) (WebhookEvent, error)
 }
 
+// WebhookAcker is implemented by adapters whose gateway needs a specific success body to stop retrying
+// (DANA: responseCode 2005600). Adapters without it get the generic {"status":"ok"}.
+type WebhookAcker interface {
+	WebhookAck() []byte
+}
+
 // TransferStatus is the normalized payout status an adapter maps a raw transfer status to.
 // Distinct from payment Status: a payout that fails or is returned is its own state machine.
 type TransferStatus string

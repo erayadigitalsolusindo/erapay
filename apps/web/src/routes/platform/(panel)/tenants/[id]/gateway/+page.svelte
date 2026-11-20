@@ -44,6 +44,7 @@
 		finpay: 'from-orange-500 to-red-600',
 		xendit: 'from-blue-500 to-blue-700',
 		midtrans: 'from-cyan-500 to-sky-700',
+		dana: 'from-sky-400 to-blue-600',
 		bri: 'from-blue-600 to-indigo-800',
 		qrisgate: 'from-violet-500 to-fuchsia-700'
 	};
