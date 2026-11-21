@@ -31,6 +31,14 @@ class Config(context: Context) {
         get() = p.getString("last", "") ?: ""
         set(v) = p.edit().putString("last", v).apply()
 
+    companion object {
+        /** Isian awal nama paket: BCA, Mandiri, BRI, BNI, BSI, CIMB Niaga, GoPay, DANA, OVO, ShopeePay, LinkAja. */
+        val DEFAULT_PACKAGES = listOf(
+            "com.bca", "com.bca.mybca.omni.android", "id.bmri.livin", "id.co.bri.brimo", "src.com.bni", "id.bni.wondr",
+            "com.bsm.activity2", "id.co.cimbniaga.mobile.android", "com.gojek.app", "id.dana", "ovo.id", "com.shopee.id", "com.telkom.mwallet"
+        )
+    }
+
     /** Hanya HTTPS (cleartext dimatikan di manifest); nilai lain ditolak di layar pengaturan. */
     fun urlValid(url: String = webhookUrl) = url.startsWith("https://") && url.length > 12
     fun ready() = urlValid() && secret.length >= 16 && packages.isNotEmpty()

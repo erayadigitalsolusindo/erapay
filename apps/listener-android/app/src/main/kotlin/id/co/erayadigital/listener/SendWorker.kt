@@ -43,7 +43,7 @@ class SendWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             when {
                 code in 200..299 -> { cfg.lastResult = "Terkirim ($code) ${stamp()}"; Result.success() }
                 code == 408 || code == 429 || code >= 500 -> { cfg.lastResult = "Server $code, akan diulang ${stamp()}"; Result.retry() }
-                else -> { cfg.lastResult = "Ditolak $code (cek URL/secret) ${stamp()}"; Result.failure() }
+                else -> { cfg.lastResult = "Ditolak $code: ${reject(code)} ${stamp()}"; Result.failure() }
             }
         } catch (e: java.io.IOException) {
             cfg.lastResult = "Jaringan gagal, akan diulang ${stamp()}"
@@ -51,6 +51,12 @@ class SendWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         } finally {
             conn.disconnect()
         }
+    }
+
+    private fun reject(code: Int) = when (code) {
+        400, 401, 403 -> "secret/tanda tangan tidak cocok atau jam HP salah; buat tautan setup baru di EraPay"
+        404 -> "URL webhook salah"
+        else -> "cek URL dan secret"
     }
 
     private fun stamp() = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())

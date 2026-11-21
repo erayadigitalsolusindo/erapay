@@ -16,6 +16,9 @@
 		qa?.activation_status === 'suspended' ? 'suspended' : qa?.ready ? (qa.activation_status === 'active' ? 'active' : 'pending') : qa && (qa.has_qris || qa.has_secret || qa.packages.length > 0) ? 'incomplete' : 'none'
 	);
 	const qgHook = $derived((data.apiBase || API_HOST) + (qa?.webhook_path ?? ''));
+	// Tautan setup untuk app Listener: mengisi URL, rahasia, dan paket sekaligus (rahasia hanya ada saat baru dibuat).
+	const setupLink = (secret: string) =>
+		`erapaylistener://setup?${new URLSearchParams({ url: qgHook, secret, packages: (qa?.packages ?? []).join('\n') })}`;
 	type QGForm = {
 		savedQris?: string;
 		savedPackages?: boolean;
@@ -315,6 +318,12 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 {#if tab === 'qrisgate' && data.qgAccount}
 	{#if qgForm?.newSecret}
 		{@render secretBox('qgsecret', t('qg.sec.created'), t('qg.sec.warn'), qgForm.newSecret)}
+		<p class="mb-5 -mt-3 text-xs">
+			<button type="button" class="rounded-full border border-ink/20 px-3 py-1.5 font-bold hover:bg-ink/5" onclick={() => copy('qglink', setupLink(qgForm.newSecret!))}>
+				{copied === 'qglink' ? t('keys.copied') : i18n.tx('qg.setupLink', 'Salin tautan setup untuk HP')}
+			</button>
+			<span class="muted ml-2">{i18n.tx('qg.setupLink.hint', 'Kirim ke HP, lalu di aplikasi Listener tekan "Tempel tautan setup dari EraPay". URL, rahasia, dan paket terisi otomatis.')}</span>
+		</p>
 	{/if}
 	<section class="card mb-5 p-5" role="status">
 		<p class="text-sm font-bold">{t(`qg.acc.${qgState}` as const)}</p>
