@@ -13,6 +13,8 @@ import (
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/platformsetting"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/qrisgate"
 )
 
 func arusRequest(t *testing.T, server *httptest.Server, token, method, path, body string) *http.Response {
@@ -177,5 +179,41 @@ func TestARUSIssueKeyRequiresApprovedMerchantAndIsSingle(t *testing.T) {
 	}
 	if r := arusRequest(t, server, keyTok, http.MethodPost, url, ""); r.StatusCode != http.StatusConflict {
 		t.Fatalf("second key must be refused: %d", r.StatusCode)
+	}
+}
+
+func TestARUSListenerSetupReusesSecretAndNeedsKeyToken(t *testing.T) {
+	w := setup(t)
+	if _, err := w.db.Exec(t.Context(), `UPDATE merchants SET legal_name = 'Legacy Toko', display_name = 'Legacy Toko', mode = 'production' WHERE id = $1`, w.midA); err != nil {
+		t.Fatal(err)
+	}
+	const provision, keyTok = "arus-provision-test-token-that-is-long-enough", "arus-key-test-token-that-is-long-enough-xx"
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	qg := qrisgate.NewService(w.db, platformsetting.NewService(w.db), nil)
+	qg.SetBox(testBox(t))
+	server := httptest.NewServer(NewRouter(Deps{Log: log, Onboarding: onboarding.NewService(w.db, w.acct, onboarding.Config{Log: log}),
+		QRISGate: qg, PublicAPIURL: "https://api.test", ARUSProvisionToken: provision, ARUSKeyToken: keyTok}))
+	t.Cleanup(server.Close)
+	tenant := uuid.New()
+	path := "/v1/integrations/arus/tenants/" + tenant.String() + "/listener-setup"
+	if r := arusRequest(t, server, provision, http.MethodPost, path, ""); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("provision token must not read the secret: %d", r.StatusCode)
+	}
+	if r := arusRequest(t, server, keyTok, http.MethodPost, path, ""); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("unlinked: %d", r.StatusCode)
+	}
+	if r := arusRequest(t, server, provision, http.MethodPost, "/v1/integrations/arus/tenants",
+		fmt.Sprintf(`{"tenant_id":%q,"business_name":"Legacy Toko","owner_name":"Pemilik Toko","owner_email":"owner@a.test","accepted_terms":true}`, tenant)); r.StatusCode != http.StatusOK {
+		t.Fatalf("link: %d", r.StatusCode)
+	}
+	first := arusRequest(t, server, keyTok, http.MethodPost, path, "")
+	a := decode(t, first)
+	l1, _ := a["link"].(string)
+	if first.StatusCode != http.StatusOK || !strings.HasPrefix(l1, "erapaylistener://setup?") ||
+		!strings.Contains(l1, "url=https%3A%2F%2Fapi.test%2Fwebhooks%2Fqrisgate%2F") || !strings.Contains(l1, "secret=qls_") {
+		t.Fatalf("first: %d %v", first.StatusCode, a)
+	}
+	if b, _ := decode(t, arusRequest(t, server, keyTok, http.MethodPost, path, ""))["link"].(string); b != l1 {
+		t.Fatalf("secret must be reused: %q vs %q", b, l1)
 	}
 }

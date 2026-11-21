@@ -61,6 +61,7 @@ type Deps struct {
 	ARUSKeyToken       string                   // token terpisah (min 32) untuk menerbitkan API key tenant ARUS; kosong = rute mati
 	ARUSProvisionToken string                   // server-to-server token for ARUS tenant provisioning
 	WebURL             string                   // public dashboard origin; target of ARUS single sign-on links
+	PublicAPIURL       string                   // public API origin; base of the QRISGate webhook URL given to the listener app
 	PlatformSetupToken string                   // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars) enables /v1/platform/setup until the first DEWA exists
 	Webhooks           *webhook.Store           // optional raw capture (ERAPAY_WEBHOOK_CAPTURE); see webhooks.go
 	Gateways           payment.Gateways         // adapters implementing gateway.WebhookVerifier enable verified webhooks
@@ -125,6 +126,7 @@ func NewRouter(d Deps) http.Handler {
 	if d.ARUSKeyToken != "" {
 		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/api-key", d.arusIssueKey)
 		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/approve", d.arusApprove)
+		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/listener-setup", d.arusListenerSetup)
 	}
 	if d.Webhooks != nil || (d.Gateways != nil && d.PaymentFlow != nil) || (d.SandboxGateways != nil && d.PaymentFlow != nil) {
 		d.mountWebhooks(r)

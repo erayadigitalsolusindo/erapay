@@ -25,3 +25,4 @@ Persetujuan syarat dicatat pada saat link dibuat. API key QRIS, pembayaran, dan 
 - Satu key aktif bernama "ARUS (otomatis)" per merchant; permintaan berikutnya dijawab `409 API_KEY_EXISTS`. Rotasi/pencabutan lewat dashboard ERAPAY.
 - Respons `201` memuat `secret` satu kali (`Cache-Control: no-store`). Penerbitan tercatat di audit (`api_key.created`).
 
+`POST /v1/integrations/arus/tenants/{tenant_id}/listener-setup` (token key; butuh `ERAPAY_PUBLIC_API_URL` di API) mengembalikan `{link, ready}`: tautan `erapaylistener://setup?…` berisi URL webhook, rahasia listener, dan paket untuk app EraPay Listener. Rahasia dibuat bila belum ada, selain itu dipakai ulang (HP lama tidak putus). Dipanggil backend ARUS saat Owner menekan tombol di Pengaturan mobile.

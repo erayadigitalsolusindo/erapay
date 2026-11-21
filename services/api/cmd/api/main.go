@@ -301,6 +301,7 @@ func run(log *slog.Logger) error {
 			SecureCookies: cfg.Env != "development", TrustedProxies: cfg.TrustedProxies,
 			ARUSProvisionToken: cfg.ARUSProvisionToken, ARUSKeyToken: cfg.ARUSKeyToken,
 			WebURL:             cfg.WebURL,
+			PublicAPIURL:       cfg.PublicAPIURL,
 			PlatformSetupToken: cfg.PlatformSetupToken,
 		}),
 		// Tanpa batas ini koneksi lambat (slowloris) bisa menahan goroutine tanpa batas waktu.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/qrisgate"
 )
 
 func (d Deps) requireARUSProvisionToken(next http.Handler) http.Handler {
@@ -227,4 +229,47 @@ func (d Deps) ssoExchange(w http.ResponseWriter, r *http.Request) {
 		Secure: d.SecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: int(d.Auth.SessionTTL().Seconds()),
 	})
 	writeJSON(w, http.StatusOK, meResponse(p))
+}
+
+// arusListenerSetup: POST /v1/integrations/arus/tenants/{tenant_id}/listener-setup — server-to-server (token key).
+// Mengembalikan tautan erapaylistener://setup (URL webhook, rahasia, paket) agar app ARUS bisa mengisi app Listener
+// tanpa ketik ulang. Rahasia listener dibuat bila belum ada; bila sudah ada dipakai ulang (HP lama tetap jalan).
+func (d Deps) arusListenerSetup(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
+	if err != nil || d.Onboarding == nil || d.QRISGate == nil || d.PublicAPIURL == "" {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "invalid tenant_id or listener setup disabled", false)
+		return
+	}
+	link, err := d.Onboarding.ARUSTenantStatus(r.Context(), tenantID)
+	if errors.Is(err, onboarding.ErrNotFound) {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "tenant is not linked", false)
+		return
+	}
+	var acc qrisgate.Account
+	var secret string
+	if err == nil {
+		mid := link.MerchantID.String()
+		if acc, err = d.QRISGate.Account(r.Context(), mid); err == nil {
+			if acc.HasSecret {
+				secret, err = d.QRISGate.ListenerSecret(r.Context(), mid)
+			} else {
+				secret, err = d.QRISGate.RotateListenerSecret(r.Context(), mid, "", middleware.GetReqID(r.Context()))
+			}
+		}
+	}
+	if errors.Is(err, qrisgate.ErrUnavailable) {
+		writeError(w, r, http.StatusUnprocessableEntity, "QRISGATE_UNAVAILABLE", "QRISGate cannot be set up for this account", false)
+		return
+	}
+	if err != nil {
+		d.Log.Error("arus listener setup", "err", err, "request_id", middleware.GetReqID(r.Context()))
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	q := url.Values{"url": {d.PublicAPIURL + acc.WebhookPath}, "secret": {secret}}
+	if len(acc.Packages) > 0 { // kosong: app Listener memakai paket bawaannya
+		q.Set("packages", strings.Join(acc.Packages, "\n"))
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"link": "erapaylistener://setup?" + q.Encode(), "ready": acc.Ready})
 }

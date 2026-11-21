@@ -55,6 +55,7 @@ type Config struct {
 	// computation is unchanged until the operator opts in (docs/integrations/doku.md §6).
 	MDRCap             int64  // ERAPAY_MDR_CAP, minor units
 	MDRCapUpTo         int64  // ERAPAY_MDR_CAP_UPTO, minor units
+	PublicAPIURL       string // ERAPAY_PUBLIC_API_URL: origin publik API ini; dipakai untuk URL webhook listener
 	ARUSKeyToken       string // ERAPAY_ARUS_KEY_TOKEN: secret terpisah untuk penerbitan API key tenant ARUS
 	ARUSProvisionToken string // ERAPAY_ARUS_PROVISION_TOKEN: server-to-server tenant provisioning secret
 	PlatformSetupToken string // ERAPAY_PLATFORM_SETUP_TOKEN (>= 32 chars): bootstrap first DEWA at /platform/setup
@@ -76,6 +77,7 @@ func Load() (Config, error) {
 		RedisURL:    os.Getenv("ERAPAY_REDIS_URL"),
 
 		WebhookCapture:     os.Getenv("ERAPAY_WEBHOOK_CAPTURE") == "1",
+		PublicAPIURL:       strings.TrimRight(strings.TrimSpace(os.Getenv("ERAPAY_PUBLIC_API_URL")), "/"),
 		ARUSKeyToken:       strings.TrimSpace(os.Getenv("ERAPAY_ARUS_KEY_TOKEN")),
 		ARUSProvisionToken: strings.TrimSpace(os.Getenv("ERAPAY_ARUS_PROVISION_TOKEN")),
 		PlatformSetupToken: strings.TrimSpace(os.Getenv("ERAPAY_PLATFORM_SETUP_TOKEN")),
