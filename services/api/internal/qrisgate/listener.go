@@ -28,6 +28,7 @@ var pkgRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+
 type Account struct {
 	HasQRIS          bool     `json:"has_qris"`
 	QRISName         string   `json:"qris_name,omitempty"`
+	QRISPayload      string   `json:"qris_payload,omitempty"` // QRIS statis tersimpan (tercetak publik di toko, bukan rahasia); dasar QRIS dinamis tiap pembayaran
 	HasSecret        bool     `json:"has_secret"`
 	SecretHint       string   `json:"secret_hint,omitempty"`
 	Packages         []string `json:"packages"`
@@ -39,18 +40,20 @@ type Account struct {
 
 func (s *Service) Account(ctx context.Context, merchantID string) (Account, error) {
 	a := Account{WebhookPath: "/webhooks/qrisgate/" + merchantID, Packages: []string{}}
-	var qrisName, hint *string
+	var qrisName, hint, payload *string
 	var sealed []byte
-	var hasQRIS bool
-	err := s.db.QueryRow(ctx, `SELECT static_qris IS NOT NULL, qris_name, listener_secret_enc, secret_hint, packages, exact_amount
-		FROM qrisgate_accounts WHERE merchant_id = $1`, merchantID).Scan(&hasQRIS, &qrisName, &sealed, &hint, &a.Packages, &a.ExactAmount)
+	err := s.db.QueryRow(ctx, `SELECT static_qris, qris_name, listener_secret_enc, secret_hint, packages, exact_amount
+		FROM qrisgate_accounts WHERE merchant_id = $1`, merchantID).Scan(&payload, &qrisName, &sealed, &hint, &a.Packages, &a.ExactAmount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return a, nil
 	}
 	if err != nil {
 		return a, err
 	}
-	a.HasQRIS, a.HasSecret = hasQRIS, sealed != nil
+	a.HasQRIS, a.HasSecret = payload != nil, sealed != nil
+	if payload != nil {
+		a.QRISPayload = *payload
+	}
 	if qrisName != nil {
 		a.QRISName = *qrisName
 	}

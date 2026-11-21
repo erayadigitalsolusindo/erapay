@@ -8,6 +8,7 @@ import type { Actions, PageServerLoad } from './$types';
 export type QGAccount = {
 	has_qris: boolean;
 	qris_name?: string;
+	qris_payload?: string;
 	has_secret: boolean;
 	secret_hint?: string;
 	packages: string[];

@@ -12,6 +12,16 @@
 	let tab = $state<'keys' | 'webhooks' | 'qrisgate'>(data.tab as 'keys' | 'webhooks' | 'qrisgate');
 	let copied = $state('');
 	const qa = $derived(data.qgAccount);
+	let qrisImg = $state('');
+	// QR dibuat di browser dari QRIS statis yang tersimpan: persis yang dipakai QRISGate sebagai dasar QRIS dinamis.
+	$effect(() => {
+		const payload = qa?.qris_payload;
+		if (!payload) {
+			qrisImg = '';
+			return;
+		}
+		import('qrcode').then((m) => m.default.toDataURL(payload, { width: 240, margin: 1, errorCorrectionLevel: 'M' })).then((u) => (qrisImg = u), () => (qrisImg = ''));
+	});
 	const qgState = $derived(
 		qa?.activation_status === 'suspended' ? 'suspended' : qa?.ready ? (qa.activation_status === 'active' ? 'active' : 'pending') : qa && (qa.has_qris || qa.has_secret || qa.packages.length > 0) ? 'incomplete' : 'none'
 	);
@@ -335,7 +345,9 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 	<section class="card mb-5 p-5">
 		<h2 class="text-sm font-bold">1. {t('qg.s1.title')}</h2>
 		<p class="muted mt-1 mb-3 text-xs">{t('qg.s1.help')}</p>
-		{#if qa?.has_qris}<p class="mb-2 text-xs font-semibold text-emerald-700">✓ {t('qg.s1.saved')}: <b>{qa.qris_name}</b></p>{/if}
+		{#if qa?.has_qris}<p class="mb-2 text-xs font-semibold text-emerald-700">✓ {t('qg.s1.saved')}: <b>{qa.qris_name}</b></p>
+			{#if qrisImg}<img src={qrisImg} alt={i18n.tx('qg.s1.current', 'QRIS statis yang dipakai QRISGate')} width="240" height="240" class="mb-1 rounded-lg border border-ink/10 bg-white" />
+				<p class="muted mb-3 text-xs">{i18n.tx('qg.s1.current', 'QRIS statis yang dipakai QRISGate')}. {i18n.tx('qg.s1.refresh', 'Habis ganti di ARUS Mobile? Muat ulang halaman ini.')}</p>{/if}{/if}
 		{#if data.canEditQG}
 			<form method="POST" action="?/qgQris" use:enhance autocomplete="off" class="grid w-full gap-3">
 				<div>
