@@ -11,6 +11,7 @@ export type QGAccount = {
 	has_secret: boolean;
 	secret_hint?: string;
 	packages: string[];
+	exact_amount: boolean;
 	ready: boolean;
 	activation_status?: string;
 	webhook_path: string;

@@ -273,3 +273,78 @@ func (d Deps) arusListenerSetup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{"link": "erapaylistener://setup?" + q.Encode(), "ready": acc.Ready})
 }
+
+// arusQRISGate: GET /v1/integrations/arus/tenants/{tenant_id}/qrisgate — server-to-server (token key).
+// Kartu "QRIS toko" di ARUS hanya tampil bila `active` (jalur pembayaran tenant sekarang ke QRISGate).
+func (d Deps) arusQRISGate(w http.ResponseWriter, r *http.Request) {
+	mid, ok := d.arusQRISGateMerchant(w, r)
+	if !ok {
+		return
+	}
+	out := map[string]any{"active": false}
+	if d.Routing != nil {
+		g, err := d.Routing.Effective(r.Context(), mid)
+		if err != nil {
+			d.Log.Error("arus qrisgate effective", "err", err, "request_id", middleware.GetReqID(r.Context()))
+			writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+			return
+		}
+		out["active"] = g == "qrisgate"
+	}
+	payload, name, err := d.QRISGate.StaticQRIS(r.Context(), mid)
+	if err != nil {
+		d.Log.Error("arus qrisgate qris", "err", err, "request_id", middleware.GetReqID(r.Context()))
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	out["has_qris"], out["qris_name"], out["qris_payload"] = payload != "", name, payload
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, out)
+}
+
+// arusSaveQRIS: PUT /v1/integrations/arus/tenants/{tenant_id}/qrisgate/qris — server-to-server (token key).
+// Menyimpan QRIS statis baru milik tenant (divalidasi: TLV utuh, CRC16, statis, IDR, ID, tanpa nominal).
+func (d Deps) arusSaveQRIS(w http.ResponseWriter, r *http.Request) {
+	mid, ok := d.arusQRISGateMerchant(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Payload string `json:"payload"`
+	}
+	if _, ok := decodeStrict(w, r, 8<<10, &body); !ok {
+		return
+	}
+	info, err := d.QRISGate.SaveQRIS(r.Context(), mid, "", middleware.GetReqID(r.Context()), body.Payload)
+	switch {
+	case errors.Is(err, qrisgate.ErrInvalid):
+		writeError(w, r, http.StatusUnprocessableEntity, "QRIS_INVALID", "QRIS tidak valid: harus QRIS statis merchant yang utuh (tanpa nominal)", false)
+	case errors.Is(err, qrisgate.ErrUnavailable):
+		writeError(w, r, http.StatusUnprocessableEntity, "QRISGATE_UNAVAILABLE", "QRISGate cannot be set up for this account", false)
+	case err != nil:
+		d.Log.Error("arus save qris", "err", err, "request_id", middleware.GetReqID(r.Context()))
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"qris_name": info.MerchantName})
+	}
+}
+
+// arusQRISGateMerchant resolves the linked EraPay merchant of an ARUS tenant (404 when not linked).
+func (d Deps) arusQRISGateMerchant(w http.ResponseWriter, r *http.Request) (string, bool) {
+	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
+	if err != nil || d.Onboarding == nil || d.QRISGate == nil {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "invalid tenant_id or QRISGate disabled", false)
+		return "", false
+	}
+	link, err := d.Onboarding.ARUSTenantStatus(r.Context(), tenantID)
+	if errors.Is(err, onboarding.ErrNotFound) {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "tenant is not linked", false)
+		return "", false
+	}
+	if err != nil {
+		d.Log.Error("arus qrisgate link", "err", err, "request_id", middleware.GetReqID(r.Context()))
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return "", false
+	}
+	return link.MerchantID.String(), true
+}

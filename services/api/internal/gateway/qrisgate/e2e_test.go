@@ -288,3 +288,38 @@ func TestNotificationOfAnotherMerchantOrWithoutSignatureNeverReachesAPayment(t *
 		t.Fatal("status changed")
 	}
 }
+
+// Nominal persis: tanpa kode unik pelanggan membayar tepat harga. Bila nominal yang sama sedang menunggu, transaksi
+// berikutnya jatuh ke kode unik, jadi satu notifikasi tetap hanya melunasi satu transaksi.
+func TestExactAmountChargesThePlainPriceAndFallsBackToACodeOnlyOnCollision(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	var user string
+	if err := w.db.QueryRow(ctx, `SELECT id::text FROM users LIMIT 1`).Scan(&user); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.svc.SetExactAmount(ctx, w.merchant, user, "", "uji", true); err != nil {
+		t.Fatal(err)
+	}
+	first := w.create(t, "X1", 10_000)
+	second := w.create(t, "X2", 10_000) // same price while the first still waits
+	if a := qris.Amount(first.QRCode.Value); a != 10_000 {
+		t.Fatalf("exact mode must ask for the plain price, got %d", a)
+	}
+	if a := qris.Amount(second.QRCode.Value); a <= 10_000 || a > 10_099 {
+		t.Fatalf("a collision must fall back to a unique code, got %d", a)
+	}
+	if res, err := w.deliver(t, "d-x1", "Masuk Rp 10.000", time.Now()); err != nil || !res.Applied {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if w.status(t, first.ID) != "succeeded" || w.status(t, second.ID) != "pending" {
+		t.Fatalf("only the plain-price payment may settle: %s / %s", w.status(t, first.ID), w.status(t, second.ID))
+	}
+	// Turned off again: new payments carry a unique code once more.
+	if err := w.svc.SetExactAmount(ctx, w.merchant, user, "", "uji", false); err != nil {
+		t.Fatal(err)
+	}
+	if a := qris.Amount(w.create(t, "X3", 20_000).QRCode.Value); a == 20_000 {
+		t.Fatalf("default mode must add a unique code, got %d", a)
+	}
+}

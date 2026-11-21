@@ -127,6 +127,8 @@ func NewRouter(d Deps) http.Handler {
 		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/api-key", d.arusIssueKey)
 		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/approve", d.arusApprove)
 		r.With(d.requireARUSKeyToken).Post("/v1/integrations/arus/tenants/{tenant_id}/listener-setup", d.arusListenerSetup)
+		r.With(d.requireARUSKeyToken).Get("/v1/integrations/arus/tenants/{tenant_id}/qrisgate", d.arusQRISGate)
+		r.With(d.requireARUSKeyToken).Put("/v1/integrations/arus/tenants/{tenant_id}/qrisgate/qris", d.arusSaveQRIS)
 	}
 	if d.Webhooks != nil || (d.Gateways != nil && d.PaymentFlow != nil) || (d.SandboxGateways != nil && d.PaymentFlow != nil) {
 		d.mountWebhooks(r)

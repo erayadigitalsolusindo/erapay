@@ -510,5 +510,33 @@
 				</div>
 			</section>
 		{/if}
+
+		<!-- nominal persis QRISGate -->
+		{#if data.exact !== null}
+			<section class="card overflow-hidden">
+				<div class="h-1 bg-linear-to-r from-violet-500 to-fuchsia-600"></div>
+				<div class="p-5 sm:p-6">
+					<h2 class="font-display text-lg font-extrabold">{tx('pf.gw.exactTitle', 'QRISGate: nominal persis (tanpa kode unik)')}</h2>
+					<p class="muted mt-1 max-w-2xl text-xs leading-relaxed">
+						{tx('pf.gw.exactHint', 'Bawaan: pelanggan membayar harga + kode unik 1-99. Nyalakan hanya atas permintaan tenant: pelanggan membayar tepat harga nota. Bila nominal yang sama sedang menunggu di toko itu, transaksi berikutnya tetap memakai kode unik.')}
+					</p>
+					<p class="mt-2 max-w-2xl text-xs font-semibold leading-relaxed text-amber-700">
+						{tx('pf.gw.exactRisk', 'Risiko: transfer masuk lain dengan nominal yang sama persis saat transaksi menunggu bisa ikut melunasinya. Pastikan tenant memahaminya.')}
+					</p>
+					<form method="POST" action="?/exact" autocomplete="off" use:enhance class="mt-4 grid gap-3 sm:grid-cols-2">
+						<input type="hidden" name="enabled" value={data.exact ? '0' : '1'} />
+						<p class="self-center text-xs font-bold {data.exact ? 'text-emerald-700' : 'text-slate-600'}">{data.exact ? tx('pf.gw.exactOn', 'Aktif: pelanggan membayar tepat harga') : tx('pf.gw.exactOff', 'Nonaktif: harga + kode unik')}</p>
+						<input name="note" required minlength="3" maxlength="500" class="inp" placeholder={tx('pf.gw.exactNotePh', 'Alasan (mis. permintaan tenant lewat WA tgl …)')} />
+						<div class="flex flex-wrap items-center gap-3 sm:col-span-2">
+							<button class="rounded-full bg-merah px-6 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-merah-tua">
+								{data.exact ? tx('pf.gw.exactDisable', 'Matikan (kembali pakai kode unik)') : tx('pf.gw.exactEnable', 'Nyalakan nominal persis')}
+							</button>
+							{#if form?.exactError}<p class="text-xs font-semibold text-red-700" role="alert">{form.exactError}</p>{/if}
+							{#if form?.exactSaved}<p class="text-xs font-semibold text-emerald-700">{tx('pf.gw.exactSaved', 'Tersimpan. Berlaku untuk pembayaran berikutnya.')}</p>{/if}
+						</div>
+					</form>
+				</div>
+			</section>
+		{/if}
 	{/if}
 </div>

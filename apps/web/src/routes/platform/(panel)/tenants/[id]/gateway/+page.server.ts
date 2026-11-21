@@ -24,11 +24,12 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, params, url
 	const r = await platformApi<GwOverview>(fetch, token, 'GET', `/merchants/${params.id}/gateway-accounts`);
 	if (!r.ok) {
 		if (r.status === 404) error(404, 'Tenant tidak ditemukan');
-		return { id: params.id, name: url.searchParams.get('n') ?? '', overview: null as GwOverview | null, routing: null as MerchantRouting | null, error: r.message };
+		return { id: params.id, name: url.searchParams.get('n') ?? '', overview: null as GwOverview | null, routing: null as MerchantRouting | null, exact: null as boolean | null, error: r.message };
 	}
 	// Jalur pembayaran tenant (opsional: gagal dimuat tidak menutup halaman akun gateway).
 	const rt = await platformApi<MerchantRouting>(fetch, token, 'GET', `/merchants/${params.id}/payment-routing`);
-	return { id: params.id, name: url.searchParams.get('n') ?? '', overview: r.value, routing: rt.ok ? rt.value : (null as MerchantRouting | null), error: null as string | null };
+	const ex = await platformApi<{ exact_amount: boolean }>(fetch, token, 'GET', `/merchants/${params.id}/qrisgate-exact`);
+	return { id: params.id, name: url.searchParams.get('n') ?? '', overview: r.value, routing: rt.ok ? rt.value : (null as MerchantRouting | null), exact: ex.ok ? ex.value.exact_amount : (null as boolean | null), error: null as string | null };
 };
 
 export const actions: Actions = {
@@ -76,5 +77,16 @@ export const actions: Actions = {
 		const r = await platformApi(fetch, token, 'PUT', `/merchants/${params.id}/payment-routing`, body);
 		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { routeError: r.message });
 		return { routed: true };
+	},
+
+	// Nominal persis QRISGate (tanpa kode unik): bawaan mati, dinyalakan DEWA hanya atas permintaan tenant.
+	exact: async ({ request, cookies, locals, fetch, params }) => {
+		const token = guardPlatform(locals, cookies);
+		const f = await request.formData();
+		const body = { enabled: f.get('enabled') === '1', note: String(f.get('note') ?? '').trim() };
+		if (body.note.length < 3) return fail(400, { exactError: 'Alasan wajib diisi (minimal 3 karakter).' });
+		const r = await platformApi(fetch, token, 'PUT', `/merchants/${params.id}/qrisgate-exact`, body);
+		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { exactError: r.message });
+		return { exactSaved: true };
 	}
 };

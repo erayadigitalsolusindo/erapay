@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -278,4 +279,46 @@ func (d Deps) qrisgateTestWebhook(w http.ResponseWriter, r *http.Request) {
 		all = all && s.OK
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": all, "steps": steps})
+}
+
+// platformQRISGateExact: GET /v1/platform/merchants/{id}/qrisgate-exact — is "exact amount" on for this merchant.
+func (d Deps) platformQRISGateExact(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	acc, err := d.QRISGate.Account(r.Context(), id)
+	if err != nil {
+		d.internalErr(w, r, "qrisgate account", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"exact_amount": acc.ExactAmount})
+}
+
+// platformSetQRISGateExact: PUT /v1/platform/merchants/{id}/qrisgate-exact {enabled, note}.
+// Only the platform turns this on (a tenant asks for it): without the unique code a stray transfer of the same amount
+// can settle a waiting payment. Default is OFF. Applies to payments created afterwards; audited with the reason.
+func (d Deps) platformSetQRISGateExact(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Enabled bool   `json:"enabled"`
+		Note    string `json:"note"`
+	}
+	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
+		return
+	}
+	if n := len([]rune(strings.TrimSpace(body.Note))); n < 3 || n > 500 {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "alasan wajib diisi (3-500 karakter)", false)
+		return
+	}
+	err := d.QRISGate.SetExactAmount(r.Context(), id, PrincipalFrom(r.Context()).UserID, middleware.GetReqID(r.Context()), strings.TrimSpace(body.Note), body.Enabled)
+	switch {
+	case errors.Is(err, qrisgate.ErrUnavailable):
+		writeError(w, r, http.StatusUnprocessableEntity, "QRISGATE_UNAVAILABLE", "QRISGate cannot be set up for this account", false)
+	case d.qrisgateErr(w, r, err):
+		writeJSON(w, http.StatusOK, map[string]any{"exact_amount": body.Enabled})
+	}
 }

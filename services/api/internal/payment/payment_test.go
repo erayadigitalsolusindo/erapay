@@ -3,6 +3,7 @@ package payment
 import (
 	"context"
 	"errors"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/qris"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -480,5 +481,25 @@ func TestConcurrentSuccessVsExpiryRace(t *testing.T) {
 		if (got.Status == Succeeded) != (posted == 1) {
 			t.Fatalf("round %d: status=%s ledger posted=%d", round, got.Status, posted)
 		}
+	}
+}
+
+// Pembayaran QRISGate: QR dinamis meminta harga + kode unik; klien harus tahu nominal itu, bukan hanya harga dasar.
+func TestPayAmountOf(t *testing.T) {
+	// QRIS statis sintetis (tanpa merchant asli): tag 00,01=11,26,52,53,58,59,60 + CRC.
+	static := "000201" + "010211" + "26460016ID.CO.EXAMPLE.WWW0122936000000000000000001" + "52045812" + "5303360" + "5802ID" + "5911TOKO CONTOH" + "6007JAKARTA" + "6304"
+	static += qris.CRC16(static)
+	dyn, err := qris.Dynamic(static, 25_007)
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	if pay, code := payAmountOf("qrisgate", dyn, 25_000); pay != 25_007 || code != 7 {
+		t.Fatalf("qrisgate: %d %d", pay, code)
+	}
+	if pay, code := payAmountOf("doku", dyn, 25_000); pay != 0 || code != 0 {
+		t.Fatalf("other gateway must not be touched: %d %d", pay, code)
+	}
+	if pay, code := payAmountOf("qrisgate", dyn, 25_007); pay != 0 || code != 0 {
+		t.Fatalf("no unique code: %d %d", pay, code)
 	}
 }

@@ -294,6 +294,10 @@ func (d Deps) mountPlatform(r chi.Router) {
 				r.Put("/payment-routing", d.platformSetPaymentRouting)
 				r.Get("/merchants/{id}/payment-routing", d.platformMerchantRouting)
 				r.Put("/merchants/{id}/payment-routing", d.platformSetMerchantRouting)
+				if d.QRISGate != nil {
+					r.Get("/merchants/{id}/qrisgate-exact", d.platformQRISGateExact)
+					r.Put("/merchants/{id}/qrisgate-exact", d.platformSetQRISGateExact)
+				}
 			}
 			if d.AppReleases != nil {
 				r.Get("/listener-apk", d.platformListListener)

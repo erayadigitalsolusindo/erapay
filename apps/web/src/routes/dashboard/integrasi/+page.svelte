@@ -368,6 +368,13 @@ v1 = HMAC_SHA256(secret, "<t>." + raw_body)`;
 		{/if}
 	</section>
 
+	<!-- Nominal persis: hanya status; DEWA yang mengaturnya atas permintaan tenant -->
+	<section class="card mb-5 p-5">
+		<h2 class="text-sm font-bold">{t('qg.exact.title')}</h2>
+		<p class="muted mt-1 mb-2 text-xs">{t('qg.exact.helpTenant')}</p>
+		<p class="text-xs font-bold {data.qgAccount?.exact_amount ? 'text-emerald-700' : 'text-slate-600'}">{data.qgAccount?.exact_amount ? t('qg.exact.on') : t('qg.exact.off')}</p>
+	</section>
+
 	<!-- 3. Listener -->
 	<section class="card mb-5 p-5">
 		<h2 class="text-sm font-bold">3. {t('qg.s3.title')}</h2>

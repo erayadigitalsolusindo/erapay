@@ -12,6 +12,7 @@ import (
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/ledger"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/outbound"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/pricing"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/qris"
 )
 
 var (
@@ -41,6 +42,8 @@ type Payment struct {
 	GatewayReference  string     `json:"-"`
 	QRPayload         string     `json:"-"`
 	QRCode            *QRCode    `json:"qr_code,omitempty"`
+	PayAmount         int64      `json:"pay_amount,omitempty"`   // QRISGate: what the customer actually pays = amount + unique code (the QR asks for exactly this)
+	UniqueCode        int64      `json:"unique_code,omitempty"`  // QRISGate: PayAmount - Amount
 	QRImageURL        string     `json:"qr_image_url,omitempty"` // sandbox Midtrans only: the image URL its payment simulator asks for
 	Fee               Fee        `json:"fee"`
 	ExpiresAt         *time.Time `json:"expires_at"`
@@ -120,6 +123,18 @@ const cols = `id::text, merchant_id::text, COALESCE(outlet_id::text,''), merchan
 		COALESCE((SELECT SUM(r.amount) FROM refunds r WHERE r.payment_id = payments.id AND r.status IN ('pending_approval','approved')), 0),
 		COALESCE((SELECT m.is_sandbox FROM merchants m WHERE m.id = payments.merchant_id), false)`
 
+// payAmountOf: a QRISGate QR is dynamic and its tag 54 is base + unique code, so a client must show THAT amount, not the
+// base. 0,0 for every other gateway or when the QR carries no unique code.
+func payAmountOf(gw, payload string, amount int64) (pay, code int64) {
+	if gw != "qrisgate" {
+		return 0, 0
+	}
+	if a := qris.Amount(payload); a > amount {
+		return a, a - amount
+	}
+	return 0, 0
+}
+
 func scan(row pgx.Row) (Payment, error) {
 	var p Payment
 	var st string
@@ -131,6 +146,7 @@ func scan(row pgx.Row) (Payment, error) {
 	p.Fee.Bearer = "merchant"
 	if p.Status == Pending && p.QRPayload != "" { // a dynamic QR is only exposed while it can still be paid
 		p.QRCode = &QRCode{Type: "provider_defined", Value: p.QRPayload}
+		p.PayAmount, p.UniqueCode = payAmountOf(p.Gateway, p.QRPayload, p.Amount)
 	}
 	if QRImageURL != nil && p.Status == Pending && p.GatewayReference != "" {
 		p.QRImageURL = QRImageURL(sbx, p.Gateway, p.GatewayReference)

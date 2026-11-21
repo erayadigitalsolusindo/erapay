@@ -31,7 +31,8 @@ type Account struct {
 	HasSecret        bool     `json:"has_secret"`
 	SecretHint       string   `json:"secret_hint,omitempty"`
 	Packages         []string `json:"packages"`
-	Ready            bool     `json:"ready"` // QRIS + secret + at least one package
+	Ready            bool     `json:"ready"`        // QRIS + secret + at least one package
+	ExactAmount      bool     `json:"exact_amount"` // the customer pays exactly the price (no unique code) unless the same amount is already waiting
 	ActivationStatus string   `json:"activation_status,omitempty"`
 	WebhookPath      string   `json:"webhook_path"`
 }
@@ -41,8 +42,8 @@ func (s *Service) Account(ctx context.Context, merchantID string) (Account, erro
 	var qrisName, hint *string
 	var sealed []byte
 	var hasQRIS bool
-	err := s.db.QueryRow(ctx, `SELECT static_qris IS NOT NULL, qris_name, listener_secret_enc, secret_hint, packages
-		FROM qrisgate_accounts WHERE merchant_id = $1`, merchantID).Scan(&hasQRIS, &qrisName, &sealed, &hint, &a.Packages)
+	err := s.db.QueryRow(ctx, `SELECT static_qris IS NOT NULL, qris_name, listener_secret_enc, secret_hint, packages, exact_amount
+		FROM qrisgate_accounts WHERE merchant_id = $1`, merchantID).Scan(&hasQRIS, &qrisName, &sealed, &hint, &a.Packages, &a.ExactAmount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return a, nil
 	}
@@ -107,6 +108,46 @@ func (s *Service) SaveQRIS(ctx context.Context, merchantID, userID, requestID, p
 		return qris.Info{}, err
 	}
 	return info, tx.Commit(ctx)
+}
+
+// SetExactAmount turns "customer pays exactly the price" on or off for a merchant. Only the platform (DEWA) does this,
+// on the tenant's request; it only affects NEW payments.
+// Risk the tenant accepts by turning it on: any incoming transfer of exactly the price while a payment waits can settle it.
+func (s *Service) SetExactAmount(ctx context.Context, merchantID, userID, requestID, note string, on bool) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := s.ensure(ctx, tx, merchantID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE qrisgate_accounts SET exact_amount = $2, updated_by = NULLIF($3,'')::uuid, updated_at = now() WHERE merchant_id = $1`,
+		merchantID, on, userID); err != nil {
+		return err
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: userID, Action: "qrisgate_account.exact_amount", EntityType: "merchant", EntityID: merchantID,
+		RequestID: requestID, Metadata: map[string]any{"enabled": on, "note": note}}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// StaticQRIS returns the tenant's saved static QRIS payload and its name ("" when none). A static QRIS is printed
+// publicly at the store, so showing it to the tenant is not a secret leak.
+func (s *Service) StaticQRIS(ctx context.Context, merchantID string) (payload, name string, err error) {
+	var p, n *string
+	err = s.db.QueryRow(ctx, `SELECT static_qris, qris_name FROM qrisgate_accounts WHERE merchant_id = $1`, merchantID).Scan(&p, &n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", nil
+	}
+	if p != nil {
+		payload = *p
+	}
+	if n != nil {
+		name = *n
+	}
+	return payload, name, err
 }
 
 // SavePackages stores the allow-list of app package names whose notifications are accepted (1-20 names).
@@ -205,7 +246,8 @@ func (s *Service) Claim(ctx context.Context, merchantID, paymentID string, base 
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var static *string
-	err = tx.QueryRow(ctx, `SELECT static_qris FROM qrisgate_accounts WHERE merchant_id = $1`, merchantID).Scan(&static)
+	var exact bool
+	err = tx.QueryRow(ctx, `SELECT static_qris, exact_amount FROM qrisgate_accounts WHERE merchant_id = $1`, merchantID).Scan(&static, &exact)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && static == nil) {
 		return 0, "", ErrNoQRIS
 	}
@@ -218,7 +260,11 @@ func (s *Service) Claim(ctx context.Context, merchantID, paymentID string, base 
 		if _, err := tx.Exec(ctx, `UPDATE qrisgate_claims SET released_at = now() WHERE merchant_id = $1 AND released_at IS NULL AND expires_at < now()`, merchantID); err != nil {
 			return 0, "", err
 		}
-		for code := 1; code <= MaxUniqueCode; code++ {
+		first := 1
+		if exact {
+			first = 0 // try the plain price first; the unique index makes a second identical open amount fall through to 1..99
+		}
+		for code := first; code <= MaxUniqueCode; code++ {
 			err = tx.QueryRow(ctx, `INSERT INTO qrisgate_claims (payment_id, merchant_id, pay_amount, unique_code, expires_at)
 				VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING pay_amount`, paymentID, merchantID, base+int64(code), code, expiresAt).Scan(&pay)
 			if err == nil {

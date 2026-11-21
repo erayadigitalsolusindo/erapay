@@ -340,3 +340,39 @@ func (s *Service) SetMerchant(ctx context.Context, in SetMerchantInput) (Merchan
 	}
 	return s.MerchantOverview(ctx, in.MerchantID)
 }
+
+// Effective is the gateway a NEW QRIS payment of this merchant goes to right now, in the order the orchestrator uses:
+// the merchant's override, then the platform's choice, then the merchant's oldest active account. "" = none can serve.
+// Used to decide what a merchant should be shown (e.g. the QRISGate QRIS settings); the orchestrator stays the authority.
+func (s *Service) Effective(ctx context.Context, merchantID string) (string, error) {
+	opts, err := s.merchantOptions(ctx, merchantID)
+	if err != nil {
+		return "", err
+	}
+	usable := func(code string) bool {
+		for _, o := range opts {
+			if o.Code == code {
+				return true
+			}
+		}
+		return false
+	}
+	if g, _, err := s.MerchantPreferred(ctx, merchantID); err != nil {
+		return "", err
+	} else if g != "" && usable(g) {
+		return g, nil
+	}
+	if g, err := s.Preferred(ctx); err != nil {
+		return "", err
+	} else if g != "" && usable(g) {
+		return g, nil
+	}
+	var first string
+	err = s.db.QueryRow(ctx, `SELECT gateway FROM merchant_gateway_accounts
+		WHERE merchant_id::text = $1 AND environment = $2 AND activation_status = 'active' AND gateway_ref IS NOT NULL
+		ORDER BY created_at LIMIT 1`, merchantID, s.env).Scan(&first)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return first, err
+}
