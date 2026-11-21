@@ -1,8 +1,8 @@
 <script lang="ts">
-	// Logo gateway. Pakai berkas resmi di static/gateways/<kode>.svg (atau .png) bila ada; kalau belum ada,
+	// Logo gateway. Pakai berkas resmi di static/gateways/<kode>.svg (.png/.jpg) bila ada; kalau belum ada,
 	// tampil lencana teks supaya tidak ada gambar rusak. Letakkan logo resmi dari brand kit gateway, jangan digambar ulang.
 	let { code, label, class: cls = 'size-12' }: { code: string; label: string; class?: string } = $props();
-	const SRC = $derived([`/gateways/${code}.svg`, `/gateways/${code}.png`]);
+	const SRC = $derived(["svg", "png", "jpg"].map((e) => `/gateways/${code}.${e}`));
 	let idx = $state(0);
 	const TONE: Record<string, string> = { doku: 'from-[#ed1c24] to-[#b5121b]' };
 </script>

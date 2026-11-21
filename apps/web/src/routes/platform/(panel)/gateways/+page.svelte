@@ -21,7 +21,7 @@
 
 	const rf = $derived(form as { key?: string; error?: string; routed?: string; feeSaved?: boolean; apkSaved?: string } | null);
 	const routing = $derived(data.routing);
-	const LABEL: Record<string, string> = { doku: 'DOKU', ids: 'IDS Payments', finpay: 'FINPAY', xendit: 'Xendit', midtrans: 'Midtrans', dana: 'DANA' };
+	const LABEL: Record<string, string> = { doku: 'DOKU', ids: 'IDS Payments', finpay: 'FINPAY', xendit: 'Xendit', midtrans: 'Midtrans', dana: 'DANA', qrisgate: 'QRISGate' };
 	// Pilihan di form; mengikuti pilihan tersimpan sampai admin mengubahnya.
 	let pick = $state('');
 	$effect(() => {
@@ -148,6 +148,7 @@
 							<input type="radio" name="gateway" value={o.code} bind:group={pick} disabled={!o.available} class="mt-1" />
 							<span class="min-w-0 flex-1">
 								<span class="flex flex-wrap items-center gap-2">
+									<GatewayLogo code={o.code} label={LABEL[o.code] ?? o.code} class="h-6" />
 									<b class="text-sm">{LABEL[o.code] ?? o.code}</b>
 									{#if routing.gateway === o.code}<span class="pill bg-merah/10 text-merah">{tx('pf.rt.current', 'Terpilih')}</span>{/if}
 									<span class="pill {o.available ? 'bg-emerald-500/15 text-emerald-700' : 'bg-amber-500/15 text-amber-700'}">{o.available ? tx('pf.rt.ready', 'Siap') : tx('pf.rt.notReady', 'Belum aktif di server')}</span>

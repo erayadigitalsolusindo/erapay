@@ -81,7 +81,7 @@ type Overview struct {
 
 // Candidates are the gateways that can ever be chosen. Listed explicitly so a registered adapter
 // that is not a payment gateway never shows up as a choice.
-var Candidates = []string{"doku", "ids", "finpay", "dana", "xendit", "midtrans"}
+var Candidates = []string{"doku", "ids", "finpay", "dana", "xendit", "midtrans", "qrisgate"}
 
 func (s *Service) options() []Option {
 	out := make([]Option, 0, len(Candidates))
@@ -233,7 +233,7 @@ func (s *Service) merchantOptions(ctx context.Context, merchantID string) ([]Opt
 		return nil, err
 	}
 	var out []Option
-	for _, code := range append(append([]string{}, Candidates...), "qrisgate") {
+	for _, code := range Candidates {
 		ad, ok := s.gws.Get(code)
 		if !ok || !ad.Capabilities().SupportsMethod(Method) {
 			continue

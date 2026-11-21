@@ -32,3 +32,22 @@ func TestCanRegisterRequiresMailerAndBox(t *testing.T) {
 		t.Fatal("register must be off without a mailer")
 	}
 }
+
+// Approve and ChangePricing share one validation: a typo must not become a tariff.
+func TestValidateFees(t *testing.T) {
+	s := NewService(nil, nil, Config{})
+	ok := ApproveInput{MDRBPS: 70, PlatformBPS: 100, MDRFlatUpTo: 100000, MDRFlatFee: 500}
+	if err := s.validateFees(ok); err != nil {
+		t.Fatalf("valid fees refused: %v", err)
+	}
+	for name, in := range map[string]ApproveInput{
+		"bps too high":      {MDRBPS: 10001},
+		"fixed too high":    {PlatformFixed: MaxFixedFee + 1},
+		"flat fee, no cap":  {MDRFlatFee: 500},
+		"flat fee > cutoff": {MDRFlatUpTo: 100, MDRFlatFee: 500},
+	} {
+		if err := s.validateFees(in); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

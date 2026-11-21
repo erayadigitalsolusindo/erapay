@@ -32,6 +32,31 @@ function parseFee(f: FormData, key: string, label: string): { bps: number; fixed
 
 const path = (f: FormData, action: string) => `/v1/admin/merchants/${encodeURIComponent(str(f, 'id'))}/${action}`;
 
+// Isian tarif (MDR, fee platform, aturan transaksi kecil) -> body API; dipakai approve dan changePricing.
+function feeBody(f: FormData) {
+	const mdr = parseFee(f, 'mdr', 'MDR');
+	if ('error' in mdr) return { error: mdr.error };
+	const platform = parseFee(f, 'platform', 'Fee platform');
+	if ('error' in platform) return { error: platform.error };
+	// Aturan transaksi kecil (BI): transaksi sampai batas tertentu dikenai MDR flat. Opsional, diisi berpasangan.
+	let flat: { mdr_flat_up_to: number; mdr_flat_fee: number } | undefined;
+	if (f.get('flat_on') === 'on') {
+		const upTo = parseRupiah(str(f, 'flat_up_to'));
+		const fee = parseRupiah(str(f, 'flat_fee'));
+		if (upTo === null || upTo <= 0) return { error: 'Aturan transaksi kecil: isi batas transaksi (Rp) dengan angka bulat lebih dari 0.' };
+		if (fee === null || fee > MAX_FIXED) return { error: `Aturan transaksi kecil: isi biaya flat (Rp) angka bulat 0 sampai ${MAX_FIXED.toLocaleString('id-ID')}.` };
+		if (fee > upTo) return { error: 'Aturan transaksi kecil: biaya flat tidak boleh lebih besar dari batas transaksi.' };
+		flat = { mdr_flat_up_to: upTo, mdr_flat_fee: fee };
+	}
+	return {
+		body: {
+			...(mdr.bps !== undefined ? { mdr_bps: mdr.bps } : { mdr_fixed: mdr.fixed }),
+			...(platform.bps !== undefined ? { platform_bps: platform.bps } : { platform_fixed: platform.fixed }),
+			...flat
+		}
+	};
+}
+
 export const merchantActions = {
 	startReview: async ({ request, cookies, fetch, locals }: RequestEvent) => {
 		const token = guard(locals, cookies, 'merchant:review', 'platform');
@@ -48,27 +73,17 @@ export const merchantActions = {
 	approve: async ({ request, cookies, fetch, locals }: RequestEvent) => {
 		const token = guard(locals, cookies, 'merchant:approve', 'platform');
 		const f = await request.formData();
-		const mdr = parseFee(f, 'mdr', 'MDR');
-		if ('error' in mdr) return fail(400, { message: mdr.error });
-		const platform = parseFee(f, 'platform', 'Fee platform');
-		if ('error' in platform) return fail(400, { message: platform.error });
-		// Aturan transaksi kecil (BI): transaksi sampai batas tertentu dikenai MDR flat. Opsional, diisi berpasangan.
-		let flat: { mdr_flat_up_to: number; mdr_flat_fee: number } | undefined;
-		if (f.get('flat_on') === 'on') {
-			const upTo = parseRupiah(str(f, 'flat_up_to'));
-			const fee = parseRupiah(str(f, 'flat_fee'));
-			if (upTo === null || upTo <= 0) return fail(400, { message: 'Aturan transaksi kecil: isi batas transaksi (Rp) dengan angka bulat lebih dari 0.' });
-			if (fee === null || fee > MAX_FIXED) return fail(400, { message: `Aturan transaksi kecil: isi biaya flat (Rp) angka bulat 0 sampai ${MAX_FIXED.toLocaleString('id-ID')}.` });
-			if (fee > upTo) return fail(400, { message: 'Aturan transaksi kecil: biaya flat tidak boleh lebih besar dari batas transaksi.' });
-			flat = { mdr_flat_up_to: upTo, mdr_flat_fee: fee };
-		}
-		return done(
-			await call(fetch, token, 'POST', path(f, 'approve'), {
-				...(mdr.bps !== undefined ? { mdr_bps: mdr.bps } : { mdr_fixed: mdr.fixed }),
-				...(platform.bps !== undefined ? { platform_bps: platform.bps } : { platform_fixed: platform.fixed }),
-				...flat
-			})
-		);
+		const r = feeBody(f);
+		if ('error' in r) return fail(400, { message: r.error });
+		return done(await call(fetch, token, 'POST', path(f, 'approve'), r.body));
+	},
+	// Ubah tarif merchant yang sudah disetujui tanpa mengubah statusnya; berlaku untuk transaksi berikutnya.
+	changePricing: async ({ request, cookies, fetch, locals }: RequestEvent) => {
+		const token = guard(locals, cookies, 'merchant:approve', 'platform');
+		const f = await request.formData();
+		const r = feeBody(f);
+		if ('error' in r) return fail(400, { message: r.error });
+		return done(await call(fetch, token, 'POST', path(f, 'pricing'), { ...r.body, note: str(f, 'note') }));
 	},
 	reject: async ({ request, cookies, fetch, locals }: RequestEvent) => {
 		const token = guard(locals, cookies, 'merchant:approve', 'platform');

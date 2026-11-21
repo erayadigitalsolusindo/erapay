@@ -596,6 +596,59 @@ func (s *Service) GetForReview(ctx context.Context, id string) (Merchant, error)
 	return m, nil
 }
 
+// validateFees checks the fee fields shared by Approve and ChangePricing.
+func (s *Service) validateFees(in ApproveInput) error {
+	if in.MDRBPS < 0 || in.MDRBPS > 10000 || in.PlatformBPS < 0 || in.PlatformBPS > 10000 {
+		return invalid("mdr_bps and platform_bps must be integers 0..10000")
+	}
+	if in.MDRFixed < 0 || in.MDRFixed > MaxFixedFee || in.PlatformFixed < 0 || in.PlatformFixed > MaxFixedFee {
+		return invalid("mdr_fixed and platform_fixed must be integer rupiah 0..%d", MaxFixedFee)
+	}
+	if in.MDRFlatUpTo < 0 || in.MDRFlatFee < 0 || in.MDRFlatFee > MaxFixedFee || (in.MDRFlatUpTo == 0 && in.MDRFlatFee != 0) ||
+		(in.MDRFlatUpTo > 0 && in.MDRFlatFee > in.MDRFlatUpTo) || in.MDRFlatUpTo > 1_000_000_000 {
+		return invalid("mdr_flat_up_to and mdr_flat_fee must be set together (fee <= threshold, fee <= %d)", MaxFixedFee)
+	}
+	if s.cfg.MDRCap < 0 || s.cfg.MDRCapUpTo < 0 {
+		return invalid("mdr_cap and mdr_cap_up_to must be non-negative")
+	}
+	if s.cfg.MDRCapUpTo > 0 && s.cfg.MDRCap == 0 {
+		return invalid("mdr_cap_up_to requires mdr_cap > 0")
+	}
+	return nil
+}
+
+// assignPlans writes one new plan version per gateway (append-only, never retroactive) and assigns it from now.
+// Returns the doku plan id. The caller holds the merchant row lock, so versions cannot collide.
+func (s *Service) assignPlans(ctx context.Context, tx pgx.Tx, in ApproveInput) (string, error) {
+	// One plan per gateway that can carry QRIS, with the same fees: the merchant pays EraPay's price
+	// whichever gateway routes the payment, and a gateway whose real MDR differs surfaces as a
+	// settlement mismatch instead of being booked. doku's code stays 'qris-<id>'.
+	var planID string
+	for _, gw := range PlanGateways {
+		code := gw + "-qris-" + in.MerchantID
+		if gw == "doku" {
+			code = "qris-" + in.MerchantID
+		}
+		var id string
+		if err := tx.QueryRow(ctx, `INSERT INTO pricing_plans
+			(code, version, gateway, payment_method, mdr_bps, mdr_fixed, mdr_rounding, platform_bps, platform_fixed, platform_rounding, mdr_cap, mdr_cap_up_to, mdr_flat_up_to, mdr_flat_fee, created_by, approved_by)
+			SELECT $1::text, COALESCE(max(version),0)+1, $11::text, 'QRIS', $2, $7, 'half_up', $3, $8, 'half_up', $5, $6, $9, $10, NULLIF($4,'')::uuid, NULLIF($4,'')::uuid
+			FROM pricing_plans WHERE code = $1::text RETURNING id::text`,
+			code, in.MDRBPS, in.PlatformBPS, in.ActorID, s.cfg.MDRCap, s.cfg.MDRCapUpTo, in.MDRFixed, in.PlatformFixed, in.MDRFlatUpTo, in.MDRFlatFee,
+			gw).Scan(&id); err != nil {
+			return "", err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from, created_by)
+			VALUES ($1,$2,now(),NULLIF($3,'')::uuid)`, in.MerchantID, id, in.ActorID); err != nil {
+			return "", err
+		}
+		if gw == "doku" {
+			planID = id
+		}
+	}
+	return planID, nil
+}
+
 type ApproveInput struct {
 	MerchantID  string
 	ActorID     string
@@ -621,21 +674,8 @@ const MaxFixedFee int64 = 1_000_000
 // is locked first, so concurrent or repeated approvals produce exactly one plan: the loser sees a
 // non-reviewable status and gets ErrState.
 func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error) {
-	if in.MDRBPS < 0 || in.MDRBPS > 10000 || in.PlatformBPS < 0 || in.PlatformBPS > 10000 {
-		return Merchant{}, invalid("mdr_bps and platform_bps must be integers 0..10000")
-	}
-	if in.MDRFixed < 0 || in.MDRFixed > MaxFixedFee || in.PlatformFixed < 0 || in.PlatformFixed > MaxFixedFee {
-		return Merchant{}, invalid("mdr_fixed and platform_fixed must be integer rupiah 0..%d", MaxFixedFee)
-	}
-	if in.MDRFlatUpTo < 0 || in.MDRFlatFee < 0 || in.MDRFlatFee > MaxFixedFee || (in.MDRFlatUpTo == 0 && in.MDRFlatFee != 0) ||
-		(in.MDRFlatUpTo > 0 && in.MDRFlatFee > in.MDRFlatUpTo) || in.MDRFlatUpTo > 1_000_000_000 {
-		return Merchant{}, invalid("mdr_flat_up_to and mdr_flat_fee must be set together (fee <= threshold, fee <= %d)", MaxFixedFee)
-	}
-	if s.cfg.MDRCap < 0 || s.cfg.MDRCapUpTo < 0 {
-		return Merchant{}, invalid("mdr_cap and mdr_cap_up_to must be non-negative")
-	}
-	if s.cfg.MDRCapUpTo > 0 && s.cfg.MDRCap == 0 {
-		return Merchant{}, invalid("mdr_cap_up_to requires mdr_cap > 0")
+	if err := s.validateFees(in); err != nil {
+		return Merchant{}, err
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -670,31 +710,9 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 			return Merchant{}, ErrIdentityIncomplete
 		}
 	}
-	// One plan per gateway that can carry QRIS, with the same fees: the merchant pays EraPay's price
-	// whichever gateway routes the payment, and a gateway whose real MDR differs surfaces as a
-	// settlement mismatch instead of being booked. doku's code stays 'qris-<id>'.
-	var planID string
-	for _, gw := range PlanGateways {
-		code := gw + "-qris-" + in.MerchantID
-		if gw == "doku" {
-			code = "qris-" + in.MerchantID
-		}
-		var id string
-		if err := tx.QueryRow(ctx, `INSERT INTO pricing_plans
-			(code, version, gateway, payment_method, mdr_bps, mdr_fixed, mdr_rounding, platform_bps, platform_fixed, platform_rounding, mdr_cap, mdr_cap_up_to, mdr_flat_up_to, mdr_flat_fee, created_by, approved_by)
-			SELECT $1::text, COALESCE(max(version),0)+1, $11::text, 'QRIS', $2, $7, 'half_up', $3, $8, 'half_up', $5, $6, $9, $10, NULLIF($4,'')::uuid, NULLIF($4,'')::uuid
-			FROM pricing_plans WHERE code = $1::text RETURNING id::text`,
-			code, in.MDRBPS, in.PlatformBPS, in.ActorID, s.cfg.MDRCap, s.cfg.MDRCapUpTo, in.MDRFixed, in.PlatformFixed, in.MDRFlatUpTo, in.MDRFlatFee,
-			gw).Scan(&id); err != nil {
-			return Merchant{}, err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO merchant_pricing_assignments (merchant_id, plan_id, effective_from, created_by)
-			VALUES ($1,$2,now(),NULLIF($3,'')::uuid)`, in.MerchantID, id, in.ActorID); err != nil {
-			return Merchant{}, err
-		}
-		if gw == "doku" {
-			planID = id
-		}
+	planID, err := s.assignPlans(ctx, tx, in)
+	if err != nil {
+		return Merchant{}, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE merchants SET onboarding_status='approved', review_note=NULL, reviewed_by=NULLIF($2,'')::uuid,
 		reviewed_at=now(), updated_at=now(), version=version+1 WHERE id=$1`, in.MerchantID, in.ActorID); err != nil {
@@ -705,6 +723,46 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 		Metadata: map[string]any{"plan_id": planID, "mdr_bps": in.MDRBPS, "platform_bps": in.PlatformBPS,
 			"mdr_fixed": in.MDRFixed, "platform_fixed": in.PlatformFixed,
 			"mdr_flat_up_to": in.MDRFlatUpTo, "mdr_flat_fee": in.MDRFlatFee, "via": in.Via, "admin": in.Admin}}); err != nil {
+		return Merchant{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Merchant{}, err
+	}
+	return s.Get(ctx, in.MerchantID)
+}
+
+type ChangePricingInput struct {
+	ApproveInput
+	Note string
+}
+
+// ChangePricing gives an APPROVED merchant a new tariff (MDR, platform fee, small-transaction flat rule) without
+// touching its status. New plan versions apply to payments created after now; earlier payments keep their snapshot.
+func (s *Service) ChangePricing(ctx context.Context, in ChangePricingInput) (Merchant, error) {
+	in.Note = strings.TrimSpace(in.Note)
+	if n := utf8.RuneCountInString(in.Note); n < 3 || n > 500 {
+		return Merchant{}, invalid("note is required (3-500 characters)")
+	}
+	if err := s.validateFees(in.ApproveInput); err != nil {
+		return Merchant{}, err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Merchant{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockIn(ctx, tx, in.MerchantID, []string{"approved"}); err != nil {
+		return Merchant{}, err
+	}
+	planID, err := s.assignPlans(ctx, tx, in.ApproveInput)
+	if err != nil {
+		return Merchant{}, err
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant.pricing_changed", EntityType: "merchant",
+		EntityID: in.MerchantID, RequestID: in.RequestID,
+		Metadata: map[string]any{"plan_id": planID, "mdr_bps": in.MDRBPS, "platform_bps": in.PlatformBPS,
+			"mdr_fixed": in.MDRFixed, "platform_fixed": in.PlatformFixed,
+			"mdr_flat_up_to": in.MDRFlatUpTo, "mdr_flat_fee": in.MDRFlatFee, "note": in.Note}}); err != nil {
 		return Merchant{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

@@ -112,11 +112,8 @@ func (d Deps) adminGetMerchant(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, m)
 }
 
-func (d Deps) adminApproveMerchant(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r)
-	if !ok {
-		return
-	}
+// feeBody reads the tariff fields shared by approve and change-pricing. ok=false: the response is already written.
+func feeBody(w http.ResponseWriter, r *http.Request, id string) (in onboarding.ApproveInput, note string, ok bool) {
 	var body struct {
 		MDRBPS        *int   `json:"mdr_bps"`
 		PlatformBPS   *int   `json:"platform_bps"`
@@ -124,22 +121,23 @@ func (d Deps) adminApproveMerchant(w http.ResponseWriter, r *http.Request) {
 		PlatformFixed *int64 `json:"platform_fixed"`
 		MDRFlatUpTo   *int64 `json:"mdr_flat_up_to"`
 		MDRFlatFee    *int64 `json:"mdr_flat_fee"`
+		Note          string `json:"note"` // only used by change-pricing
 	}
 	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
-		return
+		return in, "", false
 	}
 	// Fees are a business decision with no default: each component (MDR, platform) must be stated
 	// explicitly, as a percentage (bps), a fixed rupiah amount, or both. The unstated half is 0.
 	if (body.MDRBPS == nil && body.MDRFixed == nil) || (body.PlatformBPS == nil && body.PlatformFixed == nil) {
 		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "mdr and platform fee are required (mdr_bps/mdr_fixed and platform_bps/platform_fixed)", false)
-		return
+		return in, "", false
 	}
 	// Aturan transaksi kecil: kedua nilainya diisi bersama atau tidak sama sekali.
 	if (body.MDRFlatUpTo == nil) != (body.MDRFlatFee == nil) {
 		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "mdr_flat_up_to and mdr_flat_fee must be sent together", false)
-		return
+		return in, "", false
 	}
-	in := onboarding.ApproveInput{MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, RequestID: middleware.GetReqID(r.Context())}
+	in = onboarding.ApproveInput{MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, RequestID: middleware.GetReqID(r.Context())}
 	if body.MDRBPS != nil {
 		in.MDRBPS = *body.MDRBPS
 	}
@@ -155,7 +153,36 @@ func (d Deps) adminApproveMerchant(w http.ResponseWriter, r *http.Request) {
 	if body.MDRFlatUpTo != nil {
 		in.MDRFlatUpTo, in.MDRFlatFee = *body.MDRFlatUpTo, *body.MDRFlatFee
 	}
+	return in, body.Note, true
+}
+
+func (d Deps) adminApproveMerchant(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	in, _, ok := feeBody(w, r, id)
+	if !ok {
+		return
+	}
 	m, err := d.Onboarding.Approve(r.Context(), in)
+	if !d.onboardingErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
+}
+
+// adminChangePricing: POST /v1/admin/merchants/{id}/pricing — new tariff for an approved merchant, status untouched.
+func (d Deps) adminChangePricing(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	in, note, ok := feeBody(w, r, id)
+	if !ok {
+		return
+	}
+	m, err := d.Onboarding.ChangePricing(r.Context(), onboarding.ChangePricingInput{ApproveInput: in, Note: note})
 	if !d.onboardingErr(w, r, err) {
 		return
 	}

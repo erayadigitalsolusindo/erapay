@@ -32,7 +32,8 @@
 	const showDecide = $derived(canApprove && reviewable.includes(m.status));
 	const showRevoke = $derived(canApprove && m.status === 'approved');
 	const showReactivate = $derived(canApprove && m.status === 'suspended');
-	const any = $derived(showVerify || showStart || showChanges || showDecide || showRevoke || showReactivate);
+	const showPricing = $derived(canApprove && m.status === 'approved');
+	const any = $derived(showPricing || showVerify || showStart || showChanges || showDecide || showRevoke || showReactivate);
 
 	// Ringkas isian tarif untuk dialog konfirmasi: "0,7%" atau "Rp 500".
 	const feeText = (fd: FormData, key: string) => {
@@ -71,6 +72,33 @@
 		};
 	};
 </script>
+
+{#snippet feeFields()}
+	<div class="flex flex-wrap gap-2">
+		<FeeInput name="mdr" label={t('ma.mdr')} />
+		<FeeInput name="platform" label={t('ma.fee')} />
+	</div>
+	<!-- Aturan transaksi kecil (BI): transaksi sampai batas tertentu dikenai MDR flat -->
+	<div class="rounded-xl border border-ink/10 bg-ink/[0.03] p-3">
+		<label class="flex cursor-pointer items-start gap-2">
+			<input type="checkbox" name="flat_on" class="mt-0.5 shrink-0 accent-merah" bind:checked={flatOn} />
+			<span class="min-w-0 flex-1 break-words">
+				<b>{t('ma.flat.title')}</b>
+				<span class="muted block leading-relaxed">{t('ma.flat.desc')}</span>
+			</span>
+		</label>
+		{#if flatOn}
+			<div class="mt-2 flex flex-wrap items-end gap-2">
+				<label class="min-w-0 flex-1 basis-40"><span class="mb-1 block text-[11px] font-bold">{t('ma.flat.upTo')}</span>
+					<input class="inp w-full py-2" name="flat_up_to" inputmode="numeric" autocomplete="off" required placeholder={t('ma.flat.ph1')} />
+				</label>
+				<label class="min-w-0 flex-1 basis-40"><span class="mb-1 block text-[11px] font-bold">{t('ma.flat.fee')}</span>
+					<input class="inp w-full py-2" name="flat_fee" inputmode="numeric" autocomplete="off" required placeholder={t('ma.flat.ph2')} />
+				</label>
+			</div>
+		{/if}
+	</div>
+{/snippet}
 
 {#if any}
 	<button type="button" class="btn btn-red" onclick={() => ((open = true), (err = ''))}>
@@ -125,30 +153,7 @@
 				>
 					<h4 class="font-bold">{t('onb.approveBtn')}</h4>
 					<input type="hidden" name="id" value={m.id} />
-					<div class="flex flex-wrap gap-2">
-						<FeeInput name="mdr" label={t('ma.mdr')} />
-						<FeeInput name="platform" label={t('ma.fee')} />
-					</div>
-					<!-- Aturan transaksi kecil (BI): transaksi sampai batas tertentu dikenai MDR flat -->
-					<div class="rounded-xl border border-ink/10 bg-ink/[0.03] p-3">
-						<label class="flex cursor-pointer items-start gap-2">
-							<input type="checkbox" name="flat_on" class="mt-0.5 shrink-0 accent-merah" bind:checked={flatOn} />
-							<span class="min-w-0 flex-1 break-words">
-								<b>{t('ma.flat.title')}</b>
-								<span class="muted block leading-relaxed">{t('ma.flat.desc')}</span>
-							</span>
-						</label>
-						{#if flatOn}
-							<div class="mt-2 flex flex-wrap items-end gap-2">
-								<label class="min-w-0 flex-1 basis-40"><span class="mb-1 block text-[11px] font-bold">{t('ma.flat.upTo')}</span>
-									<input class="inp w-full py-2" name="flat_up_to" inputmode="numeric" autocomplete="off" required placeholder={t('ma.flat.ph1')} />
-								</label>
-								<label class="min-w-0 flex-1 basis-40"><span class="mb-1 block text-[11px] font-bold">{t('ma.flat.fee')}</span>
-									<input class="inp w-full py-2" name="flat_fee" inputmode="numeric" autocomplete="off" required placeholder={t('ma.flat.ph2')} />
-								</label>
-							</div>
-						{/if}
-					</div>
+					{@render feeFields()}
 					<div class="flex justify-end">
 						<button class="btn btn-red" type="submit" disabled={busy}>{t('onb.approveBtn')}</button>
 					</div>
@@ -169,6 +174,24 @@
 						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder={t('onb.noteRequired')} minlength="3" maxlength="500" required />
 						<button class="btn btn-danger" type="submit" disabled={busy}>{t('fin.reject')}</button>
 						<button class="btn btn-warn" type="submit" formaction="?/suspend" disabled={busy}>{t('ma.suspend')}</button>
+					</div>
+				</form>
+			{/if}
+
+			{#if showPricing}
+				<form
+					method="POST"
+					action="?/changePricing"
+					use:enhance={withConfirm((fd) => ({ variant: 'info', title: t('ma.price.title'), message: t('ma.price.msg', { name: m.display_name, mdr: feeText(fd, 'mdr'), platform: feeText(fd, 'platform') }) + flatText(fd), confirmText: t('ma.price.ok'), successMessage: t('ma.price.done') }), busyWrap)}
+					class="space-y-2"
+				>
+					<h4 class="font-bold">{t('ma.price.title')}</h4>
+					<p class="muted">{t('ma.price.hint')}</p>
+					<input type="hidden" name="id" value={m.id} />
+					{@render feeFields()}
+					<div class="flex flex-wrap gap-2">
+						<input class="inp min-w-0 flex-1 py-2" name="note" placeholder={t('ma.price.ph')} minlength="3" maxlength="500" required />
+						<button class="btn btn-red" type="submit" disabled={busy}>{t('ma.price.btn')}</button>
 					</div>
 				</form>
 			{/if}
