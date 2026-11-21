@@ -19,6 +19,8 @@ func (d Deps) routingErr(w http.ResponseWriter, r *http.Request, err error) bool
 		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", ve.Msg, false)
 	case errors.Is(err, routing.ErrConflict):
 		writeError(w, r, http.StatusConflict, "VERSION_CONFLICT", "jalur sudah diubah orang lain; muat ulang halaman lalu coba lagi", false)
+	case errors.Is(err, routing.ErrMerchantNotFound):
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "merchant not found", false)
 	case errors.Is(err, routing.ErrWrongEnv):
 		writeError(w, r, http.StatusConflict, "ENVIRONMENT_MISMATCH", "this server runs in a different environment; change it from that environment's server", false)
 	default:
@@ -52,6 +54,45 @@ func (d Deps) platformSetPaymentRouting(w http.ResponseWriter, r *http.Request) 
 	}
 	ov, err := d.Routing.Set(r.Context(), routing.SetInput{Environment: body.Environment, Gateway: body.Gateway,
 		ExpectVersion: body.Version, Note: body.Note, ActorID: PrincipalFrom(r.Context()).UserID, RequestID: middleware.GetReqID(r.Context())})
+	if !d.routingErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, ov)
+}
+
+// platformMerchantRouting: GET /v1/platform/merchants/{id}/payment-routing
+// The merchant's own gateway choice (or "follow the platform") and the gateways it can use right now.
+func (d Deps) platformMerchantRouting(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	ov, err := d.Routing.MerchantOverview(r.Context(), id)
+	if !d.routingErr(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, ov)
+}
+
+// platformSetMerchantRouting: PUT /v1/platform/merchants/{id}/payment-routing
+// gateway "" removes the override. Takes effect for the next payment; payments already created keep their gateway.
+func (d Deps) platformSetMerchantRouting(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Environment string `json:"environment"`
+		Gateway     string `json:"gateway"`
+		Fallback    bool   `json:"fallback"`
+		Version     int    `json:"version"`
+		Note        string `json:"note"`
+	}
+	if _, ok := decodeStrict(w, r, 16<<10, &body); !ok {
+		return
+	}
+	ov, err := d.Routing.SetMerchant(r.Context(), routing.SetMerchantInput{MerchantID: id, Environment: body.Environment, Gateway: body.Gateway,
+		Fallback: body.Fallback, ExpectVersion: body.Version, Note: body.Note, ActorID: PrincipalFrom(r.Context()).UserID, RequestID: middleware.GetReqID(r.Context())})
 	if !d.routingErr(w, r, err) {
 		return
 	}

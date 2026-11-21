@@ -186,3 +186,157 @@ func prevOrNone(version int, gw string) string {
 	}
 	return gw
 }
+
+// ---- Override per merchant ----
+
+// MerchantPreferred returns the gateway chosen for one merchant ("" = follow the platform) and whether a payment may
+// fall back to the normal route when that gateway cannot take the merchant. One primary-key lookup per payment create.
+func (s *Service) MerchantPreferred(ctx context.Context, merchantID string) (gw string, fallback bool, err error) {
+	err = s.db.QueryRow(ctx, `SELECT gateway, fallback FROM merchant_payment_routing WHERE merchant_id::text = $1 AND environment = $2`,
+		merchantID, s.env).Scan(&gw, &fallback)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	return gw, fallback, err
+}
+
+// ErrMerchantNotFound: no such merchant.
+var ErrMerchantNotFound = errors.New("routing: merchant not found")
+
+type MerchantOverview struct {
+	ServerEnvironment string   `json:"server_environment"`
+	Gateway           string   `json:"gateway"` // "" = follows the platform choice
+	Fallback          bool     `json:"fallback"`
+	Version           int      `json:"version"`
+	PlatformGateway   string   `json:"platform_gateway"` // what "follow the platform" means right now ("" = none chosen)
+	Options           []Option `json:"options"`          // gateways this merchant can actually use right now
+}
+
+// merchantOptions: the gateways the merchant can be sent to now = registered, carry QRIS, and (unless the gateway
+// is contracted once for the platform) the merchant has an ACTIVE account for it on this server's environment.
+func (s *Service) merchantOptions(ctx context.Context, merchantID string) ([]Option, error) {
+	rows, err := s.db.Query(ctx, `SELECT gateway FROM merchant_gateway_accounts
+		WHERE merchant_id::text = $1 AND environment = $2 AND activation_status = 'active' AND gateway_ref IS NOT NULL`, merchantID, s.env)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	active := map[string]bool{}
+	for rows.Next() {
+		var g string
+		if err := rows.Scan(&g); err != nil {
+			return nil, err
+		}
+		active[g] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var out []Option
+	for _, code := range append(append([]string{}, Candidates...), "qrisgate") {
+		ad, ok := s.gws.Get(code)
+		if !ok || !ad.Capabilities().SupportsMethod(Method) {
+			continue
+		}
+		pa := ad.Capabilities().PlatformAccount
+		if pa || active[code] {
+			out = append(out, Option{Code: code, Available: true, PlatformAccount: pa})
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) MerchantOverview(ctx context.Context, merchantID string) (MerchantOverview, error) {
+	var exists bool
+	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM merchants WHERE id::text = $1)`, merchantID).Scan(&exists); err != nil {
+		return MerchantOverview{}, err
+	}
+	if !exists {
+		return MerchantOverview{}, ErrMerchantNotFound
+	}
+	ov := MerchantOverview{ServerEnvironment: s.env}
+	err := s.db.QueryRow(ctx, `SELECT gateway, fallback, version FROM merchant_payment_routing WHERE merchant_id::text = $1 AND environment = $2`,
+		merchantID, s.env).Scan(&ov.Gateway, &ov.Fallback, &ov.Version)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return MerchantOverview{}, err
+	}
+	if ov.PlatformGateway, err = s.Preferred(ctx); err != nil {
+		return MerchantOverview{}, err
+	}
+	if ov.Options, err = s.merchantOptions(ctx, merchantID); err != nil {
+		return MerchantOverview{}, err
+	}
+	return ov, nil
+}
+
+type SetMerchantInput struct {
+	MerchantID    string
+	Environment   string
+	Gateway       string // "" = remove the override (follow the platform)
+	Fallback      bool
+	ExpectVersion int // version the form was loaded with; 0 when there was no override
+	Note          string
+	ActorID       string
+	RequestID     string
+}
+
+// SetMerchant sets or removes one merchant's override. A gateway the merchant cannot use right now is refused, so the
+// choice can never be a silent no-op. A row lock plus ExpectVersion keep two admins from overwriting each other.
+func (s *Service) SetMerchant(ctx context.Context, in SetMerchantInput) (MerchantOverview, error) {
+	in.Note = strings.TrimSpace(in.Note)
+	if n := utf8.RuneCountInString(in.Note); n < 3 || n > 500 {
+		return MerchantOverview{}, invalid("alasan wajib diisi (3-500 karakter)")
+	}
+	if in.Environment != s.env {
+		return MerchantOverview{}, ErrWrongEnv
+	}
+	ov, err := s.MerchantOverview(ctx, in.MerchantID) // also proves the merchant exists
+	if err != nil {
+		return MerchantOverview{}, err
+	}
+	if in.Gateway != "" {
+		ok := false
+		for _, o := range ov.Options {
+			ok = ok || o.Code == in.Gateway
+		}
+		if !ok {
+			return MerchantOverview{}, invalid("gateway %s belum bisa dipakai tenant ini: aktifkan akun gateway-nya dulu", in.Gateway)
+		}
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return MerchantOverview{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var prev string
+	var version int
+	err = tx.QueryRow(ctx, `SELECT gateway, version FROM merchant_payment_routing WHERE merchant_id::text = $1 AND environment = $2 FOR UPDATE`,
+		in.MerchantID, s.env).Scan(&prev, &version)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return MerchantOverview{}, err
+	}
+	if version != in.ExpectVersion {
+		return MerchantOverview{}, ErrConflict
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: in.ActorID, Action: "merchant_payment_routing.set", EntityType: "merchant",
+		EntityID: in.MerchantID, RequestID: in.RequestID, Metadata: map[string]any{
+			"environment": s.env, "from": prev, "to": in.Gateway, "fallback": in.Fallback, "version": version + 1, "note": in.Note}}); err != nil {
+		return MerchantOverview{}, err
+	}
+	if in.Gateway == "" {
+		_, err = tx.Exec(ctx, `DELETE FROM merchant_payment_routing WHERE merchant_id::text = $1 AND environment = $2`, in.MerchantID, s.env)
+	} else {
+		_, err = tx.Exec(ctx, `INSERT INTO merchant_payment_routing (merchant_id, environment, gateway, fallback, version, updated_by)
+			VALUES ($1::uuid, $2, $3, $4, 1, NULLIF($5,'')::uuid)
+			ON CONFLICT (merchant_id, environment) DO UPDATE SET gateway = EXCLUDED.gateway, fallback = EXCLUDED.fallback,
+			version = merchant_payment_routing.version + 1, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+			in.MerchantID, s.env, in.Gateway, in.Fallback, in.ActorID)
+	}
+	if err != nil {
+		return MerchantOverview{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return MerchantOverview{}, err
+	}
+	return s.MerchantOverview(ctx, in.MerchantID)
+}

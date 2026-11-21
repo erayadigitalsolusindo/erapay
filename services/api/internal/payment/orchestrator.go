@@ -80,6 +80,12 @@ type Routing interface {
 	Preferred(ctx context.Context) (string, error)
 }
 
+// merchantRouting is the optional per-merchant override (internal/routing). Kept separate from Routing so a
+// platform-only Routing still satisfies the orchestrator.
+type merchantRouting interface {
+	MerchantPreferred(ctx context.Context, merchantID string) (gw string, fallback bool, err error)
+}
+
 // SetSandbox wires the adapters sandbox merchants use. It only applies on a production server (see
 // apikey.MerchantEnv); a sandbox merchant never reaches the production adapters or the platform's choice.
 func (o *Orchestrator) SetSandbox(g Gateways) { o.sbx = g }
@@ -111,6 +117,31 @@ func (o *Orchestrator) route(ctx context.Context, merchantID, method string, noD
 	gws, env, err := o.world(ctx, merchantID)
 	if err != nil {
 		return nil, "", err
+	}
+	if mr, ok := o.routing.(merchantRouting); ok && env == o.env {
+		// A merchant's own choice beats the platform's. When it cannot serve the merchant right now the payment is
+		// REFUSED (never silently rerouted: a Direct gateway sends money straight to the merchant) unless fallback is set.
+		// A top-up (noDirect) never goes to a Direct gateway, so for it the override is ignored.
+		g, fallback, err := mr.MerchantPreferred(ctx, merchantID)
+		if err != nil {
+			return nil, "", err
+		}
+		if g != "" {
+			ad, ref, ok, err := o.routeTo(ctx, gws, env, merchantID, g, method)
+			if err != nil {
+				return nil, "", err
+			}
+			switch {
+			case ok && !(noDirect && ad.Capabilities().Direct):
+				return ad, ref, nil
+			case ok: // top-up on a Direct override: use the normal route
+			case !fallback:
+				o.log.Warn("merchant's gateway cannot take this payment; refused (no fallback)", "gateway", g, "merchant_id", merchantID, "method", method)
+				return nil, "", ErrMethodUnavailable
+			default:
+				o.log.Warn("merchant's gateway cannot take this payment; using the normal route", "gateway", g, "merchant_id", merchantID, "method", method)
+			}
+		}
 	}
 	if o.routing != nil && env == o.env {
 		pref, err := o.routing.Preferred(ctx)

@@ -66,6 +66,23 @@
 	const count = (s: string) => accounts.filter((a) => a.activation_status === s).length;
 	const readyHere = $derived(accounts.some((a) => a.environment === serverEnv && a.activation_status === 'active' && (a.gateway_ref || isPlatform(a.gateway))));
 
+	// Jalur pembayaran tenant (menimpa default platform).
+	const routing = $derived(data.routing);
+	const routeOptions = $derived([
+		{ value: '', label: `Ikut default platform${routing?.platform_gateway ? ` (${routing.platform_gateway.toUpperCase()})` : ''}` },
+		...(routing?.options ?? []).map((o) => ({ value: o.code, label: o.code.toUpperCase() }))
+	]);
+	let rGateway = $state('');
+	let rFallback = $state(false);
+	let rSeeded = false;
+	let routing_saving = $state(false);
+	$effect(() => {
+		if (rSeeded || !routing) return;
+		rSeeded = true;
+		rGateway = routing.gateway;
+		rFallback = routing.fallback;
+	});
+
 	let testing = $state<string | null>(null);
 	let saving = $state(false);
 	let copied = $state(false);
@@ -437,5 +454,61 @@
 				</form>
 			</div>
 		</section>
+
+		<!-- jalur pembayaran tenant -->
+		{#if routing}
+			<section class="card overflow-hidden">
+				<div class="h-1 bg-linear-to-r from-violet-500 to-fuchsia-600"></div>
+				<div class="p-5 sm:p-6">
+					<h2 class="font-display text-lg font-extrabold">{tx('pf.gw.routeTitle', 'Jalur pembayaran tenant')}</h2>
+					<p class="muted mt-1 max-w-2xl text-xs leading-relaxed">
+						{tx('pf.gw.routeHint', 'Gateway tujuan pembayaran baru tenant ini. Kosong = ikut default platform. Hanya gateway yang sudah Aktif untuk tenant ini yang bisa dipilih. Pembayaran yang sudah dibuat tidak berubah.')}
+					</p>
+					<form
+						method="POST"
+						action="?/route"
+						autocomplete="off"
+						use:enhance={() => {
+							routing_saving = true;
+							return async ({ update }) => {
+								await update({ reset: false });
+								routing_saving = false;
+								rSeeded = false;
+							};
+						}}
+						class="mt-5 grid gap-4 sm:grid-cols-2"
+					>
+						<input type="hidden" name="environment" value={routing.server_environment} />
+						<input type="hidden" name="version" value={routing.version} />
+						<input type="hidden" name="fallback" value={rFallback ? '1' : '0'} />
+						<div>
+							<label class="lbl mb-1.5" for="rt-gateway">{tx('pf.gw.routeGateway', 'Jalur ke')}</label>
+							<Combobox id="rt-gateway" name="gateway" bind:value={rGateway} options={routeOptions} />
+							<p class="muted mt-1.5 text-[11px] leading-snug">
+								{tx('pf.gw.routeEnv', 'Berlaku untuk environment')} <strong>{routing.server_environment}</strong>.
+							</p>
+						</div>
+						<div class="flex items-start gap-2 self-end rounded-xl bg-amber-500/[.07] p-3 text-[11px] leading-snug">
+							<input id="rt-fallback" type="checkbox" bind:checked={rFallback} class="mt-0.5" />
+							<label for="rt-fallback">
+								<strong>{tx('pf.gw.routeFallback', 'Boleh pindah ke jalur biasa bila gateway ini gagal dipakai.')}</strong>
+								{tx('pf.gw.routeFallbackHint', 'Matikan (disarankan) untuk gateway langsung seperti QRISGate: uang langsung ke rekening tenant, jadi pembayaran lebih baik ditolak daripada diam-diam pindah jalur.')}
+							</label>
+						</div>
+						<div class="sm:col-span-2">
+							<label class="lbl mb-1.5" for="rt-note">{tx('pf.gw.fNote', 'Alasan (wajib, masuk audit)')}</label>
+							<input id="rt-note" name="note" required minlength="3" maxlength="500" class="inp" placeholder={tx('pf.gw.routeNotePh', 'mis. tenant memakai QRISGate ke rekening sendiri')} />
+						</div>
+						<div class="flex flex-wrap items-center gap-3 sm:col-span-2">
+							<button disabled={routing_saving} class="rounded-full bg-merah px-6 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-merah-tua disabled:opacity-50">
+								{routing_saving ? tx('pf.gw.saving', 'Menyimpan…') : tx('pf.gw.save', 'Simpan')}
+							</button>
+							{#if form?.routeError}<p class="text-xs font-semibold text-red-700" role="alert">{form.routeError}</p>{/if}
+							{#if form?.routed}<p class="text-xs font-semibold text-emerald-700">{tx('pf.gw.routed', 'Jalur tersimpan. Berlaku untuk pembayaran berikutnya.')}</p>{/if}
+						</div>
+					</form>
+				</div>
+			</section>
+		{/if}
 	{/if}
 </div>

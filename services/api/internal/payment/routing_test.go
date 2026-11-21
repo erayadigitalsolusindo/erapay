@@ -221,3 +221,64 @@ func TestInquireStillNeedsTheAccountForAccountGateways(t *testing.T) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
+
+// merchantOverride = platform choice plus one merchant's own override.
+type merchantOverride struct {
+	platform, merchant string
+	fallback           bool
+}
+
+func (m merchantOverride) Preferred(context.Context) (string, error) { return m.platform, nil }
+func (m merchantOverride) MerchantPreferred(context.Context, string) (string, bool, error) {
+	return m.merchant, m.fallback, nil
+}
+
+// The merchant's override beats the platform choice; when it cannot serve the merchant the payment is refused
+// before any gateway call, unless the override allows falling back to the normal route.
+func TestMerchantOverrideBeatsPlatformChoice(t *testing.T) {
+	ctx := context.Background()
+	t.Run("override to the merchant's gateway while the platform says ids", func(t *testing.T) {
+		r := rsetup(t)
+		r.register()
+		r.orch.SetRouting(merchantOverride{platform: "ids", merchant: "gw1"})
+		out, err := r.orch.Create(ctx, r.req("key-merch-0001", 10000))
+		if err != nil || out.Payment.Gateway != "gw1" || r.ids.createCalls.Load() != 0 {
+			t.Fatalf("%+v %v", out.Payment, err)
+		}
+	})
+	t.Run("override to the platform gateway while the platform says gw1", func(t *testing.T) {
+		r := rsetup(t)
+		r.register()
+		r.orch.SetRouting(merchantOverride{platform: "gw1", merchant: "ids"})
+		out, err := r.orch.Create(ctx, r.req("key-merch-0002", 10000))
+		if err != nil || out.Payment.Gateway != "ids" {
+			t.Fatalf("%+v %v", out.Payment, err)
+		}
+	})
+	t.Run("override cannot serve and fallback is off: refused, nothing called", func(t *testing.T) {
+		r := rsetup(t)
+		r.register()
+		if _, err := r.db.Exec(ctx, `UPDATE merchant_gateway_accounts SET activation_status = 'suspended'`); err != nil {
+			t.Fatal(err)
+		}
+		r.orch.SetRouting(merchantOverride{platform: "ids", merchant: "gw1"})
+		if _, err := r.orch.Create(ctx, r.req("key-merch-0003", 10000)); !errors.Is(err, ErrMethodUnavailable) {
+			t.Fatalf("want ErrMethodUnavailable, got %v", err)
+		}
+		if r.ids.createCalls.Load() != 0 || r.gw.createCalls.Load() != 0 {
+			t.Fatal("a gateway was called for a refused payment")
+		}
+	})
+	t.Run("override cannot serve and fallback is on: normal route", func(t *testing.T) {
+		r := rsetup(t)
+		r.register()
+		if _, err := r.db.Exec(ctx, `UPDATE merchant_gateway_accounts SET activation_status = 'suspended'`); err != nil {
+			t.Fatal(err)
+		}
+		r.orch.SetRouting(merchantOverride{platform: "ids", merchant: "gw1", fallback: true})
+		out, err := r.orch.Create(ctx, r.req("key-merch-0004", 10000))
+		if err != nil || out.Payment.Gateway != "ids" {
+			t.Fatalf("%+v %v", out.Payment, err)
+		}
+	})
+}

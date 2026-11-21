@@ -292,6 +292,8 @@ func (d Deps) mountPlatform(r chi.Router) {
 			if d.Routing != nil {
 				r.Get("/payment-routing", d.platformPaymentRouting)
 				r.Put("/payment-routing", d.platformSetPaymentRouting)
+				r.Get("/merchants/{id}/payment-routing", d.platformMerchantRouting)
+				r.Put("/merchants/{id}/payment-routing", d.platformSetMerchantRouting)
 			}
 			if d.AppReleases != nil {
 				r.Get("/listener-apk", d.platformListListener)

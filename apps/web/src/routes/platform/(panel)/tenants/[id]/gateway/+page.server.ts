@@ -11,6 +11,8 @@ export type GwAccount = {
 	created_at: string;
 };
 export type GwOverview = { server_environment: string; gateways: string[]; platform_gateways?: string[]; accounts: GwAccount[] };
+export type RouteOption = { code: string; available: boolean; platform_account: boolean };
+export type MerchantRouting = { server_environment: string; gateway: string; fallback: boolean; version: number; platform_gateway: string; options: RouteOption[] };
 export type GwStep = { name: string; ok: boolean; code?: string; message?: string };
 export type GwTest = { ok: boolean; deep: boolean; steps: GwStep[] };
 
@@ -22,9 +24,11 @@ export const load: PageServerLoad = async ({ locals, cookies, fetch, params, url
 	const r = await platformApi<GwOverview>(fetch, token, 'GET', `/merchants/${params.id}/gateway-accounts`);
 	if (!r.ok) {
 		if (r.status === 404) error(404, 'Tenant tidak ditemukan');
-		return { id: params.id, name: url.searchParams.get('n') ?? '', overview: null as GwOverview | null, error: r.message };
+		return { id: params.id, name: url.searchParams.get('n') ?? '', overview: null as GwOverview | null, routing: null as MerchantRouting | null, error: r.message };
 	}
-	return { id: params.id, name: url.searchParams.get('n') ?? '', overview: r.value, error: null as string | null };
+	// Jalur pembayaran tenant (opsional: gagal dimuat tidak menutup halaman akun gateway).
+	const rt = await platformApi<MerchantRouting>(fetch, token, 'GET', `/merchants/${params.id}/payment-routing`);
+	return { id: params.id, name: url.searchParams.get('n') ?? '', overview: r.value, routing: rt.ok ? rt.value : (null as MerchantRouting | null), error: null as string | null };
 };
 
 export const actions: Actions = {
@@ -55,5 +59,22 @@ export const actions: Actions = {
 		const r = await platformApi<GwTest>(fetch, token, 'POST', `/merchants/${params.id}/gateway-accounts/test`, { gateway, environment, deep });
 		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { testError: r.message, tested: `${gateway}/${environment}` });
 		return { test: r.value, tested: `${gateway}/${environment}` };
+	},
+
+	// Jalur pembayaran tenant: gateway kosong = ikut default platform.
+	route: async ({ request, cookies, locals, fetch, params }) => {
+		const token = guardPlatform(locals, cookies);
+		const f = await request.formData();
+		const body = {
+			environment: String(f.get('environment') ?? ''),
+			gateway: String(f.get('gateway') ?? ''),
+			fallback: f.get('fallback') === '1',
+			version: Number(f.get('version') ?? 0) || 0,
+			note: String(f.get('note') ?? '').trim()
+		};
+		if (body.note.length < 3) return fail(400, { routeError: 'Alasan wajib diisi (minimal 3 karakter).' });
+		const r = await platformApi(fetch, token, 'PUT', `/merchants/${params.id}/payment-routing`, body);
+		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { routeError: r.message });
+		return { routed: true };
 	}
 };
