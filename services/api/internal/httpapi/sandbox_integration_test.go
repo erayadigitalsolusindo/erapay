@@ -123,7 +123,7 @@ func TestDeleteMerchantWithSandboxTwin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.svc.DeleteMerchant(ctx, clean, "", "r"); err != nil {
+	if err := w.svc.DeleteMerchant(ctx, clean, "", "r", ""); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	if count(clean) != 0 || count(twin) != 0 {
@@ -142,10 +142,45 @@ func TestDeleteMerchantWithSandboxTwin(t *testing.T) {
 	if _, err := ledger.NewService(w.db).Post(ctx, txn); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.svc.DeleteMerchant(ctx, busy, "", "r"); !errors.Is(err, auth.ErrMerchantHasFinancial) {
+	if err := w.svc.DeleteMerchant(ctx, busy, "", "r", ""); !errors.Is(err, auth.ErrMerchantHasFinancial) {
 		t.Fatalf("merchant whose twin has sandbox journals: %v", err)
 	}
 	if count(busy) != 1 || count(btwin) != 1 {
 		t.Fatal("a refused delete removed something")
+	}
+}
+
+// Hapus permanen: tenant dengan jurnal ledger hanya terhapus dengan nama konfirmasi yang benar; ledger sisa tetap seimbang.
+func TestDeleteMerchantPurgeFinancial(t *testing.T) {
+	w := setup(t)
+	ctx := t.Context()
+	id, _ := testdb.SeedMerchant(t, w.db, "P")
+	txn, err := ledger.PaymentSucceeded(id, "purge-pay-1", pricing.Breakdown{Gross: 1000, MDRFee: 7, PlatformFee: 10, MerchantNet: 983, Currency: "IDR"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.NewService(w.db).Post(ctx, txn); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.svc.DeleteMerchant(ctx, id, "", "r", ""); !errors.Is(err, auth.ErrMerchantHasFinancial) {
+		t.Fatalf("without confirm: %v", err)
+	}
+	if err := w.svc.DeleteMerchant(ctx, id, "", "r", "salah"); !errors.Is(err, auth.ErrMerchantConfirm) {
+		t.Fatalf("wrong name: %v", err)
+	}
+	var name string
+	_ = w.db.QueryRow(ctx, `SELECT display_name FROM merchants WHERE id = $1`, id).Scan(&name)
+	if err := w.svc.DeleteMerchant(ctx, id, "", "r", name); err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	var left int
+	_ = w.db.QueryRow(ctx, `SELECT (SELECT count(*) FROM merchants WHERE id=$1)+(SELECT count(*) FROM ledger_transactions WHERE source_id='purge-pay-1')`, id).Scan(&left)
+	if left != 0 {
+		t.Fatalf("leftover rows: %d", left)
+	}
+	var audits int
+	_ = w.db.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE action='platform.merchant.deleted' AND entity_id=$1`, id).Scan(&audits)
+	if audits != 1 {
+		t.Fatalf("audit rows: %d", audits)
 	}
 }

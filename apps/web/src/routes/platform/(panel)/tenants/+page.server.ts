@@ -26,11 +26,14 @@ export const actions: Actions = {
 		redirect(303, '/dashboard');
 	},
 
-	// Hapus tenant spam + semua datanya (ditolak server bila sudah ada transaksi/ledger).
+	// Hapus tenant + semua datanya. Tanpa `confirm` ditolak server bila sudah ada transaksi/ledger;
+	// dengan `confirm` (nama tenant) dihapus PERMANEN termasuk transaksi dan ledger.
 	remove: async ({ request, cookies, locals, fetch }) => {
 		const token = guardPlatform(locals, cookies);
-		const merchantId = String((await request.formData()).get('merchant_id') ?? '');
-		const r = await platformApi(fetch, token, 'DELETE', `/merchants/${encodeURIComponent(merchantId)}`);
+		const f = await request.formData();
+		const merchantId = String(f.get('merchant_id') ?? '');
+		const confirm = String(f.get('confirm') ?? '');
+		const r = await platformApi(fetch, token, 'DELETE', `/merchants/${encodeURIComponent(merchantId)}?confirm=${encodeURIComponent(confirm)}`);
 		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { merchantId, removeError: r.message });
 		return { removed: true };
 	},

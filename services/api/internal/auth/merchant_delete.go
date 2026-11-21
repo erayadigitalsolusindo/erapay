@@ -13,12 +13,16 @@ import (
 var (
 	// ErrMerchantHasFinancial: tenant sudah punya transaksi/payout/refund/ledger (append-only); tidak boleh dihapus.
 	ErrMerchantHasFinancial = errors.New("merchant has financial records")
+	// ErrMerchantConfirm: nama konfirmasi untuk hapus permanen tidak cocok.
+	ErrMerchantConfirm = errors.New("confirmation name mismatch")
 )
 
 // DeleteMerchant menghapus tenant beserta SEMUA datanya (gateway, API key, webhook, KYC, sesi, dst.)
 // dan user pemiliknya yang tidak terhubung ke tenant lain, dalam satu transaksi. Dirancang untuk tenant
-// spam/draf: ditolak bila ada jejak keuangan. Anak tabel ditemukan dari katalog FK Postgres.
-func (s *Service) DeleteMerchant(ctx context.Context, merchantID, actor, requestID string) error {
+// spam/draf: ditolak bila ada jejak keuangan, kecuali confirmName (harus sama persis dengan nama tenant) diisi:
+// itu hapus permanen termasuk payment/payout/refund/ledger (keputusan pemilik, 21 Nov 2026; audit tetap).
+// Anak tabel ditemukan dari katalog FK Postgres.
+func (s *Service) DeleteMerchant(ctx context.Context, merchantID, actor, requestID, confirmName string) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -31,6 +35,10 @@ func (s *Service) DeleteMerchant(ctx context.Context, merchantID, actor, request
 			return ErrMerchantNotFound
 		}
 		return err
+	}
+	purge := confirmName != ""
+	if purge && confirmName != name {
+		return ErrMerchantConfirm
 	}
 	// The sandbox twin (if any) goes with its merchant, but only while it too has no financial trace
 	// (the ledger is append-only, so a twin with sandbox journals can never be removed).
@@ -51,8 +59,30 @@ func (s *Service) DeleteMerchant(ctx context.Context, merchantID, actor, request
 			id).Scan(&fin); err != nil {
 			return err
 		}
-		if fin {
+		if fin && !purge {
 			return ErrMerchantHasFinancial
+		}
+	}
+	if purge {
+		// Transaksi-transaksi ledger milik tenant dihapus utuh (termasuk sisi akun platform) agar ledger sisa tetap seimbang.
+		if _, err := tx.Exec(ctx, `SELECT set_config('erapay.purge_merchant', 'on', true)`); err != nil { // transaction-local
+			return err
+		}
+		rows, err := tx.Query(ctx, `
+			SELECT DISTINCT e.txn_id::text FROM ledger_entries e
+			JOIN ledger_accounts a ON a.id = e.account_id WHERE a.merchant_id::text = ANY($1)`, []string{merchantID, twin})
+		if err != nil {
+			return err
+		}
+		txns, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM ledger_entries WHERE txn_id::text = ANY($1)`, txns); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM ledger_transactions WHERE id::text = ANY($1)`, txns); err != nil {
+			return err
 		}
 	}
 	if twin != "" {
@@ -100,7 +130,7 @@ func (s *Service) DeleteMerchant(ctx context.Context, merchantID, actor, request
 		removed++
 	}
 	if err := audit.Record(ctx, tx, audit.Entry{ActorID: actor, Action: "platform.merchant.deleted", EntityType: "merchant",
-		EntityID: merchantID, RequestID: requestID, Metadata: map[string]any{"name": name, "users_deleted": removed}}); err != nil {
+		EntityID: merchantID, RequestID: requestID, Metadata: map[string]any{"name": name, "users_deleted": removed, "purged_financial": purge}}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

@@ -198,8 +198,10 @@
 						<form
 							method="POST"
 							action="?/remove"
-							use:enhance={({ cancel }) => {
-								if (!confirm(`Hapus tenant "${m.display_name}" beserta SEMUA datanya (gateway, API key, user pemilik)? Tidak bisa dibatalkan.`)) cancel();
+							use:enhance={({ cancel, formData }) => {
+								const typed = prompt(`Hapus PERMANEN tenant "${m.display_name}" beserta SEMUA datanya (gateway, API key, user pemilik, transaksi, payout, refund, ledger)? Tidak bisa dibatalkan.\n\nKetik nama tenant untuk melanjutkan:`);
+								if (typed === null) return cancel();
+								formData.set('confirm', typed.trim());
 							}}
 						>
 							<input type="hidden" name="merchant_id" value={m.id} />

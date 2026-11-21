@@ -133,7 +133,7 @@ func TestDeleteMerchant(t *testing.T) {
 	// Dua hapus bersamaan: tepat satu berhasil, yang lain NotFound (idempoten).
 	errs := make(chan error, 2)
 	for i := 0; i < 2; i++ {
-		go func() { errs <- s.DeleteMerchant(ctx, mid, owner, "r") }()
+		go func() { errs <- s.DeleteMerchant(ctx, mid, owner, "r", "") }()
 	}
 	ok, nf := 0, 0
 	for i := 0; i < 2; i++ {
