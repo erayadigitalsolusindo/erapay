@@ -22,7 +22,7 @@ import (
 // - Bootstrap pertama via ERAPAY_PLATFORM_SETUP_TOKEN (lihat prd/platform-panel.md).
 const (
 	platformCookie     = "erapay_platform_session"
-	platformCookiePath = "/platform"
+	platformCookiePath = "/" // dibaca juga oleh /dashboard supaya DEWA membuka menu finance tanpa login ulang
 )
 
 func platformTokenFrom(r *http.Request) string {

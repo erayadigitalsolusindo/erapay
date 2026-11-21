@@ -24,6 +24,6 @@
 	<div class="flex gap-2">
 		<button type="submit" class="btn btn-red flex-1">{t('trx.createQr')}</button>
 		<!-- Sementara: halaman checkout DANA (Gapura Hosted), hanya bila rute pembayaran memakai DANA mode gapura. -->
-		<button type="submit" name="checkout" value="hosted" class="btn btn-light flex-1">Hosted</button>
+		<button type="submit" name="checkout" value="hosted" class="btn flex-1 bg-blue-600 text-white hover:bg-blue-700">Partner Payment</button>
 	</div>
 </form>

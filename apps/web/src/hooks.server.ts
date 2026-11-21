@@ -28,7 +28,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 		event.locals.platformUser = null;
 	} else {
 		event.locals.platformUser = pme;
-		if (ptoken && !pme) event.cookies.delete(PLATFORM_COOKIE, { path: '/platform' });
+		if (ptoken && !pme) event.cookies.delete(PLATFORM_COOKIE, { path: '/' });
+	}
+	// DEWA yang sudah login di panel memakai sesi yang sama untuk menu finance di /dashboard (tanpa login ulang).
+	if (!token && pme && pme !== 'unavailable') {
+		event.cookies.set(SESSION_COOKIE, ptoken!, { path: '/', httpOnly: true, sameSite: 'strict', secure: event.url.protocol === 'https:' });
+		event.locals.user = await fetchMe(event.fetch, ptoken!).then((m) => (m === 'unavailable' ? null : m));
 	}
 	return resolve(event);
 };

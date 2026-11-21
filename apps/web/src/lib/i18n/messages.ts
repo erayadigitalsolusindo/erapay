@@ -151,7 +151,7 @@ const idBase = {
 
 	'trx.list': 'Daftar transaksi',
 	'trx.listEmpty': 'Belum ada transaksi.',
-	'trx.new': 'Buat QRIS',
+	'trx.new': 'Buat Transaksi',
 	'trx.newNote': 'Nominal dalam Rupiah penuh. Kode QR berlaku terbatas dan bisa dibayar sungguhan bila memakai kredensial production.',
 	'trx.amount': 'Nominal (Rp)',
 	'trx.reference': 'Referensi',
@@ -702,7 +702,7 @@ const enBase: Record<keyof typeof idBase, string> = {
 
 	'trx.list': 'Transaction list',
 	'trx.listEmpty': 'No transactions yet.',
-	'trx.new': 'Create QRIS',
+	'trx.new': 'Create Transaction',
 	'trx.newNote': 'Amount in whole Rupiah. The QR code has a limited lifetime and can be paid for real when production credentials are used.',
 	'trx.amount': 'Amount (Rp)',
 	'trx.reference': 'Reference',

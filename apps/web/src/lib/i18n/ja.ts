@@ -146,7 +146,7 @@ export const ja: Record<Key, string> = {
 
 	'trx.list': '取引一覧',
 	'trx.listEmpty': '取引はまだありません。',
-	'trx.new': 'QRISを作成',
+	'trx.new': '取引を作成',
 	'trx.newNote': '金額はルピアの全額で入力します。QRコードの有効期間は限られており、本番の認証情報を使うと実際に支払えます。',
 	'trx.amount': '金額 (Rp)',
 	'trx.reference': '参照',
