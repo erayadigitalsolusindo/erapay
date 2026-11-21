@@ -28,6 +28,7 @@ type Port interface {
 	Claim(ctx context.Context, merchantID, paymentID string, base int64, expiresAt time.Time) (payAmount int64, qrisPayload string, err error)
 	ClaimExpired(ctx context.Context, paymentID string) (found, expired bool, err error)
 	ListenerSecret(ctx context.Context, merchantID string) (string, error)
+	Account(ctx context.Context, merchantID string) (qrisgate.Account, error)
 	MatchNotification(ctx context.Context, merchantID, deliveryID, pkg, title, text string, amount int64, postedAt time.Time) (paymentID string, base int64, matched bool, err error)
 }
 

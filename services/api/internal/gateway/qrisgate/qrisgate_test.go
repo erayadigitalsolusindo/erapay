@@ -22,13 +22,15 @@ const (
 
 // fakePort stands in for the domain service.
 type fakePort struct {
-	secrets  map[string]string
-	claimErr error
-	expired  bool
-	found    bool
-	matchPID string
-	matchErr error
-	got      struct {
+	secrets    map[string]string
+	claimErr   error
+	expired    bool
+	found      bool
+	matchPID   string
+	matchErr   error
+	account    *qrisgate.Account
+	accountErr error
+	got        struct {
 		pkg, title, text string
 		amount           int64
 		delivery         string
@@ -50,6 +52,15 @@ func (f *fakePort) ListenerSecret(_ context.Context, m string) (string, error) {
 		return s, nil
 	}
 	return "", qrisgate.ErrNoAccount
+}
+func (f *fakePort) Account(_ context.Context, m string) (qrisgate.Account, error) {
+	if f.accountErr != nil {
+		return qrisgate.Account{}, f.accountErr
+	}
+	if f.account != nil {
+		return *f.account, nil
+	}
+	return qrisgate.Account{Packages: []string{}}, nil
 }
 func (f *fakePort) MatchNotification(_ context.Context, m, delivery, pkg, title, text string, amount int64, posted time.Time) (string, int64, bool, error) {
 	f.got.pkg, f.got.title, f.got.text, f.got.amount, f.got.delivery, f.got.posted = pkg, title, text, amount, delivery, posted
@@ -216,5 +227,47 @@ func TestTestWebhookNeverLeaksTheSecret(t *testing.T) {
 	}
 	if steps = a.TestWebhook(context.Background(), "nope"); steps[0].OK {
 		t.Fatalf("bad id: %+v", steps)
+	}
+}
+
+func TestTestConnection(t *testing.T) {
+	ctx := context.Background()
+	ready := &qrisgate.Account{HasQRIS: true, HasSecret: true, Packages: []string{"id.dana"}, Ready: true, ActivationStatus: "active"}
+	ok := func(steps []gateway.ConnectionStep) bool {
+		for _, s := range steps {
+			if !s.OK {
+				return false
+			}
+		}
+		return len(steps) > 0
+	}
+	// Tanpa deep: tidak ada kredensial eksternal, tidak menyentuh data merchant.
+	if steps := newAdapter(t, &fakePort{}).TestConnection(ctx, "", false); !ok(steps) {
+		t.Fatalf("shallow: %+v", steps)
+	}
+	if steps := newAdapter(t, &fakePort{account: ready}).TestConnection(ctx, merchantA, true); !ok(steps) {
+		t.Fatalf("deep ready: %+v", steps)
+	}
+	for name, acc := range map[string]*qrisgate.Account{
+		"no_qris":     {HasSecret: true, Packages: []string{"id.dana"}, ActivationStatus: "active"},
+		"no_packages": {HasQRIS: true, HasSecret: true, Packages: []string{}, ActivationStatus: "active"},
+		"not_active":  {HasQRIS: true, HasSecret: true, Packages: []string{"id.dana"}, ActivationStatus: "pending_confirmation"},
+	} {
+		steps := newAdapter(t, &fakePort{account: acc}).TestConnection(ctx, merchantA, true)
+		bad := ""
+		for _, s := range steps {
+			if !s.OK {
+				bad = s.Code
+			}
+		}
+		if bad != name {
+			t.Errorf("%s: failing code = %q (%+v)", name, bad, steps)
+		}
+	}
+	if steps := newAdapter(t, &fakePort{}).TestConnection(ctx, merchantB, true); ok(steps) { // tanpa rahasia listener
+		t.Fatalf("no secret must fail: %+v", steps)
+	}
+	if steps := newAdapter(t, &fakePort{accountErr: errors.New("db")}).TestConnection(ctx, merchantA, true); ok(steps) || strings.Contains(steps[0].Message, "db") {
+		t.Fatalf("db error: %+v", steps)
 	}
 }
