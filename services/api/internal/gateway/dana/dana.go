@@ -198,7 +198,7 @@ func (a *Adapter) Code() string { return Code }
 
 func (a *Adapter) Capabilities() gateway.Capabilities {
 	// One merchant id for the platform. Cancel/refund/payout/settlement are not advertised (unconfirmed).
-	return gateway.Capabilities{PaymentMethods: []string{"QRIS"}, Inquiry: true, PlatformAccount: true}
+	return gateway.Capabilities{PaymentMethods: []string{"QRIS"}, Inquiry: true, PlatformAccount: true, Hosted: a.cfg.Mode == ModeGapura}
 }
 
 // ---- references and money ----
@@ -278,6 +278,7 @@ type envelope struct {
 	TransAmount             *money      `json:"transAmount"`
 	PaidTime                string      `json:"paidTime"`
 	PaymentInfos            []PayOption `json:"paymentInfos"`
+	WebRedirectURL          string      `json:"webRedirectUrl"`
 }
 
 // do sends one signed POST. The body bytes that are hashed are exactly the bytes sent. A transport failure

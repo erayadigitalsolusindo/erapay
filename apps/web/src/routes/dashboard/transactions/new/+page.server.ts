@@ -18,6 +18,7 @@ export const actions: Actions = {
 		const reference = String(form.get('reference') ?? '').trim();
 		const description = String(form.get('description') ?? '').trim();
 		const key = String(form.get('idempotencyKey') ?? '');
+		const hosted = form.get('checkout') === 'hosted';
 		const values = { amount: amountRaw, reference, description };
 
 		if (!/^\d{1,12}$/.test(amountRaw) || Number(amountRaw) <= 0)
@@ -25,7 +26,7 @@ export const actions: Actions = {
 		if (!reference || reference.length > 64)
 			return fail(400, { message: 'Referensi wajib diisi (maks. 64 karakter).', values });
 
-		const res = await createQrisPayment(fetch, token, { merchantReference: reference, amount: Number(amountRaw), description }, key);
+		const res = await createQrisPayment(fetch, token, { merchantReference: reference, amount: Number(amountRaw), description, hosted }, key);
 		if (!res.ok) return fail(res.payment ? 422 : 400, { message: res.message, values });
 		redirect(303, `/dashboard/transactions/${res.payment.id}`);
 	}

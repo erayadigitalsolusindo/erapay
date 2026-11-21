@@ -41,7 +41,7 @@ const headers = (token: string, extra: Record<string, string> = {}) => ({
 export async function createQrisPayment(
 	f: typeof fetch,
 	token: string,
-	input: { merchantReference: string; amount: number; description: string },
+	input: { merchantReference: string; amount: number; description: string; hosted?: boolean },
 	idempotencyKey: string
 ): Promise<CreateResult> {
 	let res: Response;
@@ -54,7 +54,8 @@ export async function createQrisPayment(
 				amount: input.amount,
 				currency: 'IDR',
 				payment_method: 'QRIS',
-				description: input.description || undefined
+				description: input.description || undefined,
+				checkout: input.hosted ? 'hosted' : undefined
 			})
 		});
 	} catch {

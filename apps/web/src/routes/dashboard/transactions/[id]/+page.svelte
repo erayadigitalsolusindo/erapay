@@ -66,6 +66,11 @@
 			{#if p.qr_image_url}<p class="mt-2 break-all text-[11px]"><b>URL QR Midtrans (simulator):</b> <a class="underline" href={p.qr_image_url} target="_blank" rel="noreferrer">{p.qr_image_url}</a></p>{/if}
 			<p class="muted mt-1 text-[11px]">{t('trx.validUntil', { date: fmt(p.expires_at) })}</p>
 		</section>
+	{:else if data.hostedUrl}
+		<section class="card p-6 text-center">
+			<a class="btn btn-red inline-block" href={data.hostedUrl} target="_blank" rel="noreferrer noopener">Bayar di halaman DANA</a>
+			<p class="muted mt-3 text-[11px]">{t('trx.validUntil', { date: fmt(p.expires_at) })}</p>
+		</section>
 	{:else if p.status === 'pending'}
 		<section class="card p-6 text-xs">{t('trx.qrMissing')}</section>
 	{/if}

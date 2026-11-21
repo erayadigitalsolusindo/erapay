@@ -9,10 +9,13 @@ export const load: PageServerLoad = async ({ params, cookies, fetch, locals }) =
 	const payment = token ? await getPayment(fetch, token, params.id) : null;
 	if (!payment) error(404, 'Pembayaran tidak ditemukan');
 	// Go hanya mengisi qr_code selama status masih pending (masih bisa dibayar).
-	const qr = payment.qr_code ? await qrSvg(payment.qr_code.value) : null;
+	// Checkout hosted menyimpan URL https di qr_payload (sementara): tampilkan tautan, bukan QR.
+	const hostedUrl = payment.qr_code?.value.startsWith('https://') ? payment.qr_code.value : null;
+	const qr = payment.qr_code && !hostedUrl ? await qrSvg(payment.qr_code.value) : null;
 	return {
 		payment,
 		qr,
+		hostedUrl,
 		// Riwayat hanya ditampilkan; kegagalan memuat timeline tidak boleh menggagalkan halaman.
 		timeline: token ? await getTimeline(fetch, token, params.id) : [],
 		canRefund: !!locals.user?.merchantId && locals.user.permissions.includes('refund:request'),

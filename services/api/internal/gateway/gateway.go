@@ -41,6 +41,8 @@ type Capabilities struct {
 	// Direct: the payer's money goes straight to the merchant's own account (detected from their bank/e-wallet
 	// mutation), never through the platform. No clearing, no settlement, no merchant_payable credit, no refund.
 	Direct bool
+	// Hosted: CreatePayment honors CreateRequest.Hosted (the payer pays on the gateway's own checkout page).
+	Hosted bool
 }
 
 func (c Capabilities) SupportsMethod(m string) bool {
@@ -62,6 +64,9 @@ type CreateRequest struct {
 	Currency    string
 	ExpiresAt   time.Time
 	Description string
+	// Hosted asks for the gateway's own checkout page; CreateResult.QRPayload then holds its https URL
+	// (shortcut: temporary, reuses qr_payload instead of a redirect_url column, until hosted checkout is kept).
+	Hosted bool
 }
 
 type CreateResult struct {

@@ -68,6 +68,7 @@ type CreateRequest struct {
 	IdempotencyKey    string
 	RequestHash       []byte // idempotency.HashJSON of the canonical request
 	Purpose           string // "" = PurposePayment; set by internal callers only, never from client input
+	Hosted            bool   // gateway's own checkout page instead of a QR (only where the adapter advertises it)
 }
 
 type Outcome struct {
@@ -224,6 +225,9 @@ func (o *Orchestrator) Create(ctx context.Context, r CreateRequest) (Outcome, er
 	if err != nil {
 		return Outcome{}, err
 	}
+	if r.Hosted && !ad.Capabilities().Hosted {
+		return Outcome{}, ErrMethodUnavailable
+	}
 	sc := idempotency.Scope{MerchantID: r.MerchantID, Operation: OpCreate, Key: r.IdempotencyKey}
 	prev, err := o.idem.Reserve(ctx, sc, r.RequestHash)
 	if err != nil {
@@ -258,7 +262,7 @@ func (o *Orchestrator) Create(ctx context.Context, r CreateRequest) (Outcome, er
 	defer cancel()
 	start := time.Now()
 	res, gerr := ad.CreatePayment(gctx, gateway.CreateRequest{Reference: p.ID, AccountRef: accountRef,
-		Method: r.PaymentMethod, Amount: p.Amount, Currency: p.Currency, ExpiresAt: expires, Description: p.Description})
+		Method: r.PaymentMethod, Amount: p.Amount, Currency: p.Currency, ExpiresAt: expires, Description: p.Description, Hosted: r.Hosted})
 	lat := int(time.Since(start).Milliseconds())
 
 	switch {

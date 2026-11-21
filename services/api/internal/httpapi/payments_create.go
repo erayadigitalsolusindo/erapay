@@ -35,11 +35,16 @@ func (d Deps) createPayment(w http.ResponseWriter, r *http.Request) {
 		Description       string     `json:"description"`
 		OutletID          string     `json:"outlet_id"`
 		ExpiresAt         *time.Time `json:"expires_at"`
+		Checkout          string     `json:"checkout"` // "" or "hosted"
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&body); err != nil {
 		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "invalid JSON body: unknown or malformed field", false)
+		return
+	}
+	if body.Checkout != "" && body.Checkout != "hosted" {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "checkout must be empty or hosted", false)
 		return
 	}
 	hash, err := idempotency.HashJSON(raw, r.Method, "/v1/payments")
@@ -52,7 +57,7 @@ func (d Deps) createPayment(w http.ResponseWriter, r *http.Request) {
 	out, err := d.PaymentFlow.Create(r.Context(), payment.CreateRequest{
 		MerchantID: p.MerchantID, OutletID: body.OutletID, MerchantReference: body.MerchantReference,
 		Description: body.Description, Amount: body.Amount, Currency: body.Currency, PaymentMethod: body.PaymentMethod,
-		ExpiresAt: body.ExpiresAt, IdempotencyKey: key, RequestHash: hash,
+		ExpiresAt: body.ExpiresAt, Hosted: body.Checkout == "hosted", IdempotencyKey: key, RequestHash: hash,
 	})
 	switch {
 	case err == nil:

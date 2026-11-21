@@ -635,3 +635,31 @@ func TestNewGapuraConfig(t *testing.T) {
 		t.Errorf("empty mode must be core: %v", err)
 	}
 }
+
+func TestGapuraHostedCheckout(t *testing.T) {
+	a := gapuraAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "payOptionDetails") || !strings.Contains(string(body), `"scenario":"REDIRECT"`) {
+			t.Errorf("hosted body: %s", body)
+		}
+		reply(w, 200, `{"responseCode":"2005400","referenceNo":"D-7","webRedirectUrl":"https://m.dana.id/pay/abc"}`)
+	})
+	if !a.Capabilities().Hosted {
+		t.Fatal("gapura mode must advertise hosted")
+	}
+	res, err := a.CreatePayment(context.Background(), gateway.CreateRequest{Reference: payID, Method: "QRIS", Amount: 10000,
+		Currency: "IDR", ExpiresAt: now.Add(20 * time.Minute), Hosted: true})
+	if err != nil || res.QRPayload != "https://m.dana.id/pay/abc" {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	a = gapuraAdapter(t, func(w http.ResponseWriter, _ *http.Request) { reply(w, 200, `{"responseCode":"2005400"}`) })
+	var ge *gateway.Error
+	if _, err := a.CreatePayment(context.Background(), gateway.CreateRequest{Reference: payID, Method: "QRIS", Amount: 10000,
+		Currency: "IDR", ExpiresAt: now.Add(20 * time.Minute), Hosted: true}); !errors.As(err, &ge) || ge.Kind != gateway.Ambiguous {
+		t.Errorf("no url: %v", err)
+	}
+	core := newAdapter(t, func(http.ResponseWriter, *http.Request) {})
+	if core.Capabilities().Hosted {
+		t.Error("core mode must not advertise hosted")
+	}
+}

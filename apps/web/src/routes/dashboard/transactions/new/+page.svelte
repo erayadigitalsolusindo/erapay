@@ -21,5 +21,9 @@
 		<input id="description" class="inp" name="description" maxlength="255" value={form?.values?.description ?? ''} />
 	</div>
 	{#if form?.message}<p class="text-xs font-semibold text-red-700" role="alert">{form.message}</p>{/if}
-	<button type="submit" class="btn btn-red w-full">{t('trx.createQr')}</button>
+	<div class="flex gap-2">
+		<button type="submit" class="btn btn-red flex-1">{t('trx.createQr')}</button>
+		<!-- Sementara: halaman checkout DANA (Gapura Hosted), hanya bila rute pembayaran memakai DANA mode gapura. -->
+		<button type="submit" name="checkout" value="hosted" class="btn btn-light flex-1">Hosted</button>
+	</div>
 </form>
