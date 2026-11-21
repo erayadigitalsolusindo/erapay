@@ -33,9 +33,9 @@
 	];
 	// Semua menu panel diatur RBAC (/v1/menus); bila daftar gagal dimuat, tampilkan semuanya agar tidak terkunci.
 	const items = $derived(
-		([...base, ...finance, ...rest] as { href: string; label: string; icon: string; raw?: boolean }[]).filter(
-			(n) => !data.menus.length || data.menus.includes(n.href.replace('/platform/finance', '/dashboard/finance'))
-		)
+		([...base, ...finance, ...rest] as { href: string; label: string; icon: string; raw?: boolean }[])
+			.filter((n) => !data.menus.length || data.menus.includes(n.href.replace('/platform/finance', '/dashboard/finance')))
+			.sort((a, b) => t(a.label as Key).localeCompare(t(b.label as Key), i18n.locale)) // urut abjad menurut label tampil
 	);
 	// Menu aktif = href terpanjang yang cocok; kalau tidak, "/platform" cocok untuk semua halaman di bawahnya.
 	const current = $derived(

@@ -6,8 +6,10 @@
 	import Sea from './Sea.svelte';
 
 	let { user, menus }: { user: { email: string; merchantId: string; permissions?: string[] }, menus?: string[] | null } = $props();
-	const { t } = getI18n();
-	const items = $derived(visible(user, menus));
+	const i18n = getI18n();
+	const { t } = i18n;
+	// Urut abjad menurut label yang tampil (bahasa aktif).
+	const items = $derived(visible(user, menus).toSorted((a, b) => t(a.label).localeCompare(t(b.label), i18n.locale)));
 	const current = $derived(aktif(page.url.pathname));
 </script>
 
