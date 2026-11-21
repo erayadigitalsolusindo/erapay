@@ -42,7 +42,7 @@
 		busy = 'apk';
 		apkMsg = null;
 		try {
-			const t = await fetch('apk-ticket', { method: 'POST' });
+			const t = await fetch('/platform/gateways/apk-ticket', { method: 'POST' });
 			if (!t.ok) throw new Error((await t.json().catch(() => null))?.message ?? 'Sesi berakhir, muat ulang halaman.');
 			const { url } = await t.json();
 			const r = await fetch(`${url}&${new URLSearchParams({ version, note })}`, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });
