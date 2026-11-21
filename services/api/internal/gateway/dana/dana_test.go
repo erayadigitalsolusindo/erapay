@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -502,5 +503,135 @@ func TestAmbiguousErrorKeepsDanaReason(t *testing.T) {
 	_, err := create(a)
 	if !gateway.IsAmbiguous(err) || !strings.Contains(err.Error(), "merchant not active") || !strings.Contains(err.Error(), "Internal Server Error") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestConsultPay(t *testing.T) {
+	var path, body string
+	a := newAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		path, body = r.URL.Path, string(b)
+		reply(w, 200, `{"responseCode":"2000000","responseMessage":"Successful","paymentInfos":[{"payMethod":"NETWORK_PAY","payOption":"NETWORK_PAY_PG_OVO"},{"payMethod":"VIRTUAL_ACCOUNT","payOption":"VIRTUAL_ACCOUNT_BCA"}]}`)
+	})
+	opts, err := a.ConsultPay(context.Background(), 10000)
+	if err != nil || len(opts) != 2 || opts[1].PayOption != "VIRTUAL_ACCOUNT_BCA" {
+		t.Fatalf("opts=%+v err=%v", opts, err)
+	}
+	if path != "/v1.0/payment-gateway/consult-pay.htm" || !strings.Contains(body, `"value":"10000.00"`) || !strings.Contains(body, `"externalStoreId":"S1"`) {
+		t.Errorf("request: %s %s", path, body)
+	}
+	if _, err := a.ConsultPay(context.Background(), 0); err == nil {
+		t.Error("zero amount must be rejected before calling DANA")
+	}
+	a = newAdapter(t, func(w http.ResponseWriter, _ *http.Request) {
+		reply(w, 401, `{"responseCode":"4010000","responseMessage":"Unauthorized. Invalid Signature"}`)
+	})
+	var ge *gateway.Error
+	if _, err := a.ConsultPay(context.Background(), 10000); !errors.As(err, &ge) || ge.Kind != gateway.Rejected {
+		t.Errorf("bad signature: %v", err)
+	}
+}
+
+func gapuraAdapter(t *testing.T, h http.HandlerFunc) *Adapter {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	a, err := New(Config{BaseURL: srv.URL, MerchantID: "M1", ClientID: "C1", StoreID: "S1", PrivateKeyPEM: privPEM(merchantKey),
+		Mode: ModeGapura, MCC: "5814", CallbackURL: "https://api.example.com/webhooks/dana", ReturnURL: "https://example.com/done",
+		Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+func TestGapuraCreateQRIS(t *testing.T) {
+	a := gapuraAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if r.URL.Path != pathGapuraCreate {
+			t.Errorf("path %s", r.URL.Path)
+		}
+		ts := r.Header.Get("X-TIMESTAMP")
+		sig, _ := base64.StdEncoding.DecodeString(r.Header.Get("X-SIGNATURE"))
+		h := sha256.Sum256([]byte(stringToSign("POST", pathGapuraCreate, body, ts)))
+		if rsa.VerifyPKCS1v15(&merchantKey.PublicKey, crypto.SHA256, h[:], sig) != nil {
+			t.Error("signature does not verify")
+		}
+		ref, _ := shortRef(payID)
+		for _, want := range []string{`"partnerReferenceNo":"` + ref + `"`, `"payOption":"NETWORK_PAY_PG_QRIS"`, `"payMethod":"NETWORK_PAY"`,
+			`"scenario":"API"`, `"mcc":"5814"`, `"externalStoreId":"S1"`, `"validUpTo":"2026-11-20T14:30:00+07:00"`,
+			`"type":"NOTIFICATION"`, `"type":"PAY_RETURN"`, `"value":"10000.00"`} {
+			if !strings.Contains(string(body), want) {
+				t.Errorf("body lacks %s: %s", want, body)
+			}
+		}
+		reply(w, 200, `{"responseCode":"2005400","responseMessage":"Successful","referenceNo":"D-9","additionalInfo":{"paymentCode":"000201010212"}}`)
+	})
+	res, err := create(a)
+	if err != nil || res.QRPayload != "000201010212" || res.GatewayReference != "D-9" || res.RawStatus != "01" {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	// A payment code that is not an EMVCo string must never be shown as a QR.
+	a = gapuraAdapter(t, func(w http.ResponseWriter, _ *http.Request) {
+		reply(w, 200, `{"responseCode":"2005400","additionalInfo":{"paymentCode":"086262535263233"}}`)
+	})
+	var ge *gateway.Error
+	if _, err := create(a); !errors.As(err, &ge) || ge.Kind != gateway.Ambiguous {
+		t.Errorf("non EMV payment code: %v", err)
+	}
+	a = gapuraAdapter(t, func(w http.ResponseWriter, _ *http.Request) {
+		reply(w, 404, `{"responseCode":"4045418","responseMessage":"Inconsistent Request"}`)
+	})
+	if _, err := create(a); !errors.As(err, &ge) || ge.Kind != gateway.Rejected {
+		t.Errorf("inconsistent request: %v", err)
+	}
+}
+
+func TestGapuraInquiryAndConnection(t *testing.T) {
+	var path, body string
+	a := gapuraAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		path, body = r.URL.Path, string(b)
+		reply(w, 200, `{"responseCode":"2005500","latestTransactionStatus":"00","transAmount":{"value":"10000.00","currency":"IDR"},"paidTime":"2026-11-20T14:05:00+07:00"}`)
+	})
+	res, err := a.GetPayment(context.Background(), gateway.QueryRequest{Reference: payID})
+	if err != nil || res.RawStatus != "00" || res.Amount != 10000 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if path != pathGapuraQuery || !strings.Contains(body, `"serviceCode":"54"`) {
+		t.Errorf("inquiry: %s %s", path, body)
+	}
+	a = gapuraAdapter(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != pathGapuraQuery {
+			t.Errorf("connection test path %s", r.URL.Path)
+		}
+		reply(w, 404, `{"responseCode":"4045501"}`)
+	})
+	if st := a.TestConnection(context.Background(), "", false); !st[0].OK {
+		t.Errorf("connection: %+v", st)
+	}
+}
+
+func TestNewGapuraConfig(t *testing.T) {
+	base := Config{BaseURL: "https://x.example", MerchantID: "M", ClientID: "C", StoreID: "S", PrivateKeyPEM: privPEM(merchantKey)}
+	good := base
+	good.Mode, good.MCC, good.CallbackURL, good.ReturnURL = ModeGapura, "5814", "https://a.example/cb", "https://a.example/r"
+	if _, err := New(good); err != nil {
+		t.Fatalf("valid gapura config: %v", err)
+	}
+	for name, mut := range map[string]func(*Config){
+		"no mcc":        func(c *Config) { c.MCC = "" },
+		"http callback": func(c *Config) { c.CallbackURL = "http://a.example/cb" },
+		"no return":     func(c *Config) { c.ReturnURL = "" },
+		"unknown mode":  func(c *Config) { c.Mode = "snap" },
+	} {
+		c := good
+		mut(&c)
+		if _, err := New(c); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+	if a, err := New(base); err != nil || a.cfg.Mode != ModeCore {
+		t.Errorf("empty mode must be core: %v", err)
 	}
 }

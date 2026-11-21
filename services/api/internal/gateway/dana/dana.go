@@ -38,11 +38,22 @@ const (
 
 	pathGenerate = "/v1.0/qr/qr-mpm-generate.htm"
 	pathQuery    = "/rest/v1.1/debit/status"
+	pathConsult  = "/v1.0/payment-gateway/consult-pay.htm"
+
+	// Gapura Custom Checkout, QRIS only (ModeGapura): Create Order (SNAP 54) and Query Payment (serviceCode 54).
+	pathGapuraCreate = "/payment-gateway/v1.0/debit/payment-host-to-host.htm"
+	pathGapuraQuery  = "/payment-gateway/v1.0/debit/status.htm"
+	serviceGapura    = "54"
+	rcGapuraCreateOK = "2005400"
+
+	ModeCore   = "core"   // QRIS Acquirer MPM (Generate QRIS), the default
+	ModeGapura = "gapura" // Gapura Create Order with payOption NETWORK_PAY_PG_QRIS
 
 	serviceQRISMPM = "47"
 
 	rcGenerateOK    = "2004700"
 	rcQueryOK       = "2005500"
+	rcConsultOK     = "2000000"
 	rcQueryNotFound = "4045501"
 
 	// rawNotFound is the DANA status "07" (order not found); a 4045501 answer is reported as the same.
@@ -62,6 +73,10 @@ type Config struct {
 	ChannelID     string // CHANNEL-ID header, max 5 chars; empty = defaultChannelID
 	PrivateKeyPEM string // RSA, PKCS#8 or PKCS#1. Secret.
 	PublicKeyPEM  string // DANA's public key, verifies Finish Notify. Optional until the webhook is used.
+	Mode          string // ModeCore (empty) or ModeGapura
+	MCC           string // merchant category code, Gapura only
+	CallbackURL   string // Finish Notify URL sent in Create Order, Gapura only (https)
+	ReturnURL     string // PAY_RETURN URL, mandatory in Create Order though a QR payer is never redirected, Gapura only (https)
 	HTTP          *http.Client
 	Now           func() time.Time
 }
@@ -78,6 +93,22 @@ func New(cfg Config) (*Adapter, error) {
 	}
 	if cfg.MerchantID == "" || cfg.ClientID == "" || cfg.StoreID == "" {
 		return nil, errors.New("dana: merchant id, client id and store id are required")
+	}
+	switch cfg.Mode {
+	case "":
+		cfg.Mode = ModeCore
+	case ModeCore:
+	case ModeGapura:
+		for _, v := range []string{cfg.CallbackURL, cfg.ReturnURL} {
+			if u, err := url.Parse(v); err != nil || u.Host == "" || u.Scheme != "https" || len(v) > 512 {
+				return nil, errors.New("dana: gapura needs https callback and return URLs (max 512)")
+			}
+		}
+		if cfg.MCC == "" || len(cfg.MCC) > 64 {
+			return nil, errors.New("dana: gapura needs an MCC")
+		}
+	default:
+		return nil, errors.New("dana: mode must be core or gapura")
 	}
 	if len(cfg.ClientID) > 36 || len(cfg.ChannelID) > 5 {
 		return nil, errors.New("dana: client id (max 36) or channel id (max 5) is too long")
@@ -240,11 +271,13 @@ type envelope struct {
 	ReferenceNo     string `json:"referenceNo"`
 	AdditionalInfo  struct {
 		DebugMessage string `json:"debugMessage"`
+		PaymentCode  string `json:"paymentCode"`
 	} `json:"additionalInfo"`
-	QRContent               string `json:"qrContent"`
-	LatestTransactionStatus string `json:"latestTransactionStatus"`
-	TransAmount             *money `json:"transAmount"`
-	PaidTime                string `json:"paidTime"`
+	QRContent               string      `json:"qrContent"`
+	LatestTransactionStatus string      `json:"latestTransactionStatus"`
+	TransAmount             *money      `json:"transAmount"`
+	PaidTime                string      `json:"paidTime"`
+	PaymentInfos            []PayOption `json:"paymentInfos"`
 }
 
 // do sends one signed POST. The body bytes that are hashed are exactly the bytes sent. A transport failure
@@ -353,6 +386,9 @@ func (a *Adapter) CreatePayment(ctx context.Context, r gateway.CreateRequest) (g
 		// The payer is anonymous to us; envInfo only carries the mandatory platform/terminal markers.
 		"additionalInfo": map[string]any{"envInfo": map[string]string{"sourcePlatform": "IPG", "orderTerminalType": "SYSTEM", "terminalType": "SYSTEM"}},
 	}
+	if a.cfg.Mode == ModeGapura {
+		return a.createGapura(ctx, r, ref)
+	}
 	env, status, err := a.do(ctx, pathGenerate, payload, rcGenerateOK)
 	if err != nil {
 		return gateway.CreateResult{}, err
@@ -372,8 +408,9 @@ func (a *Adapter) GetPayment(ctx context.Context, r gateway.QueryRequest) (gatew
 	if !ok {
 		return gateway.QueryResult{}, &gateway.Error{Kind: gateway.Rejected, Message: "invalid query request"}
 	}
-	payload := map[string]string{"originalPartnerReferenceNo": ref, "serviceCode": serviceQRISMPM, "merchantId": a.cfg.MerchantID}
-	env, status, err := a.do(ctx, pathQuery, payload, rcQueryOK)
+	path, svc := a.queryTarget()
+	payload := map[string]string{"originalPartnerReferenceNo": ref, "serviceCode": svc, "merchantId": a.cfg.MerchantID}
+	env, status, err := a.do(ctx, path, payload, rcQueryOK)
 	if env.ResponseCode == rcQueryNotFound {
 		return gateway.QueryResult{RawStatus: rawNotFound, Amount: -1, ResponseCode: env.ResponseCode}, nil
 	}
@@ -394,6 +431,14 @@ func (a *Adapter) GetPayment(ctx context.Context, r gateway.QueryRequest) (gatew
 		res.PaidAt = &t
 	}
 	return res, nil
+}
+
+// queryTarget is the inquiry endpoint and service code of the configured mode (same response shape in both).
+func (a *Adapter) queryTarget() (path, serviceCode string) {
+	if a.cfg.Mode == ModeGapura {
+		return pathGapuraQuery, serviceGapura
+	}
+	return pathQuery, serviceQRISMPM
 }
 
 // CancelPayment: DANA's Cancel is documented after payment ("void"); whether it closes an unpaid QR is

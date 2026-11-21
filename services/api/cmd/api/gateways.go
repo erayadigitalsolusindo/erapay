@@ -77,7 +77,8 @@ func danaFromCreds(c map[string]string, env string) (gateway.Adapter, error) {
 		base = dana.ProductionURL
 	}
 	return dana.New(dana.Config{BaseURL: base, MerchantID: c["merchant_id"], ClientID: c["client_id"], StoreID: c["store_id"],
-		ChannelID: c["channel_id"], PrivateKeyPEM: c["private_key"], PublicKeyPEM: c["dana_public_key"]})
+		ChannelID: c["channel_id"], PrivateKeyPEM: c["private_key"], PublicKeyPEM: c["dana_public_key"],
+		Mode: c["mode"], MCC: c["mcc"], CallbackURL: c["callback_url"], ReturnURL: c["return_url"]})
 }
 
 // dokuFromCreds builds the DOKU adapter from credentials saved in the panel. Unlike the env path

@@ -61,6 +61,10 @@ var schemas = []Schema{{
 		{Key: "store_id", Label: "Store ID", Hint: "Wajib untuk membuat QRIS. Asalnya belum terkonfirmasi (kemungkinan externalShopId dari Create Shop)", Required: true, pattern: regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)},
 		{Key: "channel_id", Label: "Channel ID", Hint: "Header CHANNEL-ID, maks 5 karakter. Kosong = 95221, nilai tetap di SDK resmi DANA", pattern: regexp.MustCompile(`^[A-Za-z0-9]{1,5}$`)},
 		{Key: "private_key", Label: "Private key (PEM)", Hint: "RSA milik Anda, PKCS#8 atau PKCS#1; PEM atau teks base64 polos seperti disalin dari dasbor DANA", Required: true, Secret: true, Multiline: true, pem: true, b64: true},
+		{Key: "mode", Label: "Jalur", Hint: "core = QRIS Acquirer langsung (bawaan). gapura = Gapura Custom Checkout, hanya QRIS; wajib mengisi MCC, Callback URL, dan Return URL", Options: []string{"core", "gapura"}},
+		{Key: "mcc", Label: "MCC (Gapura)", Hint: "Kode kategori merchant, mis. 5814. Hanya untuk jalur gapura", pattern: regexp.MustCompile(`^[0-9]{4}$`)},
+		{Key: "callback_url", Label: "Callback URL (Gapura)", Hint: "Alamat Finish Notify di host API, https. Hanya untuk jalur gapura", pattern: regexp.MustCompile(`^https://[^\s]{1,500}$`)},
+		{Key: "return_url", Label: "Return URL (Gapura)", Hint: "PAY_RETURN, wajib di Create Order walau pembayar QRIS tidak dialihkan. Hanya untuk jalur gapura", pattern: regexp.MustCompile(`^https://[^\s]{1,500}$`)},
 		{Key: "dana_public_key", Label: "Public key DANA (PEM)", Hint: "Memverifikasi notifikasi Finish Notify. Bukan public key Anda di dasbor. Sandbox: key di docs DANA (authentication-asymmetric); produksi diminta ke tim DANA. Kosong = notifikasi ditolak, status hanya lewat inquiry", Multiline: true, pem: true, b64: true},
 	},
 }, {
