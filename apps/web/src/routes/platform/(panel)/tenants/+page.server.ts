@@ -3,7 +3,7 @@ import { guardPlatform, platformApi, platformImpersonate } from '../../../../lib
 import { setSession } from '../../../../lib/server/auth';
 import type { Actions, PageServerLoad } from './$types';
 
-type Merchant = { id: string; display_name: string; legal_name: string; onboarding_status: string; created_at: string };
+type Merchant = { own?: boolean; id: string; display_name: string; legal_name: string; onboarding_status: string; created_at: string };
 
 export const load: PageServerLoad = async ({ locals, cookies, fetch, url }) => {
 	const token = guardPlatform(locals, cookies);
@@ -19,7 +19,8 @@ export const actions: Actions = {
 		const f = await request.formData();
 		const merchantId = String(f.get('merchant_id') ?? '');
 		const reason = String(f.get('reason') ?? '').trim();
-		if (reason.length < 10) return fail(400, { merchantId, reason, message: 'Alasan wajib diisi (minimal 10 karakter).' });
+		// Tenant milik DEWA sendiri: Go membuka sesi biasa tanpa alasan.
+		if (reason.length < 10 && f.get('own') !== '1') return fail(400, { merchantId, reason, message: 'Alasan wajib diisi (minimal 10 karakter).' });
 		const r = await platformImpersonate(fetch, getClientAddress(), token, merchantId, reason);
 		if (!r.ok) return fail(r.status === 0 ? 503 : r.status, { merchantId, reason, message: r.message });
 		setSession(cookies, r.token, r.maxAge, url.protocol === 'https:');

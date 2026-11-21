@@ -241,7 +241,7 @@
 					<tbody>
 						{#each roles as r (r.id)}
 							<tr class="hover:bg-ink/[.03]">
-								<td><input class="inp w-56 py-1.5 font-mono text-xs" name="code" value={r.code} form={`role-${r.id}`} required aria-label={t('pf2.ac.col.code')} /></td>
+								<td><input class="inp w-56 py-1.5 font-mono text-xs" name="code" value={r.code} readonly={r.code === 'dewa' || r.code === 'merchant_owner'} form={`role-${r.id}`} required aria-label={t('pf2.ac.col.code')} /></td>
 								<td><Combobox id={`role-scope-${r.id}`} name="scope" form={`role-${r.id}`} class="w-36" value={r.scope} options={SCOPES} /></td>
 								<td>
 									<div class="flex items-center gap-2">
@@ -269,7 +269,7 @@
 											})}
 										>
 											<input type="hidden" name="id" value={r.id} />
-											<button class="btn btn-danger py-1.5" type="submit">{t('pf2.ac.delete')}</button>
+											<button class="btn btn-danger py-1.5" type="submit" disabled={r.code === 'dewa' || r.code === 'merchant_owner'}>{t('pf2.ac.delete')}</button>
 										</form>
 									</div>
 								</td>

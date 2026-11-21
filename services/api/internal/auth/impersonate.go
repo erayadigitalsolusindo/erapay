@@ -46,6 +46,15 @@ func (s *Service) StartImpersonation(ctx context.Context, dewa *Principal, in St
 	if dewa == nil || dewa.MerchantID != "" || dewa.ImpersonatorID != "" || !dewa.Has("rbac:manage") {
 		return "", nil, ErrNotPlatformAdmin
 	}
+	// DEWA yang juga anggota tenant ini: sesi tenant biasa (bukan impersonasi), tanpa alasan.
+	var own bool
+	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM merchant_users WHERE user_id = $1 AND merchant_id = $2)`,
+		dewa.UserID, in.MerchantID).Scan(&own); err != nil {
+		return "", nil, err
+	}
+	if own {
+		return s.enterOwnTenant(ctx, dewa, in)
+	}
 	reason := strings.TrimSpace(in.Reason)
 	if len([]rune(reason)) < minReasonLen || len(reason) > 500 {
 		return "", nil, ErrReasonRequired
@@ -121,6 +130,34 @@ func (s *Service) StartImpersonation(ctx context.Context, dewa *Principal, in St
 	return token, p, err
 }
 
+func (s *Service) enterOwnTenant(ctx context.Context, dewa *Principal, in StartImpersonationInput) (string, *Principal, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", nil, err
+	}
+	token := base64.RawURLEncoding.EncodeToString(raw)
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var sid string
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO sessions (user_id, merchant_id, token_hash, expires_at, ip, user_agent) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id::text`,
+		dewa.UserID, in.MerchantID, hashToken(token), s.now().Add(s.cfg.SessionTTL), in.IP, in.UserAgent).Scan(&sid); err != nil {
+		return "", nil, err
+	}
+	if err := audit.Record(ctx, tx, audit.Entry{ActorID: dewa.UserID, Action: "auth.tenant_switch", EntityType: "merchant",
+		EntityID: in.MerchantID, RequestID: in.RequestID, Metadata: map[string]any{"session_id": sid}}); err != nil {
+		return "", nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", nil, err
+	}
+	p, err := s.Authenticate(ctx, token)
+	return token, p, err
+}
+
 // MerchantSummary is the minimal tenant row the DEWA picker shows.
 type MerchantSummary struct {
 	ID               string    `json:"id"`
@@ -128,19 +165,21 @@ type MerchantSummary struct {
 	LegalName        string    `json:"legal_name"`
 	OnboardingStatus string    `json:"onboarding_status"`
 	CreatedAt        time.Time `json:"created_at"`
+	Own              bool      `json:"own"` // pemanggil (DEWA) anggota tenant ini: masuk tanpa alasan
 }
 
 // SearchMerchants lists tenants for the impersonation picker (name / id prefix match).
-func (s *Service) SearchMerchants(ctx context.Context, q string, limit int) ([]MerchantSummary, error) {
+func (s *Service) SearchMerchants(ctx context.Context, q string, limit int, userID string) ([]MerchantSummary, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
 	q = strings.TrimSpace(q)
 	rows, err := s.db.Query(ctx, `
-		SELECT id::text, display_name, legal_name, onboarding_status, created_at
+		SELECT id::text, display_name, legal_name, onboarding_status, created_at,
+		       EXISTS (SELECT 1 FROM merchant_users mu WHERE mu.merchant_id = merchants.id AND mu.user_id = $3::uuid)
 		FROM merchants
 		WHERE NOT is_sandbox AND ($1 = '' OR display_name ILIKE '%'||$1||'%' OR legal_name ILIKE '%'||$1||'%' OR id::text LIKE $1||'%')
-		ORDER BY created_at DESC LIMIT $2`, escapeLike(q), limit)
+		ORDER BY created_at DESC LIMIT $2`, escapeLike(q), limit, userID)
 	if err != nil {
 		return nil, err
 	}

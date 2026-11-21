@@ -19,7 +19,7 @@
 
 	// Menu finance/ops (/dashboard/finance/*) ikut tampil bila diizinkan hak akses; sesi DEWA yang sama dipakai di sana.
 	const finance = $derived(
-		nav.filter((n) => n.platform && data.menus.includes(n.href)).map((n) => ({ href: n.href, label: n.label as string, icon: n.icon, raw: true }))
+		nav.filter((n) => n.platform && data.menus.includes(n.href)).map((n) => ({ href: n.href.replace('/dashboard/', '/platform/'), label: n.label as string, icon: n.icon, raw: true }))
 	);
 	const base = [
 		{ href: '/platform', label: 'pf.nav.overview', icon: 'M3 12 12 3l9 9M5 10v10h5v-6h4v6h5V10' },
@@ -31,7 +31,12 @@
 		{ href: '/platform/audit', label: 'pf.nav.audit', icon: 'M9 5h10M9 12h10M9 19h10M4 5h.01M4 12h.01M4 19h.01' },
 		{ href: '/platform/access', label: 'pf.nav.access', icon: 'M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z' }
 	];
-	const items = $derived([...base, ...finance, ...rest] as { href: string; label: string; icon: string; raw?: boolean }[]);
+	// Semua menu panel diatur RBAC (/v1/menus); bila daftar gagal dimuat, tampilkan semuanya agar tidak terkunci.
+	const items = $derived(
+		([...base, ...finance, ...rest] as { href: string; label: string; icon: string; raw?: boolean }[]).filter(
+			(n) => !data.menus.length || data.menus.includes(n.href.replace('/platform/finance', '/dashboard/finance'))
+		)
+	);
 	// Menu aktif = href terpanjang yang cocok; kalau tidak, "/platform" cocok untuk semua halaman di bawahnya.
 	const current = $derived(
 		items

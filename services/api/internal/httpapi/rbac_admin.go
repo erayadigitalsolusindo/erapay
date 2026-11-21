@@ -66,6 +66,10 @@ func (d Deps) adminUpdateRole(w http.ResponseWriter, r *http.Request) {
 	}
 	p := PrincipalFrom(r.Context())
 	role, err := d.Auth.UpdateRole(r.Context(), id, body.Code, body.Scope, p.UserID, middleware.GetReqID(r.Context()))
+	if errors.Is(err, auth.ErrRoleProtected) {
+		writeError(w, r, http.StatusConflict, "ROLE_PROTECTED", "Role bawaan sistem (dewa, merchant_owner) tidak bisa diubah.", false)
+		return
+	}
 	if err != nil {
 		nf := strings.Contains(strings.ToLower(err.Error()), "no rows")
 		status := http.StatusBadRequest
@@ -84,7 +88,12 @@ func (d Deps) adminDeleteRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := PrincipalFrom(r.Context())
-	if err := d.Auth.DeleteRole(r.Context(), id, p.UserID, middleware.GetReqID(r.Context())); err != nil {
+	err := d.Auth.DeleteRole(r.Context(), id, p.UserID, middleware.GetReqID(r.Context()))
+	if errors.Is(err, auth.ErrRoleProtected) {
+		writeError(w, r, http.StatusConflict, "ROLE_PROTECTED", "Role bawaan sistem (dewa, merchant_owner) tidak bisa dihapus.", false)
+		return
+	}
+	if err != nil {
 		d.Log.Error("rbac.roles.delete", "err", err)
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
 		return

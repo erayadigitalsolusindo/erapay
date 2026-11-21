@@ -96,7 +96,7 @@ func (d Deps) platformImpersonate(w http.ResponseWriter, r *http.Request) {
 // platformMerchants: GET /v1/platform/merchants?q=&limit= — tenant picker.
 func (d Deps) platformMerchants(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	ms, err := d.Auth.SearchMerchants(r.Context(), r.URL.Query().Get("q"), limit)
+	ms, err := d.Auth.SearchMerchants(r.Context(), r.URL.Query().Get("q"), limit, PrincipalFrom(r.Context()).UserID)
 	if err != nil {
 		d.Log.Error("platform.merchants", "err", err)
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)

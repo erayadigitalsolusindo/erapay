@@ -94,6 +94,18 @@ func (s *Service) ListRoles(ctx context.Context) ([]RBACRole, error) {
 	return out, rows.Err()
 }
 
+// ErrRoleProtected: role bawaan sistem (dewa, merchant_owner) tidak boleh dihapus atau diubah kode/scope-nya.
+var ErrRoleProtected = errors.New("role is protected")
+
+func (s *Service) roleProtected(ctx context.Context, id string) (bool, error) {
+	var p bool
+	err := s.db.QueryRow(ctx, `SELECT code IN ('dewa','merchant_owner') FROM roles WHERE id = $1`, id).Scan(&p)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return p, err
+}
+
 func (s *Service) CreateRole(ctx context.Context, code, scope, actor, requestID string) (RBACRole, error) {
 	code = strings.TrimSpace(code)
 	if code == "" || (scope != "platform" && scope != "merchant") {
@@ -110,6 +122,11 @@ func (s *Service) CreateRole(ctx context.Context, code, scope, actor, requestID 
 }
 
 func (s *Service) UpdateRole(ctx context.Context, id string, code *string, scope *string, actor, requestID string) (RBACRole, error) {
+	if prot, err := s.roleProtected(ctx, id); err != nil {
+		return RBACRole{}, err
+	} else if prot {
+		return RBACRole{}, ErrRoleProtected
+	}
 	// fetch existing
 	var curCode, curScope string
 	err := s.db.QueryRow(ctx, `SELECT code, scope FROM roles WHERE id = $1`, id).Scan(&curCode, &curScope)
@@ -132,6 +149,11 @@ func (s *Service) UpdateRole(ctx context.Context, id string, code *string, scope
 }
 
 func (s *Service) DeleteRole(ctx context.Context, id, actor, requestID string) error {
+	if prot, err := s.roleProtected(ctx, id); err != nil {
+		return err
+	} else if prot {
+		return ErrRoleProtected
+	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err

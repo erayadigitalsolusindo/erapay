@@ -21,7 +21,7 @@ func TestPlatformPanelIgnoresSandboxMerchants(t *testing.T) {
 	if err != nil || st.Merchants["approved"] != 1 {
 		t.Fatalf("stats: %+v %v", st.Merchants, err)
 	}
-	found, err := s.SearchMerchants(ctx, "Sandbox Test", 50)
+	found, err := s.SearchMerchants(ctx, "Sandbox Test", 50, "00000000-0000-0000-0000-000000000000")
 	if err != nil || len(found) != 1 || found[0].ID != live {
 		t.Fatalf("picker: %+v %v", found, err)
 	}

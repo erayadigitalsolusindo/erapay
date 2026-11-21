@@ -56,10 +56,10 @@ const F = '/v1/admin/kyc-files';
 const fileOf = (d: any, kind: 'documents' | 'evidences'): KycFileRef | null =>
 	d?.id ? { id: d.id, url: `${F}/${kind}/${d.id}`, name: d.original_name ?? d.name ?? '', mime: d.mime ?? '', size: d.size ?? 0 } : null;
 
-export const load: PageServerLoad = async ({ locals, cookies, fetch, params }) => {
+export const load: PageServerLoad = async ({ locals, cookies, fetch, params, url }) => {
 	const token = guard(locals, cookies, 'merchant:review', 'platform');
 	const m = await read<Merchant>(fetch, token, `/v1/admin/merchants/${encodeURIComponent(params.id)}`);
-	if (m === null) throw redirect(303, '/dashboard/finance/merchants');
+	if (m === null) throw redirect(303, `${url.pathname.startsWith('/platform') ? '/platform' : '/dashboard'}/finance/merchants`);
 	const kyc = await read<Kyc>(fetch, token, `/v1/admin/merchants/${encodeURIComponent(params.id)}/kyc`);
 	let docs: { key: string; label: string; file: KycFileRef; number?: string }[] = [];
 	if (kyc) {

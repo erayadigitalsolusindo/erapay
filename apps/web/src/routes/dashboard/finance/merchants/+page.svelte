@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import MerchantActions from '../../../../lib/components/MerchantActions.svelte';
 	import { getI18n } from '../../../../lib/i18n/i18n.svelte';
 	import StateBadge from '../../../../lib/components/StateBadge.svelte';
@@ -36,6 +37,7 @@
 			.slice(0, 2)
 			.map((w) => w[0]!.toUpperCase())
 			.join('') || '?';
+	const base = $derived(page.url.pathname.startsWith('/platform') ? '/platform/finance' : '/dashboard/finance');
 </script>
 
 {#if form?.message}<p class="mb-4 text-xs font-semibold text-red-700" role="alert">{form.message}</p>{/if}
@@ -163,7 +165,7 @@
 				{/if}
 
 				<div class="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-ink/10 pt-3">
-					<a class="btn btn-light" href={`/dashboard/finance/merchants/${encodeURIComponent(m.id)}`}>
+					<a class="btn btn-light" href={`${base}/merchants/${encodeURIComponent(m.id)}`}>
 						<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>
 						{t('onb.detail')}
 					</a>

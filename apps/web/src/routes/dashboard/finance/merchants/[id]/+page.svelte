@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { getI18n } from '../../../../../lib/i18n/i18n.svelte';
 	import StateBadge from '../../../../../lib/components/StateBadge.svelte';
 	import MerchantActions from '../../../../../lib/components/MerchantActions.svelte';
@@ -29,6 +30,7 @@
 			return { host: url, path: '' };
 		}
 	};
+	const base = $derived(page.url.pathname.startsWith('/platform') ? '/platform/finance' : '/dashboard/finance');
 </script>
 
 {#snippet row(label: string, value: string | number | undefined | null, always = false)}
@@ -61,7 +63,7 @@
 <svelte:head><title>{t('onb.detailTitle')} · {m.display_name}</title></svelte:head>
 
 <div class="mb-4 flex flex-wrap items-center gap-3">
-	<a href="/dashboard/finance/merchants" class="text-[11px] font-bold text-merah hover:underline">← {t('onb.queue')}</a>
+	<a href="{base}/merchants" class="text-[11px] font-bold text-merah hover:underline">← {t('onb.queue')}</a>
 	<span class="font-bold">{t('onb.detailTitle')}</span>
 	<span class="ml-auto"><MerchantActions m={{ id: m.id, display_name: m.display_name, status: m.status, owner_email_verified: m.owner_email_verified }} canReview={data.canReview} canApprove={data.canApprove} /></span>
 </div>

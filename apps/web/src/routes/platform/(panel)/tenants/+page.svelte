@@ -33,7 +33,7 @@
 	};
 	const tone = (s: string) => TONE[s] ?? TONE.draft;
 
-	type M = { id: string; display_name: string; legal_name: string; onboarding_status: string; created_at: string };
+	type M = { own?: boolean; id: string; display_name: string; legal_name: string; onboarding_status: string; created_at: string };
 	const all = $derived(data.merchants as M[]);
 	const counts = $derived(
 		all.reduce<Record<string, number>>((a, m) => ((a[m.onboarding_status] = (a[m.onboarding_status] ?? 0) + 1), a), {})
@@ -172,6 +172,13 @@
 					</dl>
 
 					<div class="mt-4 flex flex-wrap gap-2">
+						{#if m.own}
+							<form method="POST" action="?/impersonate">
+								<input type="hidden" name="merchant_id" value={m.id} />
+								<input type="hidden" name="own" value="1" />
+								<button class="inline-flex items-center gap-1.5 rounded-full bg-merah px-4 py-2 text-xs font-bold text-white transition hover:bg-merah-tua">{t('pf.tn.enter')}</button>
+							</form>
+						{:else}
 						<button
 							type="button"
 							onclick={() => (open = open === m.id ? null : m.id)}
@@ -181,6 +188,7 @@
 							<svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" /></svg>
 							{t('pf.tn.enter')}
 						</button>
+						{/if}
 						<button
 							type="button"
 							onclick={() => (act = act === m.id ? null : m.id)}
