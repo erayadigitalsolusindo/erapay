@@ -228,3 +228,32 @@ func (s *Service) ProvisionARUSTenant(ctx context.Context, in ARUSTenantInput) (
 	}
 	return link, nil
 }
+
+// ARUSFees = tarif MDR QRIS yang berlaku untuk merchant pada gateway tujuan pembayaran QRIS barunya (bps: 100 = 1%).
+type ARUSFees struct {
+	MDRBPS      int   `json:"mdr_bps"`
+	MDRFixed    int64 `json:"mdr_fixed"`
+	MDRFlatUpTo int64 `json:"mdr_flat_up_to"`
+	MDRFlatFee  int64 `json:"mdr_flat_fee"`
+}
+
+// ARUSMerchantFees membaca rencana tarif aktif merchant di gateway tertentu. direct = gateway Direct (QRISGate): tarif
+// platform tetap, bukan tarif per merchant (query sama dengan penagihan di payment.Create). ErrNotFound bila tak ada rencana.
+func (s *Service) ARUSMerchantFees(ctx context.Context, merchantID, gateway string, direct bool) (ARUSFees, error) {
+	var f ARUSFees
+	err := s.db.QueryRow(ctx, `
+		SELECT p.mdr_bps, p.mdr_fixed, p.mdr_flat_up_to, p.mdr_flat_fee
+		FROM pricing_plans p
+		WHERE $3::boolean AND p.code = 'qrisgate-direct' AND p.gateway = $2 AND p.payment_method = 'QRIS'
+		UNION ALL
+		SELECT * FROM (
+		SELECT p.mdr_bps, p.mdr_fixed, p.mdr_flat_up_to, p.mdr_flat_fee
+		FROM merchant_pricing_assignments a JOIN pricing_plans p ON p.id = a.plan_id
+		WHERE NOT $3::boolean AND a.merchant_id = $1 AND p.gateway = $2 AND p.payment_method = 'QRIS' AND a.effective_from <= now()
+		ORDER BY a.effective_from DESC LIMIT 1) x
+		LIMIT 1`, merchantID, gateway, direct).Scan(&f.MDRBPS, &f.MDRFixed, &f.MDRFlatUpTo, &f.MDRFlatFee)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ARUSFees{}, ErrNotFound
+	}
+	return f, err
+}

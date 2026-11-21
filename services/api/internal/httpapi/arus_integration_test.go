@@ -217,3 +217,39 @@ func TestARUSListenerSetupReusesSecretAndNeedsKeyToken(t *testing.T) {
 		t.Fatalf("secret must be reused: %q vs %q", b, l1)
 	}
 }
+
+func TestARUSFeesFollowApprovedPlan(t *testing.T) {
+	w := setup(t)
+	const provision, keyTok = "arus-provision-test-token-that-is-long-enough", "arus-key-test-token-that-is-long-enough-xx"
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := httptest.NewServer(NewRouter(Deps{Log: log, Onboarding: onboarding.NewService(w.db, w.acct, onboarding.Config{Log: log}),
+		QRISGate: qrisgate.NewService(w.db, platformsetting.NewService(w.db), nil), ARUSProvisionToken: provision, ARUSKeyToken: keyTok}))
+	t.Cleanup(server.Close)
+	tenant := uuid.New()
+	path := "/v1/integrations/arus/tenants/" + tenant.String() + "/fees"
+	if r := arusRequest(t, server, provision, http.MethodGet, path, ""); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("provision token must not read fees: %d", r.StatusCode)
+	}
+	if r := arusRequest(t, server, keyTok, http.MethodGet, path, ""); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("unlinked: %d", r.StatusCode)
+	}
+	if r := arusRequest(t, server, provision, http.MethodPost, "/v1/integrations/arus/tenants",
+		fmt.Sprintf(`{"tenant_id":%q,"business_name":"Legacy Toko","owner_name":"Pemilik Toko","owner_email":"owner@a.test","accepted_terms":true}`, tenant)); r.StatusCode != http.StatusOK {
+		t.Fatalf("link: %d", r.StatusCode)
+	}
+	if r := arusRequest(t, server, keyTok, http.MethodGet, path, ""); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("no pricing plan yet: %d", r.StatusCode)
+	}
+	if _, err := w.db.Exec(t.Context(), `UPDATE merchants SET onboarding_status = 'submitted' WHERE id = $1`, w.midA); err != nil {
+		t.Fatal(err)
+	}
+	if r := arusRequest(t, server, keyTok, http.MethodPost, "/v1/integrations/arus/tenants/"+tenant.String()+"/approve",
+		`{"mdr_bps":70,"mdr_fixed":100,"mdr_flat_up_to":100000,"mdr_flat_fee":500,"admin":"uji"}`); r.StatusCode != http.StatusOK {
+		t.Fatalf("approve: %d", r.StatusCode)
+	}
+	r := arusRequest(t, server, keyTok, http.MethodGet, path, "")
+	got := decode(t, r)
+	if r.StatusCode != http.StatusOK || fmt.Sprint(got["mdr_bps"], got["mdr_fixed"], got["mdr_flat_up_to"], got["mdr_flat_fee"]) != "70 100 100000 500" {
+		t.Fatalf("fees: %d %v", r.StatusCode, got)
+	}
+}

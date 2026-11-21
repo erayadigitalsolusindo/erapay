@@ -329,6 +329,42 @@ func (d Deps) arusSaveQRIS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// arusFees: GET /v1/integrations/arus/tenants/{tenant_id}/fees — server-to-server (token key).
+// Tarif MDR QRIS yang berlaku untuk merchant pada gateway tujuan pembayaran QRIS barunya; ARUS menyalinnya ke metode "EraPay"
+// (tarif milik EraPay, tidak bisa diubah di ARUS). 404 bila belum tertaut / belum ada gateway aktif / belum ada rencana tarif.
+func (d Deps) arusFees(w http.ResponseWriter, r *http.Request) {
+	mid, ok := d.arusQRISGateMerchant(w, r)
+	if !ok {
+		return
+	}
+	gw := "doku" // gateway bawaan bila routing tak terpasang
+	if d.Routing != nil {
+		g, err := d.Routing.Effective(r.Context(), mid)
+		if err != nil {
+			d.Log.Error("arus fees effective", "err", err, "request_id", middleware.GetReqID(r.Context()))
+			writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+			return
+		}
+		gw = g
+	}
+	if gw == "" {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "no active gateway", false)
+		return
+	}
+	f, err := d.Onboarding.ARUSMerchantFees(r.Context(), mid, gw, gw == "qrisgate") // qrisgate = satu-satunya gateway Direct
+	if errors.Is(err, onboarding.ErrNotFound) {
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "no pricing plan", false)
+		return
+	}
+	if err != nil {
+		d.Log.Error("arus fees", "err", err, "request_id", middleware.GetReqID(r.Context()))
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, f)
+}
+
 // arusQRISGateMerchant resolves the linked EraPay merchant of an ARUS tenant (404 when not linked).
 func (d Deps) arusQRISGateMerchant(w http.ResponseWriter, r *http.Request) (string, bool) {
 	tenantID, err := uuid.Parse(chi.URLParam(r, "tenant_id"))
