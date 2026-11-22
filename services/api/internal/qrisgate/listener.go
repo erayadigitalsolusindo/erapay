@@ -89,6 +89,19 @@ func (s *Service) ensure(ctx context.Context, tx pgx.Tx, merchantID string) erro
 	return err
 }
 
+// Ensure membuat baris akun (belum aktif) bila belum ada; sandbox ditolak (ErrUnavailable).
+func (s *Service) Ensure(ctx context.Context, merchantID string) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := s.ensure(ctx, tx, merchantID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // SaveQRIS validates and stores the tenant's static QRIS (replacing a previous one).
 func (s *Service) SaveQRIS(ctx context.Context, merchantID, userID, requestID, payload string) (qris.Info, error) {
 	info, err := qris.ValidateStatic(payload)

@@ -15,8 +15,10 @@ import (
 
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/apikey"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/auth"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/gwaccount"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/onboarding"
 	"github.com/erayadigitalsolusindo/erapay/services/api/internal/qrisgate"
+	"github.com/erayadigitalsolusindo/erapay/services/api/internal/routing"
 )
 
 func (d Deps) requireARUSProvisionToken(next http.Handler) http.Handler {
@@ -383,4 +385,46 @@ func (d Deps) arusQRISGateMerchant(w http.ResponseWriter, r *http.Request) (stri
 		return "", false
 	}
 	return link.MerchantID.String(), true
+}
+
+// arusEnableQRISGate: POST /v1/integrations/arus/tenants/{tenant_id}/qrisgate/enable — server-to-server (token key).
+// Menyalakan QRISGate satu langkah: akun gateway qrisgate aktif + jalur pembayaran merchant diarahkan ke sana.
+// Idempoten. Dipanggil ARUS dari tombol Platform Admin (admin itu sudah mengonfirmasi), jadi tanpa tahap DEWA.
+func (d Deps) arusEnableQRISGate(w http.ResponseWriter, r *http.Request) {
+	mid, ok := d.arusQRISGateMerchant(w, r)
+	if !ok {
+		return
+	}
+	if d.GWAccounts == nil || d.Routing == nil {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "gateway accounts or routing disabled", false)
+		return
+	}
+	switch err := d.QRISGate.Ensure(r.Context(), mid); {
+	case errors.Is(err, qrisgate.ErrUnavailable):
+		writeError(w, r, http.StatusUnprocessableEntity, "QRISGATE_UNAVAILABLE", "QRISGate cannot be set up for this account", false)
+		return
+	case err != nil:
+		d.Log.Error("arus enable qrisgate", "err", err, "request_id", middleware.GetReqID(r.Context()))
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error", true)
+		return
+	}
+	reqID := middleware.GetReqID(r.Context())
+	const note = "Aktivasi satu tombol dari Platform Admin ARUS"
+	if _, err := d.GWAccounts.Upsert(r.Context(), gwaccount.UpsertInput{
+		MerchantID: mid, Gateway: "qrisgate", Environment: "production", GatewayRef: mid, Status: "active", Note: note, RequestID: reqID,
+	}); !d.gwAccountErr(w, r, err) {
+		return
+	}
+	ov, err := d.Routing.MerchantOverview(r.Context(), mid)
+	if !d.routingErr(w, r, err) {
+		return
+	}
+	if ov.Gateway != "qrisgate" {
+		if _, err := d.Routing.SetMerchant(r.Context(), routing.SetMerchantInput{
+			MerchantID: mid, Environment: ov.ServerEnvironment, Gateway: "qrisgate", ExpectVersion: ov.Version, Note: note, RequestID: reqID,
+		}); !d.routingErr(w, r, err) {
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"active": true})
 }
