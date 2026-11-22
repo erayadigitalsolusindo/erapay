@@ -36,7 +36,7 @@ Animasi masuk (`naik`), modal pegas, ring/bar terisi saat terlihat, toast. Wajib
 ## Aturan penerapan
 1. Ikuti [UX di `ui.md`](ui.md): status **selalu berlabel teks**, bukan warna saja; bedakan "Pembayaran berhasil" vs "Settlement selesai".
 2. Bahasa Indonesia default (copy di referensi sudah ID); string lewat struktur i18n.
-3. Data pada referensi adalah **dummy**. Jangan salin nama provider/angka: opsi gateway di UI hanya yang aktif & terkonfirmasi (saat ini **hanya DOKU**; Midtrans/Xendit di mockup tidak boleh tampil).
+3. Data pada referensi adalah **dummy**. Jangan salin nama provider/angka: opsi gateway di UI hanya yang aktif & terkonfirmasi (saat ini **hanya DOKU**; Midtrans di mockup tidak boleh tampil).
 4. Jangan salin pola mockup yang melanggar keamanan (mis. API key/secret di HTML). Secret tampil sekali; rekening di-mask.
 5. Format uang `Rp1.000.000` (titik ribuan); nilai tetap integer di backend.
 6. Jangan load Tailwind via CDN/`<script>` di produksi.

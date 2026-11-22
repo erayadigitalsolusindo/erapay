@@ -81,7 +81,7 @@ type Overview struct {
 
 // Candidates are the gateways that can ever be chosen. Listed explicitly so a registered adapter
 // that is not a payment gateway never shows up as a choice.
-var Candidates = []string{"doku", "ids", "finpay", "dana", "xendit", "midtrans", "qrisgate"}
+var Candidates = []string{"doku", "ids", "finpay", "dana", "midtrans", "qrisgate"}
 
 func (s *Service) options() []Option {
 	out := make([]Option, 0, len(Candidates))
