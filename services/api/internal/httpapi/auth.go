@@ -464,6 +464,10 @@ func (d Deps) mountV1(r chi.Router) {
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("report:read")).Get("/balance", d.getBalance)
 			r.With(d.requireAnyAuth, requireTenant, requirePerm("settlement:read")).Get("/settlement/unsettled", d.listMyUnsettled)
 		}
+		if d.AppReleases != nil {
+			// Publik (tanpa login): APK Listener tidak berisi rahasia; rahasia penerima dikirim lewat tautan setup setelah login.
+			r.Get("/public/listener/apk", d.qrisgateListenerDownload)
+		}
 		d.mountPlatform(r) // panel DEWA (/platform), auth terpisah dari dashboard (/v1)
 		r.Group(func(r chi.Router) {
 			r.Use(d.requireAuth, requireJSON)
