@@ -154,6 +154,7 @@
 					<h4 class="font-bold">{t('onb.approveBtn')}</h4>
 					<input type="hidden" name="id" value={m.id} />
 					{@render feeFields()}
+					<label class="flex items-center gap-2"><input type="checkbox" name="skip_identity" /> Aktifkan tanpa data identitas (KYC)</label>
 					<div class="flex justify-end">
 						<button class="btn btn-red" type="submit" disabled={busy}>{t('onb.approveBtn')}</button>
 					</div>

@@ -667,3 +667,22 @@ func TestOwnIdentityEditFromProfileHTTP(t *testing.T) {
 		t.Fatalf("approved save: want 409, got %d", r.StatusCode)
 	}
 }
+
+// Admin may knowingly activate a merchant without identity data (checkbox); the email gate still holds.
+func TestApproveSkipIdentity(t *testing.T) {
+	w := setup(t)
+	mid := register(t, w, "tanpaid@toko.test")
+	root := w.client(t, "root@erapay.test")
+	if _, err := w.db.Exec(t.Context(), `UPDATE merchants SET owner_id_enc=NULL, owner_id_last4=NULL,
+		business_npwp_enc=NULL, business_npwp_last4=NULL, business_nib=NULL WHERE id = $1`, mid); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"mdr_bps":70,"platform_bps":100,"skip_identity":true}`
+	if r := w.do(t, root, "POST", "/v1/admin/merchants/"+mid+"/approve", body, nil); r.StatusCode != 409 || errCode(t, r) != "EMAIL_NOT_VERIFIED" {
+		t.Fatalf("email gate must still hold: %d %s", r.StatusCode, errCode(t, r))
+	}
+	verifyOwner(t, w, "tanpaid@toko.test")
+	if r := w.do(t, root, "POST", "/v1/admin/merchants/"+mid+"/approve", body, nil); r.StatusCode != 200 {
+		t.Fatalf("approve without identity: %d", r.StatusCode)
+	}
+}

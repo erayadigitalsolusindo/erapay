@@ -75,7 +75,7 @@ export const merchantActions = {
 		const f = await request.formData();
 		const r = feeBody(f);
 		if ('error' in r) return fail(400, { message: r.error });
-		return done(await call(fetch, token, 'POST', path(f, 'approve'), r.body));
+		return done(await call(fetch, token, 'POST', path(f, 'approve'), { ...r.body, skip_identity: f.get('skip_identity') === 'on' }));
 	},
 	// Ubah tarif merchant yang sudah disetujui tanpa mengubah statusnya; berlaku untuk transaksi berikutnya.
 	changePricing: async ({ request, cookies, fetch, locals }: RequestEvent) => {

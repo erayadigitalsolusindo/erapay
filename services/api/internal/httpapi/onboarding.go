@@ -122,6 +122,7 @@ func feeBody(w http.ResponseWriter, r *http.Request, id string) (in onboarding.A
 		MDRFlatUpTo   *int64 `json:"mdr_flat_up_to"`
 		MDRFlatFee    *int64 `json:"mdr_flat_fee"`
 		Note          string `json:"note"` // only used by change-pricing
+		SkipIdentity  bool   `json:"skip_identity"`
 	}
 	if _, ok := decodeStrict(w, r, 4<<10, &body); !ok {
 		return in, "", false
@@ -137,7 +138,7 @@ func feeBody(w http.ResponseWriter, r *http.Request, id string) (in onboarding.A
 		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "mdr_flat_up_to and mdr_flat_fee must be sent together", false)
 		return in, "", false
 	}
-	in = onboarding.ApproveInput{MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, RequestID: middleware.GetReqID(r.Context())}
+	in = onboarding.ApproveInput{MerchantID: id, ActorID: PrincipalFrom(r.Context()).UserID, RequestID: middleware.GetReqID(r.Context()), SkipIdentity: body.SkipIdentity}
 	if body.MDRBPS != nil {
 		in.MDRBPS = *body.MDRBPS
 	}

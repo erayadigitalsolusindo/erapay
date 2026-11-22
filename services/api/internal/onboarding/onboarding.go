@@ -665,6 +665,9 @@ type ApproveInput struct {
 	// dilewati dan ActorID boleh kosong. Hanya dipakai rute server-to-server berbasis token, tidak pernah dari input pengguna.
 	Via   string
 	Admin string // nama pemberi ACC di sistem asal, dicatat di audit
+	// SkipIdentity: admin sengaja mengaktifkan tanpa data identitas (centang di UI). Hanya melewati cek
+	// kelengkapan identitas; email terverifikasi tetap wajib. Dicatat di audit.
+	SkipIdentity bool
 }
 
 // MaxFixedFee membatasi biaya tetap agar salah ketik (mis. tambahan nol) tidak lolos: Rp 1.000.000.
@@ -699,12 +702,14 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 		// is read from the database, not the request: business accounts additionally need NPWP + NIB.
 		// Only the fields both onboarding paths collect are required: the KYC wizard (internal/kyc)
 		// stores NIK, NPWP and NIB but not birth data, gender or a personal address.
-		var complete bool
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(
+		complete := in.SkipIdentity
+		if !complete {
+			if err := tx.QueryRow(ctx, `SELECT COALESCE(
 		owner_id_enc IS NOT NULL
 		AND (account_type IS DISTINCT FROM 'business' OR (business_npwp_enc IS NOT NULL AND business_nib IS NOT NULL))
 	, false) FROM merchants WHERE id = $1`, in.MerchantID).Scan(&complete); err != nil {
-			return Merchant{}, err
+				return Merchant{}, err
+			}
 		}
 		if !complete {
 			return Merchant{}, ErrIdentityIncomplete
@@ -722,7 +727,7 @@ func (s *Service) Approve(ctx context.Context, in ApproveInput) (Merchant, error
 		EntityID: in.MerchantID, RequestID: in.RequestID,
 		Metadata: map[string]any{"plan_id": planID, "mdr_bps": in.MDRBPS, "platform_bps": in.PlatformBPS,
 			"mdr_fixed": in.MDRFixed, "platform_fixed": in.PlatformFixed,
-			"mdr_flat_up_to": in.MDRFlatUpTo, "mdr_flat_fee": in.MDRFlatFee, "via": in.Via, "admin": in.Admin}}); err != nil {
+			"mdr_flat_up_to": in.MDRFlatUpTo, "mdr_flat_fee": in.MDRFlatFee, "via": in.Via, "admin": in.Admin, "skip_identity": in.SkipIdentity}}); err != nil {
 		return Merchant{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
